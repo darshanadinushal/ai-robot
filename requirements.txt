@@ -1,0 +1,3 @@
+# For Windows / macOS / other desktop Python environments.
+# Raspberry Pi OS users should instead use: sudo apt install python3-pygame
+pygame>=2.6,<3
