@@ -1,4 +1,4 @@
-# AI Robot — Futuristic HUD Eyes (Design #1)
+# Luna 1.0 — Futuristic HUD Eyes (Design #1)
 
 A **runnable, touch-friendly futuristic robot face** for a Raspberry Pi 5 + official
 7-inch Raspberry Pi Touch Display 2 in landscape orientation (1280 × 720).
@@ -14,7 +14,7 @@ control are future integrations, **not** working hardware features in this relea
 - **Chat**, **Home**, **Camera**, **Settings** touchscreen navigation
 - Chat page with **simulated** voice waveform (no audio capture)
 - Camera page with a clearly labelled **placeholder**, not a camera feed
-- Working face-theme settings (cyan, purple, green, amber), animation toggle
+- Working settings: theme colour (cyan, purple, green, amber), a Face mode (classic, compact, minimal layouts) and a Wave mode (mic with mesh, bars or circle voice-wave layouts), chosen with tabs, animation toggle
 - Settings automatically saved in `~/.ai-robot-hud.json`
 - True fullscreen at the Pi's current display resolution, with correct touchscreen scaling
 - Resizable Windows preview for development
@@ -101,6 +101,24 @@ You can also use `bash scripts/install-pi.sh` to install requirements or
 access to the current graphical display. A bare SSH session may not be able to open
 the Pi's screen without separate display-session configuration.
 
+## Voice commands (offline)
+
+Luna listens through the microphone with the offline Vosk engine (no internet or API key).
+Windows setup installs it automatically; also run
+`.\.venv\Scripts\python.exe scripts\download-voice-model.py` once to fetch the small model.
+On the Pi, `bash scripts/install-pi.sh` does this. Use `--no-voice` to disable.
+
+| Say | Reaction |
+| --- | --- |
+| happy / sad / angry / sleepy / surprised / neutral | Face expression for 10 s (switches to Face mode) |
+| left / right / up / down / center | Eyes look in that direction |
+| blink | Blink |
+| speak / listen / quiet | Wave amplitude: strong / medium / flat (switches to Wave mode) |
+| face / wave | Switch mode |
+| cyan / purple / green / amber | Change theme colour |
+
+The Wave also reacts live to your microphone volume. Recognised text shows at the top left of Home.
+
 ## Controls
 
 | Input | Effect |
@@ -109,7 +127,7 @@ the Pi's screen without separate display-session configuration.
 | Bottom **Home** | Return to animated face |
 | Bottom **Chat** | Simulated voice waveform page |
 | Bottom **Camera** | Camera placeholder page |
-| Bottom **Settings** | Choose colour and enable/disable idle animations |
+| Bottom **Settings** | Choose colour, layout, and enable/disable idle animations |
 | `1` / `2` / `3` / `4` | Chat / Home / Camera / Settings |
 | `Space` | Blink |
 | `F11` | Toggle fullscreen / windowed mode |

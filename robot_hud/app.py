@@ -5,6 +5,7 @@ All artwork is drawn procedurally; no proprietary icons, images or fonts needed.
 import argparse
 import math
 import os
+import queue
 import random
 import sys
 import time
@@ -19,7 +20,9 @@ except ImportError as exc:
     ) from exc
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
-from .preferences import COLOR_CHOICES, read_preferences, write_preferences
+from .commands import parse_command
+from .voice import VoiceListener
+from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 
 FPS = 30
 BACKGROUND = (4, 11, 28)
@@ -29,8 +32,10 @@ FAINT = (45, 95, 143)
 NAV_NAMES = ("Chat", "Home", "Camera", "Settings")
 NAV_RECTS = [pygame.Rect(216 + i * 216, 597, 199, 93) for i in range(4)]
 QUIT_RECT = pygame.Rect(1214, 23, 43, 43)
-COLOR_RECTS = [pygame.Rect(341 + i * 159, 340, 131, 81) for i in range(4)]
-ANIM_RECT = pygame.Rect(470, 445, 340, 67)
+TAB_RECTS = [pygame.Rect(410 + i * 240, 146, 220, 46) for i in range(2)]
+COLOR_RECTS = [pygame.Rect(341 + i * 159, 228, 131, 66) for i in range(4)]
+LAYOUT_RECTS = [pygame.Rect(320 + i * 220, 332, 200, 52) for i in range(3)]
+ANIM_RECT = pygame.Rect(470, 408, 340, 58)
 CHAT_RECT = pygame.Rect(485, 460, 310, 63)
 
 
@@ -105,7 +110,7 @@ def glow_disc(radius, color):
     return s
 
 
-def draw_eye(surface, cx, cy, t, gaze_x, gaze_y, openness, color, glow):
+def draw_eye(surface, cx, cy, t, gaze_x, gaze_y, openness, color, glow, scale=1.0, side=-1, mood='neutral'):
     # Eye contents are drawn on a 340px layer, then vertically scaled to blink.
     size = 352
     eye = pygame.Surface((size, size), pygame.SRCALPHA)
@@ -150,21 +155,99 @@ def draw_eye(surface, cx, cy, t, gaze_x, gaze_y, openness, color, glow):
     pygame.draw.circle(eye, (253,253,255), (ix-21,iy-27), 16)
     pygame.draw.circle(eye, (164,244,255), (ix+24,iy+19), 6)
 
+    if mood == 'happy':
+        pygame.draw.circle(eye, (0,0,0,0), (x, y+215), 150)
+    elif mood in ('sad', 'angry'):
+        inner_x = x - side*size//2
+        outer_x = x + side*size//2
+        yi, yo = (y+30, y-130) if mood == 'angry' else (y-130, y+30)
+        pygame.draw.polygon(eye, (0,0,0,0), [(inner_x,yi),(outer_x,yo),(outer_x,0),(inner_x,0)])
+
     if openness < .14:
-        line(surface, mix(color, BACKGROUND, .55), (cx-111,cy), (cx+111,cy), 11)
-        line(surface, color, (cx-98,cy), (cx+98,cy), 4)
+        hw = 111*scale
+        line(surface, mix(color, BACKGROUND, .55), (cx-hw,cy), (cx+hw,cy), 11)
+        line(surface, color, (cx-hw*.88,cy), (cx+hw*.88,cy), 4)
     else:
         h = max(2, int(size * openness))
-        surface.blit(pygame.transform.smoothscale(eye, (size,h)),
-                     (cx-size//2, cy-h//2))
+        sw, sh = int(size*scale), int(h*scale)
+        surface.blit(pygame.transform.smoothscale(eye, (sw,sh)),
+                     (cx-sw//2, cy-sh//2))
 
 
-def smile(surface, t, accent):
+def draw_mic(surface, accent, cx, cy, t):
+    glow = pygame.Surface((160,160), pygame.SRCALPHA)
+    for r in range(70, 0, -3):
+        pygame.draw.circle(glow, (*accent, 3 + (70-r)//5), (80,80), r)
+    surface.blit(glow, (cx-80, cy-80))
+    pygame.draw.rect(surface, accent, (cx-14,cy-34,28,50), 4, border_radius=14)
+    pygame.draw.arc(surface, accent, (cx-27,cy-28,54,50), math.pi, math.tau, 4)
+    line(surface, accent, (cx,cy+22), (cx,cy+36), 4)
+    pygame.draw.ellipse(surface, accent, (cx-17,cy+33,34,10), 2)
+
+
+def draw_wave(surface, t, accent, amp=1.0):
+    # Mesh of sine ribbons: many offset curves share lobed envelopes and cross each other.
+    other = (226, 70, 255)
+    cy, x0, x1, step = 360, 40, 1240, 10
+    layer = pygame.Surface((1280, 420), pygame.SRCALPHA)
+    ly = 210
+    xs = list(range(x0, x1 + 1, step))
+    for wave in range(2):
+        for k in range(26):
+            frac = k / 25 * 2 - 1
+            pts = []
+            for x in xs:
+                u = (x - x0) / (x1 - x0)
+                env = (math.sin(u*math.pi*4 + t*1.3 + wave*1.7)**2
+                       * (.7 + .3*math.sin(u*math.pi*2 - t*.7)))
+                amp_px = 215 * amp * env * math.sin(math.pi*(.5 + .5*frac))
+                y = ly + frac*amp_px*(.6 + .4*wave) * math.sin(u*math.pi*9 + t*2.2 + k*.05)
+                pts.append((x, y))
+            for i in range(len(pts)-1):
+                u = i / len(pts)
+                col = mix(mix(accent, (235,250,255), .35), other, u)
+                a = 110 if wave == 0 else 170
+                pygame.draw.line(layer, (*col, a), pts[i], pts[i+1], 1)
+    surface.blit(layer, (0, cy - ly))
+
+
+def draw_wave_bars(surface, t, accent, amp=1.0):
+    other = (226, 70, 255)
+    n = 61
+    for i in range(n):
+        u = i / (n - 1)
+        x = 130 + i * 17
+        env = .35 + .65 * abs(math.sin(u*math.pi*3 + t*1.4) * math.cos(u*math.pi*1.3 - t*.6))
+        h = 8 + 190 * amp * env * math.sin(math.pi * u) ** .6
+        col = mix(accent, other, u)
+        line(surface, mix(col, BACKGROUND, .55), (x, 360 - h/2 - 6), (x, 360 + h/2 + 6), 9)
+        line(surface, col, (x, 360 - h/2), (x, 360 + h/2), 5)
+
+
+def draw_wave_circle(surface, t, accent, amp=1.0, cx=640, cy=330):
+    other = (226, 70, 255)
+    for k in range(16):
+        base = 82 + k * 6
+        pts = []
+        for j in range(121):
+            a = math.tau * j / 120
+            r = base + amp * (10 + k*1.6) * math.sin(a*5 + t*1.6 + k*.25) * math.sin(a*3 - t*.9)
+            pts.append((cx + r*math.cos(a), cy + r*math.sin(a)))
+        col = mix(accent, other, k / 15)
+        pygame.draw.lines(surface, mix(col, BACKGROUND, .15), True, pts, 1)
+
+
+def smile(surface, t, accent, y=474, mood='neutral'):
+    if mood == 'surprised':
+        pygame.draw.circle(surface, mix(accent, BACKGROUND, .76), (640, y+8), 24, 12)
+        pygame.draw.circle(surface, accent, (640, y+8), 24, 4)
+        return
+    curve = {'happy': 36, 'sad': -20, 'angry': -6, 'sleepy': 3}.get(mood, 17)
     dots=[]
     for i in range(41):
         a = i/40
         dots.append((int(640 - 46 + 92*a),
-                     int(474 + 17*math.sin(math.pi*a) + 1.5*math.sin(t*2))))
+                     int(y + curve*math.sin(math.pi*a) + 1.5*math.sin(t*2))))
     pygame.draw.lines(surface, mix(accent, BACKGROUND, .76), False, dots, 13)
     pygame.draw.lines(surface, accent, False, dots, 5)
 
@@ -216,7 +299,7 @@ def wifi_icon(surface, x, y, color):
 def status_bar(surface, fonts, accent):
     draw_text(surface,datetime.now().strftime('%H:%M'), fonts['header'], TEXT,
               topleft=(42,26))
-    draw_text(surface,'AI ROBOT   /   HUD 01', fonts['header'], MUTED,center=(640,43))
+    draw_text(surface,'LUNA 1.0', fonts['header'], MUTED,center=(640,43))
     color = (115,153,187)
     wifi_icon(surface,994,42,color)
     # Visual icons only: not network, audio or battery readings.
@@ -285,21 +368,36 @@ def camera_page(surface, fonts, accent, t):
 
 def settings_page(surface, fonts, accent, prefs):
     panel_base(surface,accent)
-    draw_text(surface,'FACE SETTINGS',fonts['title'],TEXT,center=(640,198))
-    draw_text(surface,'Choose a theme colour',fonts['body'],MUTED,center=(640,273))
+    for name,rect in zip(MODES,TAB_RECTS):
+        selected = prefs['mode']==name
+        pygame.draw.rect(surface,(11,49,84) if selected else (8,32,62),rect,border_radius=12)
+        pygame.draw.rect(surface,accent if selected else (33,73,109),rect,3 if selected else 1,
+                         border_radius=12)
+        draw_text(surface,name+' MODE',fonts['body'],TEXT if selected else MUTED,center=rect.center)
+    draw_text(surface,'Theme colour',fonts['small'],MUTED,center=(640,212))
     for name,rect in zip(COLOR_CHOICES,COLOR_RECTS):
         selected = prefs['color']==name
         pygame.draw.rect(surface,(9,39,76),rect,border_radius=13)
         pygame.draw.rect(surface,COLOR_CHOICES[name] if selected else (33,73,109),
                          rect,3 if selected else 1,border_radius=13)
-        pygame.draw.circle(surface,COLOR_CHOICES[name],(rect.centerx,rect.top+28),16)
-        draw_text(surface,name,fonts['small'],TEXT,center=(rect.centerx,rect.top+64))
+        pygame.draw.circle(surface,COLOR_CHOICES[name],(rect.centerx,rect.top+24),14)
+        draw_text(surface,name,fonts['small'],TEXT,center=(rect.centerx,rect.top+51))
+    wave = prefs['mode']=='WAVE'
+    choices = WAVE_LAYOUTS if wave else tuple(LAYOUT_CHOICES)
+    current = prefs['wave_layout'] if wave else prefs['layout']
+    draw_text(surface,('Wave' if wave else 'Face')+' layout',fonts['small'],MUTED,center=(640,316))
+    for name,rect in zip(choices,LAYOUT_RECTS):
+        selected = current==name
+        pygame.draw.rect(surface,(9,39,76),rect,border_radius=13)
+        pygame.draw.rect(surface,accent if selected else (33,73,109),
+                         rect,3 if selected else 1,border_radius=13)
+        draw_text(surface,name,fonts['small'],TEXT,center=rect.center)
     pygame.draw.rect(surface,(10,42,76),ANIM_RECT,border_radius=13)
     pygame.draw.rect(surface,accent,ANIM_RECT,2,border_radius=13)
     draw_text(surface,'Animations: '+('ON' if prefs['animations'] else 'OFF'),fonts['body'],TEXT,
               center=ANIM_RECT.center)
-    draw_text(surface,'Settings save automatically to your home folder.',fonts['small'],MUTED,
-              center=(640,527))
+    draw_text(surface,'The selected mode is shown on Home. Settings save automatically.',
+              fonts['small'],MUTED,center=(640,510))
 
 
 class RobotHUD:
@@ -308,7 +406,7 @@ class RobotHUD:
         pygame.font.init()
         self.fullscreen = args.fullscreen or (not args.windowed and os.name != 'nt')
         self.screen = self.make_screen()
-        pygame.display.set_caption('AI Robot - Futuristic HUD Eyes')
+        pygame.display.set_caption('Luna 1.0')
         self.canvas=pygame.Surface((W,H)).convert()
         self.background=background_surface()
         self.fonts={
@@ -330,6 +428,16 @@ class RobotHUD:
         self.next_blink=random.uniform(2.0,4.0)
         self.chat_active=False
         self.running=True
+        self.mood='neutral'
+        self.mood_until=0.0
+        self.wave_state='listening'
+        self.wave_until=0.0
+        self.wave_amp=.35
+        self.heard=''
+        self.heard_until=0.0
+        self.voice=VoiceListener() if not args.no_voice else None
+        if self.voice:
+            self.voice.start()
         self.last_touch=(-100.0, -10000.0,-10000.0)
         pygame.mouse.set_visible(not self.fullscreen)
 
@@ -369,15 +477,60 @@ class RobotHUD:
         elif self.page=='Chat' and CHAT_RECT.collidepoint(x,y):
             self.chat_active=not self.chat_active
         elif self.page=='Settings':
+            for name,rect in zip(MODES,TAB_RECTS):
+                if rect.collidepoint(x,y):
+                    self.prefs['mode']=name
+                    self.save()
+                    return
             for name,rect in zip(COLOR_CHOICES,COLOR_RECTS):
                 if rect.collidepoint(x,y):
                     self.prefs['color']=name
                     self.glow=glow_disc(169,self.accent)
                     self.save()
                     return
+            wave=self.prefs['mode']=='WAVE'
+            for name,rect in zip(WAVE_LAYOUTS if wave else tuple(LAYOUT_CHOICES),LAYOUT_RECTS):
+                if rect.collidepoint(x,y):
+                    self.prefs['wave_layout' if wave else 'layout']=name
+                    self.save()
+                    return
             if ANIM_RECT.collidepoint(x,y):
                 self.prefs['animations']=not self.prefs['animations']
                 self.save()
+
+    def apply_commands(self,text,t):
+        self.heard=text
+        self.heard_until=t+6
+        for kind,value in parse_command(text):
+            if kind=='expression':
+                self.mood=value
+                self.mood_until=t+10 if value!='neutral' else 0.0
+                self.prefs['mode']='FACE'
+            elif kind=='look':
+                self.target_x,self.target_y=value
+                self.touch_time=t
+                self.prefs['mode']='FACE'
+            elif kind=='blink':
+                self.blink_start=t
+            elif kind=='wave':
+                self.wave_state=value
+                self.wave_until=t+6 if value=='speaking' else 0.0
+                self.prefs['mode']='WAVE'
+            elif kind=='mode':
+                self.prefs['mode']=value
+            elif kind=='color':
+                self.prefs['color']=value
+                self.glow=glow_disc(169,self.accent)
+            self.save()
+
+    def poll_voice(self,t):
+        if not self.voice:
+            return
+        while True:
+            try:
+                self.apply_commands(self.voice.texts.get_nowait(),t)
+            except queue.Empty:
+                break
 
     def events(self,t):
         for event in pygame.event.get():
@@ -414,6 +567,11 @@ class RobotHUD:
                 self.handle_touch(x,y,t)
 
     def frame(self,t):
+        self.poll_voice(t)
+        if self.mood!='neutral' and t>self.mood_until:
+            self.mood='neutral'
+        if self.wave_state=='speaking' and t>self.wave_until:
+            self.wave_state='listening'
         accent=self.accent
         self.canvas.blit(self.background,(0,0))
         motion_t = t if self.prefs['animations'] else 0.0
@@ -429,11 +587,35 @@ class RobotHUD:
                 self.blink_start=t
                 self.next_blink=t+random.uniform(3.0,5.0)
             openness=blink_openness(t,self.blink_start)
-            draw_eye(self.canvas,416,296,motion_t,self.gaze_x,self.gaze_y,openness,accent,self.glow)
-            draw_eye(self.canvas,864,296,motion_t,self.gaze_x,self.gaze_y,openness,accent,self.glow)
-            smile(self.canvas,motion_t,accent)
-            draw_text(self.canvas,'TAP TO LOOK AROUND  •  SPACE TO BLINK',self.fonts['small'],MUTED,
+            if self.prefs['mode']=='WAVE':
+                base={'listening':.35,'speaking':1.0,'quiet':.08}[self.wave_state]
+                level=self.voice.level if self.voice else 0.0
+                self.wave_amp+=(max(base,min(1.0,level*1.6) if self.wave_state!='quiet' else 0)-self.wave_amp)*.15
+                amp=self.wave_amp
+                wl=self.prefs['wave_layout']
+                if wl=='BARS':
+                    draw_mic(self.canvas,accent,640,200,motion_t)
+                    draw_wave_bars(self.canvas,motion_t,accent,amp)
+                elif wl=='CIRCLE':
+                    draw_wave_circle(self.canvas,motion_t,accent,amp)
+                    draw_mic(self.canvas,accent,640,328,motion_t)
+                else:
+                    draw_mic(self.canvas,accent,640,200,motion_t)
+                    draw_wave(self.canvas,motion_t,accent,amp)
+                draw_text(self.canvas,self.wave_state.upper()+'...',self.fonts['small'],MUTED,center=(640,542))
+                self.draw_caption(t)
+                nav_bar(self.canvas,self.page,self.fonts,accent)
+                return
+            dx,ey,sc,sy=LAYOUT_CHOICES[self.prefs['layout']]
+            if self.mood=='surprised':
+                sc*=1.12
+            for ex,side in ((640-dx,-1),(640+dx,1)):
+                draw_eye(self.canvas,ex,ey,motion_t,self.gaze_x,self.gaze_y,openness,accent,self.glow,sc,side,self.mood)
+            if sy is not None:
+                smile(self.canvas,motion_t,accent,sy,self.mood)
+            draw_text(self.canvas,'TAP TO LOOK AROUND  •  SAY: HAPPY, SAD, ANGRY, LOOK LEFT...',self.fonts['small'],MUTED,
                       center=(640,542))
+            self.draw_caption(t)
         elif self.page=='Chat':
             chat_page(self.canvas,self.fonts,accent,t,self.chat_active)
         elif self.page=='Camera':
@@ -441,6 +623,15 @@ class RobotHUD:
         elif self.page=='Settings':
             settings_page(self.canvas,self.fonts,accent,self.prefs)
         nav_bar(self.canvas,self.page,self.fonts,accent)
+
+    def draw_caption(self,t):
+        if self.voice is None:
+            return
+        if t<self.heard_until:
+            text='HEARD: '+self.heard.upper()
+        else:
+            text='MIC: '+self.voice.status.upper()
+        draw_text(self.canvas,text,self.fonts['mini'],MUTED,topleft=(60,108))
 
     def present(self):
         self.screen.fill((0,0,0))
@@ -465,6 +656,8 @@ class RobotHUD:
                     break
                 self.clock.tick(FPS)
         finally:
+            if self.voice:
+                self.voice.stop()
             pygame.quit()
 
 
@@ -473,6 +666,7 @@ def main():
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--windowed',action='store_true',help='Use a resizable desktop window')
     mode.add_argument('--fullscreen',action='store_true',help='Use current display fullscreen')
+    parser.add_argument('--no-voice',action='store_true',help='Disable microphone commands')
     parser.add_argument('--screenshot',metavar='FILE',help='Save first frame as PNG and exit')
     args=parser.parse_args()
     RobotHUD(args).run(screenshot=args.screenshot)

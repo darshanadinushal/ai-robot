@@ -38,15 +38,24 @@ class PreferenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'preferences.json'
             self.assertEqual(read_preferences(p)['color'],'CYAN')
-            write_preferences({'color':'PURPLE','animations':False},p)
-            self.assertEqual(read_preferences(p),{'color':'PURPLE','animations':False})
+            write_preferences({'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False},p)
+            self.assertEqual(read_preferences(p),{'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False})
 
     def test_invalid_values_are_ignored(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'prefs.json'
             p.write_text('{"color":"NOT_A_COLOR","animations":"no"}')
-            self.assertEqual(read_preferences(p),{'color':'CYAN','animations':True})
+            self.assertEqual(read_preferences(p),{'color':'CYAN','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':True})
             self.assertIn('CYAN',COLOR_CHOICES)
+
+
+class CommandTests(unittest.TestCase):
+    def test_parse(self):
+        from robot_hud.commands import parse_command
+        self.assertEqual(parse_command("be happy"), [("expression", "happy")])
+        self.assertEqual(parse_command("look left"), [("look", (-1.0, 0.0))])
+        self.assertEqual(parse_command("wave mode"), [("mode", "WAVE")])
+        self.assertEqual(parse_command("hello"), [])
 
 
 if __name__=='__main__':
