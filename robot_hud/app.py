@@ -20,7 +20,8 @@ except ImportError as exc:
     ) from exc
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
-from .commands import parse_command
+from .commands import parse_command, reply_for
+from . import speech
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 
@@ -435,7 +436,8 @@ class RobotHUD:
         self.wave_amp=.35
         self.heard=''
         self.heard_until=0.0
-        self.voice=VoiceListener() if not args.no_voice else None
+        speech.enabled=not args.no_speech
+        self.voice=VoiceListener(muted=speech.is_speaking) if not args.no_voice else None
         if self.voice:
             self.voice.start()
         self.last_touch=(-100.0, -10000.0,-10000.0)
@@ -501,7 +503,11 @@ class RobotHUD:
     def apply_commands(self,text,t):
         self.heard=text
         self.heard_until=t+6
-        for kind,value in parse_command(text):
+        actions=parse_command(text)
+        reply=reply_for(actions)
+        if reply:
+            speech.speak_async(reply)
+        for kind,value in actions:
             if kind=='expression':
                 self.mood=value
                 self.mood_until=t+10 if value!='neutral' else 0.0
@@ -667,6 +673,7 @@ def main():
     mode.add_argument('--windowed',action='store_true',help='Use a resizable desktop window')
     mode.add_argument('--fullscreen',action='store_true',help='Use current display fullscreen')
     parser.add_argument('--no-voice',action='store_true',help='Disable microphone commands')
+    parser.add_argument('--no-speech',action='store_true',help='Disable spoken replies')
     parser.add_argument('--screenshot',metavar='FILE',help='Save first frame as PNG and exit')
     args=parser.parse_args()
     RobotHUD(args).run(screenshot=args.screenshot)

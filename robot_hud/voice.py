@@ -19,7 +19,8 @@ def model_path():
 class VoiceListener:
     """Runs recognition in a thread; poll `texts` and `level` from the UI loop."""
 
-    def __init__(self):
+    def __init__(self, muted=None):
+        self._muted = muted or (lambda: False)
         self.texts = queue.Queue()
         self.level = 0.0
         self.status = "starting"
@@ -60,6 +61,10 @@ class VoiceListener:
                     try:
                         data = audio.get(timeout=.5)
                     except queue.Empty:
+                        continue
+                    if self._muted():
+                        recognizer.Reset()
+                        self.level = 0.0
                         continue
                     samples = struct.unpack("<%dh" % (len(data) // 2), data)
                     rms = math.sqrt(sum(s * s for s in samples) / max(len(samples), 1))

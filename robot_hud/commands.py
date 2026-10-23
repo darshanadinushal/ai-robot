@@ -40,3 +40,28 @@ def parse_command(text):
         if action is not None:
             actions.append(action)
     return actions
+
+
+_LOOK_NAMES = {(-1.0, 0.0): "left", (1.0, 0.0): "right", (0.0, -1.0): "up",
+               (0.0, 1.0): "down", (0.0, 0.0): "ahead"}
+
+
+def reply_for(actions):
+    """Short spoken confirmation for the first recognised action, or None."""
+    if not actions:
+        return None
+    kind, value = actions[0]
+    if kind == "expression":
+        return "Okay, I feel %s." % value if value != "neutral" else "Okay, back to normal."
+    if kind == "look":
+        return "Looking %s." % _LOOK_NAMES.get(value, "around")
+    if kind == "blink":
+        return "Done."
+    if kind == "wave":
+        return {"listening": "I am listening.", "speaking": "I am speaking.",
+                "quiet": "Okay, quiet."}[value]
+    if kind == "mode":
+        return "Switching to %s mode." % value.lower()
+    if kind == "color":
+        return "Colour changed to %s." % value.lower()
+    return None

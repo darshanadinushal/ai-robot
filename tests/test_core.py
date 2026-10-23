@@ -56,6 +56,9 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(parse_command("look left"), [("look", (-1.0, 0.0))])
         self.assertEqual(parse_command("wave mode"), [("mode", "WAVE")])
         self.assertEqual(parse_command("hello"), [])
+        from robot_hud.commands import reply_for
+        self.assertEqual(reply_for(parse_command("look left")), "Looking left.")
+        self.assertIsNone(reply_for([]))
 
 
 if __name__=='__main__':

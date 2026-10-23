@@ -119,6 +119,10 @@ On the Pi, `bash scripts/install-pi.sh` does this. Use `--no-voice` to disable.
 
 The Wave also reacts live to your microphone volume. Recognised text shows at the top left of Home.
 
+Luna also **speaks a short confirmation** ("Looking left.", "Okay, I feel happy.") and mutes the
+microphone while talking so she does not hear herself. Windows uses the built-in voice; the Pi uses
+`espeak-ng` with `pw-play`, `paplay` or `aplay`. Use `--no-speech` to silence replies.
+
 ## Controls
 
 | Input | Effect |
