@@ -164,6 +164,10 @@ python3 main.py --windowed --screenshot preview.png
 For CI without a graphical display, use `SDL_VIDEODRIVER=dummy` and
 `SDL_AUDIODRIVER=dummy`. GitHub Actions does this automatically.
 
+## For developers and AI assistants
+
+See [AGENTS.md](AGENTS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## File structure
 
 ```text
