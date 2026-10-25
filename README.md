@@ -1,112 +1,97 @@
-# Luna 1.0 — Futuristic HUD Eyes (Design #1)
+# Luna 1.0 — Futuristic HUD Robot Face
 
-A **runnable, touch-friendly futuristic robot face** for a Raspberry Pi 5 + official
-7-inch Raspberry Pi Touch Display 2 in landscape orientation (1280 × 720).
-Develop it first on a Windows laptop with VS Code, then push to GitHub and run on the Pi.
+**Luna** is a touch-friendly, voice-controlled robot face for a Raspberry Pi 5 with the official
+7-inch Raspberry Pi Touch Display 2 in landscape orientation (1280 × 720). Develop it on a
+Windows laptop, push it to GitHub, then run it on the Pi.
 
-**Version:** 1.0 — face and dashboard only. AI voice, camera video, motors and home
-control are future integrations, **not** working hardware features in this release.
+Luna shows animated eyes or a voice wave, obeys **offline voice commands**, answers out loud
+with **offline text-to-speech**, and — with an OpenAI API key — holds **"Hey Luna" conversations**
+with an online AI. Camera video, motors and home control are future work.
 
-## Included
+## Features
 
-- Two animated glowing circular cyber/HUD eyes, moving iris and automatic blinking
-- Small glowing smile and scrolling HUD details
+- Two animated glowing HUD eyes with moving iris, automatic blinking and a small smile
+- Moods: happy, sad, angry, sleepy, surprised, plus a "thinking" look while the AI works
+- **Face mode** (classic, compact, minimal layouts) and **Wave mode** (mic with mesh, bars or
+  circle voice-wave) — the wave reacts to your microphone volume
+- **Offline voice commands** with Vosk: expressions, looking around, blinking, colours, modes
+- **Spoken replies** (Windows built-in voice / `espeak-ng` on the Pi); the mic is muted while
+  Luna talks so she does not hear herself
+- **AI conversation** (optional): "Hey Luna, …" questions, spoken + on-screen answers,
+  follow-up questions, tap to stop
+- **Live transcript:** what you say appears in a "YOU:" bubble; Luna's reply appears at the bottom
 - **Chat**, **Home**, **Camera**, **Settings** touchscreen navigation
-- Chat page with **simulated** voice waveform (no audio capture)
-- Camera page with a clearly labelled **placeholder**, not a camera feed
-- Working settings: theme colour (cyan, purple, green, amber), a Face mode (classic, compact, minimal layouts) and a Wave mode (mic with mesh, bars or circle voice-wave layouts), chosen with tabs, animation toggle
-- Settings automatically saved in `~/.ai-robot-hud.json`
-- True fullscreen at the Pi's current display resolution, with correct touchscreen scaling
-- Resizable Windows preview for development
-- Local clock; status symbols for wireless/audio/battery are **visual placeholders**, not live device readings
-- No paid API, keys, internet access, or additional hardware necessary to launch the face
+- Settings: theme colour (cyan, purple, green, amber), mode tabs, layouts, animation toggle —
+  saved automatically in `~/.ai-robot-hud.json`
+- Fullscreen on the Pi with correct touch scaling; resizable window on Windows
+- Chat page waveform is **simulated**; Camera page is a **placeholder**; Wi-Fi/audio/battery
+  icons are decorative
+
+Without a microphone, voice model or API key, Luna still starts and shows her face.
 
 ## 1 — Run on Windows (coding laptop)
 
-**Easiest:** Extract the ZIP and double-click `SETUP_WINDOWS.bat` once, then
-double-click `RUN_WINDOWS.bat` to open the face.
+**Easiest:** double-click `SETUP_WINDOWS.bat` once, then `RUN_WINDOWS.bat`.
 
-**Or use PowerShell manually:**
-
-Install [Python](https://www.python.org/downloads/windows/) (including the **py** launcher)
-then open PowerShell in the project directory:
+**Or with PowerShell** (Python 3.11+ installed), in the project folder:
 
 ```powershell
-py -3 --version
-py -3 -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe scripts\download-voice-model.py   # once, for voice commands
 .\.venv\Scripts\python.exe main.py --windowed
 ```
 
-You can also run `powershell -ExecutionPolicy Bypass -File scripts/setup-windows.ps1`
-for setup, then `powershell -ExecutionPolicy Bypass -File scripts/run-windows.ps1`
-to launch. No need to activate the virtual environment.
-
-VS Code extensions: **Python** and optionally **Remote - SSH**.
+If `python` is not found, use the full path, e.g.
+`& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m venv .venv`.
+No need to activate the virtual environment. VS Code extensions: **Python** and
+optionally **Remote - SSH**.
 
 ## 2 — Publish to your GitHub repository
 
-Create an **empty** GitHub repository named `ai-robot` (do not initialize with README if
-starting from this ZIP). Extract this ZIP, open a terminal **inside the extracted folder**:
+```powershell
+git add .
+git commit -m "Describe your change"
+git push
+```
+
+First time only (new empty repository):
 
 ```powershell
 git init
-git add .
-git commit -m "Initial AI Robot HUD face"
 git branch -M main
 git remote add origin https://github.com/YOUR_USERNAME/ai-robot.git
 git push -u origin main
 ```
 
-Replace `YOUR_USERNAME`. GitHub will require sign-in or a credential manager; use your
-usual secure Git authentication, **not** a password or personal access token in code.
-
-**Already have a repository?** Clone it to a separate folder with `git clone`, copy the
-project files into that folder (do not copy an `.git` directory), then use `git add .`,
-`git commit -m "Add HUD face"`, and `git push`. Do not force-push over existing work.
+Sign in with the browser / Git Credential Manager. Never put passwords, tokens or API keys
+in code. If push says `403 Permission denied to <other-account>`, Git is using a different
+saved GitHub account: remove the `git:https://github.com` entry in Windows Credential Manager
+and push again.
 
 ## 3 — Install and run on Raspberry Pi 5
 
-On the Raspberry Pi **desktop Terminal** (not Windows PowerShell):
-
-```bash
-sudo apt update
-sudo apt install -y python3-pygame git
-python3 -c "import pygame; print(pygame.version.ver)"
-```
-
-Clone your repository, replacing the username:
+On the Raspberry Pi **desktop Terminal**:
 
 ```bash
 cd ~
 git clone https://github.com/YOUR_USERNAME/ai-robot.git
 cd ai-robot
-python3 main.py --fullscreen
+bash scripts/install-pi.sh     # apt packages, .venv, Vosk, openai, voice model
+bash scripts/run-pi.sh         # starts Luna fullscreen
 ```
 
-**Private repo?** Configure GitHub SSH or HTTPS authentication first.
-If `~/ai-robot` already exists and contains work, do not overwrite it. Clone into an
-unused directory instead, such as `ai-robot-github`:
+`install-pi.sh` installs `python3-pygame`, `libportaudio2`, `espeak-ng` and git with apt,
+creates `.venv` (with access to the system pygame), installs `vosk sounddevice openai` and
+downloads the voice model to `~/.ai-robot-models`.
 
-```bash
-git clone https://github.com/YOUR_USERNAME/ai-robot.git ~/ai-robot-github
-cd ~/ai-robot-github
-python3 main.py --fullscreen
-```
-
-You can also use `bash scripts/install-pi.sh` to install requirements or
-`bash scripts/run-pi.sh` to start the UI from the Pi's desktop session.
-
-**Important:** Start from a terminal **on the Raspberry Pi desktop** so pygame has
-access to the current graphical display. A bare SSH session may not be able to open
-the Pi's screen without separate display-session configuration.
+If a folder with that name already exists, clone into another one
+(`git clone ... ~/ai-robot-github`). **Start from a terminal on the Pi desktop** so pygame
+can open the screen; over SSH use `DISPLAY=:0 bash scripts/run-pi.sh`.
 
 ## Voice commands (offline)
 
-Luna listens through the microphone with the offline Vosk engine (no internet or API key).
-Windows setup installs it automatically; also run
-`.\.venv\Scripts\python.exe scripts\download-voice-model.py` once to fetch the small model.
-On the Pi, `bash scripts/install-pi.sh` does this. Use `--no-voice` to disable.
+No internet or key needed. Use `--no-voice` to disable the microphone.
 
 | Say | Reaction |
 | --- | --- |
@@ -117,122 +102,138 @@ On the Pi, `bash scripts/install-pi.sh` does this. Use `--no-voice` to disable.
 | face / wave | Switch mode |
 | cyan / purple / green / amber | Change theme colour |
 
-The Wave also reacts live to your microphone volume. What Luna hears is shown in a "YOU:" bubble on Home.
-
-Luna also **speaks a short confirmation** ("Looking left.", "Okay, I feel happy.") and mutes the
-microphone while talking so she does not hear herself. Windows uses the built-in voice; the Pi uses
-`espeak-ng` with `pw-play`, `paplay` or `aplay`. Use `--no-speech` to silence replies.
+Luna answers with a short spoken confirmation ("Looking left.", "Okay, I feel happy.").
+Use `--no-speech` to silence her.
 
 ## Talk to Luna (online AI)
 
-Say **"Hey Luna, tell me about Mars."** Luna looks up while thinking, then speaks the answer and
-shows it on screen. What you say appears live in a **"YOU:"** bubble at the top, and Luna's
-reply appears at the bottom. For about 8 seconds afterwards you can ask a follow-up without saying "Luna".
-Saying just "Luna" makes her answer "Yes?" and wait for your question. Short commands such as
-"look left" or "happy" still work offline. Tap the screen (or press `S`) to stop her talking.
+1. Create an API key at https://platform.openai.com/api-keys
+   (API billing is separate from a ChatGPT subscription).
+2. Give Luna the key — it is read from the environment or from `~/.luna.env`, **never** from
+   the repository:
 
-Only the recognised **text** is sent to OpenAI, never microphone audio. Setup (once):
+   **Windows** (only for the current PowerShell window — enter the key, then start Luna from the
+   same window):
 
-1. Create an API key at https://platform.openai.com/api-keys (API billing is separate from ChatGPT).
-2. Install the library: Windows `.\.venv\Scripts\python.exe -m pip install openai`,
-   Pi `.venv/bin/pip install openai` (the Pi install script already does this).
-3. Store the key **outside the repository** in `~/.luna.env`:
-
-   ```bash
-   # Raspberry Pi
-   read -rsp "OpenAI API key: " KEY; echo
-   printf 'OPENAI_API_KEY=%s\n' "$KEY" > ~/.luna.env; chmod 600 ~/.luna.env; unset KEY
+   ```powershell
+   $env:OPENAI_API_KEY = Read-Host "OpenAI key" -MaskInput
+   .\.venv\Scripts\python.exe main.py --windowed
    ```
 
-   On Windows you can instead set it for one session: `$env:OPENAI_API_KEY = Read-Host "Key"`.
-4. Optional: add `LUNA_AI_MODEL=<model name>` to `~/.luna.env` to choose another model.
-5. Test typed chat first with `scripts/test_ai.py`, then run Luna normally.
+   **Raspberry Pi** (saved once, readable only by you):
 
-When a key is found the top-left status shows `AI: ON` and the microphone switches to free
-speech recognition (slightly less accurate for single command words). Use `--no-ai` to keep the
-command-only mode. Never commit the key or `~/.luna.env`.
+   ```bash
+   read -rsp "OpenAI API key: " KEY; echo
+   printf 'OPENAI_API_KEY=%s\n' "$KEY" > ~/.luna.env; chmod 600 ~/.luna.env; unset KEY
+   bash scripts/run-pi.sh
+   ```
+
+3. Check the top-left status says **`AI: ON`**.
+
+Then talk:
+
+| You say | Luna does |
+| --- | --- |
+| "Hey Luna, tell me about Mars." | Looks up while thinking, then speaks and shows the answer |
+| "Luna" | Says "Yes?" and waits for your question |
+| A follow-up within ~8 s, e.g. "How far is it?" | Answers without needing "Luna" again |
+| "look left", "happy", … | Still handled offline as commands |
+| Tap the screen or press `S` | Stops her talking |
+
+- Only the recognised **text** is sent to OpenAI, never microphone audio. You pay only for AI answers.
+- Mishearings such as "he luna", "lunar" or "loona" are accepted as the wake word.
+- With AI on, the microphone understands free speech, so single command words are recognised
+  slightly less reliably. Use `--no-ai` for command-only mode.
+- Choose another model with `LUNA_AI_MODEL=<model>` (environment variable or a line in `~/.luna.env`).
+- Try typed chat without the face: `python scripts/test_ai.py`.
 
 ## Controls
 
 | Input | Effect |
 | --- | --- |
-| Touch anywhere on face | Move pupils toward your finger + blink |
-| Bottom **Home** | Return to animated face |
+| Touch anywhere on face | Move pupils toward your finger + blink (or stop Luna talking) |
+| Bottom **Home** | Return to the face / wave |
 | Bottom **Chat** | Simulated voice waveform page |
 | Bottom **Camera** | Camera placeholder page |
-| Bottom **Settings** | Choose colour, layout, and enable/disable idle animations |
+| Bottom **Settings** | Face/Wave tabs, colour, layout, idle animations |
 | `1` / `2` / `3` / `4` | Chat / Home / Camera / Settings |
 | `Space` | Blink |
-| `S` / tap while Luna talks | Stop speaking |
+| `S` | Stop speaking |
 | `F11` | Toggle fullscreen / windowed mode |
 | `Esc`, `Q`, or top-right `X` | Exit |
 
+Command-line options: `--windowed`, `--fullscreen`, `--no-voice`, `--no-speech`, `--no-ai`,
+`--screenshot FILE`.
+
 ## Later updates from GitHub
 
-```bash
-cd ~/ai-robot   # or the directory you cloned into
-git pull
-python3 main.py --fullscreen
-```
+Stop Luna, then on the Pi:
 
-Stop the running app before pulling and relaunch it after updating.
+```bash
+cd ~/ai-robot   # or the folder you cloned into
+git pull
+.venv/bin/pip install vosk sounddevice openai   # only if requirements changed
+bash scripts/run-pi.sh
+```
 
 ## Development and tests
 
-Run pure-Python unit tests (works even without pygame):
-
-```bash
-python3 -m unittest discover -s tests -v
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe main.py --windowed --no-voice --no-speech --no-ai --screenshot preview.png
 ```
 
-Generate a PNG screenshot on a computer with pygame installed:
+Tests never call the real AI. For CI without a display, set `SDL_VIDEODRIVER=dummy` and
+`SDL_AUDIODRIVER=dummy`; GitHub Actions (`.github/workflows/tests.yml`) does this automatically.
 
-```bash
-python3 main.py --windowed --screenshot preview.png
-```
-
-For CI without a graphical display, use `SDL_VIDEODRIVER=dummy` and
-`SDL_AUDIODRIVER=dummy`. GitHub Actions does this automatically.
-
-## For developers and AI assistants
-
-See [AGENTS.md](AGENTS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**For developers and AI assistants:** read [AGENTS.md](AGENTS.md) and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## File structure
 
 ```text
 ai-robot/
-├── SETUP_WINDOWS.bat / RUN_WINDOWS.bat # Double-click launchers
-├── main.py                         # App launcher
+├── main.py                     # App launcher
+├── SETUP_WINDOWS.bat / RUN_WINDOWS.bat
 ├── robot_hud/
-│   ├── __init__.py
-│   ├── app.py                      # Eyes, HUD rendering, touch and page UI
-│   ├── geometry.py                 # Viewport scaling and blink maths
-│   └── preferences.py              # Theme storage
+│   ├── app.py                  # UI, drawing, touch, voice/AI wiring (RobotHUD)
+│   ├── commands.py             # Words -> actions, wake-word routing, spoken replies
+│   ├── voice.py                # Microphone + Vosk recognition (background thread)
+│   ├── speech.py               # Text-to-speech queue (Windows / Linux)
+│   ├── ai.py                   # OpenAI conversation (background thread)
+│   ├── preferences.py          # Settings saved to ~/.ai-robot-hud.json
+│   └── geometry.py             # Screen scaling and blink maths
 ├── scripts/
-│   ├── install-pi.sh
-│   ├── run-pi.sh
-│   ├── setup-windows.ps1
-│   └── run-windows.ps1
-├── tests/
+│   ├── install-pi.sh / run-pi.sh
+│   ├── setup-windows.ps1 / run-windows.ps1
+│   ├── download-voice-model.py
+│   └── test_ai.py              # Typed chat test for the AI
+├── tests/                      # Unit tests + headless visual smoke test
+├── docs/ARCHITECTURE.md        # How the code works
+├── AGENTS.md                   # Rules for AI coding assistants
 ├── .github/workflows/tests.yml
-├── requirements.txt
-├── .gitignore
-└── README.md
+└── requirements.txt
 ```
 
 ## Common problems
 
-- **`ModuleNotFoundError: pygame`:** On the Pi, run `sudo apt install -y python3-pygame`
-  and use the **system** `python3`; on Windows install from `requirements.txt` into `.venv`.
-- **`No available video device`:** Run within the Pi graphical desktop (or Windows
-  GUI), not inside a plain text-only SSH terminal.
-- **Screen rotated:** Set the Touch Display 2 to landscape through Raspberry Pi OS
-  display settings before starting this program.
-- **`mv: cannot stat ...`:** The downloaded Python file is not in that path; using Git
-  clone instead of moving individual Downloads files avoids this issue.
-- **Touch offset:** The app maps the actual display area to the logical 1280×720
-  coordinates and ignores letterbox bars; verify OS touch calibration if still wrong.
+| Problem | Fix |
+| --- | --- |
+| `ModuleNotFoundError: pygame` | Pi: `sudo apt install -y python3-pygame`. Windows: install `requirements.txt` into `.venv`. |
+| `No available video device` | Run from the Pi desktop (or `DISPLAY=:0` over SSH), not a plain SSH session. |
+| Top left says `MIC: VOICE MODEL MISSING` | Run `scripts/download-voice-model.py` with the venv Python. |
+| Top left says `MIC: VOICE PACKAGES MISSING` | Install `requirements.txt` (Windows) or run `install-pi.sh` (Pi). |
+| Mic hears nothing | Check the default input device (Windows Sound settings / Pi audio menu). |
+| No spoken replies on the Pi | `sudo apt install -y espeak-ng`; check the speaker/headset output. |
+| `AI: OFF` | The key is not set in this window / `~/.luna.env`, or `--no-ai` was used. |
+| "My AI key is not working" | Check or recreate the API key. |
+| "My AI model is not available" | Set `LUNA_AI_MODEL` to a model your account can use. |
+| "Busy or out of credit" | Add API credit / check limits on platform.openai.com. |
+| "I cannot reach the internet" | Check Wi-Fi; offline commands still work. |
+| Screen rotated / touch offset | Set landscape in Raspberry Pi OS display settings; check touch calibration. |
 
-No credentials should be committed to this repository. For future AI services, use a
-local `.env` that stays in `.gitignore`, or a secure secrets manager.
+## Security
+
+No credentials are stored in this repository. Keep API keys in environment variables or
+`~/.luna.env` (outside the project, `chmod 600` on the Pi). `.env` files are also gitignored.
+Never commit keys, tokens or personal data.
