@@ -89,7 +89,7 @@ def draw_arc(surface, color, cx, cy, radius, start, end, thickness=3):
 
 
 def mix(a, b, weight):
-    return tuple(round(i * (1 - weight) + j * weight) for i, j in zip(a, b))
+    return tuple(max(0, min(255, round(i * (1 - weight) + j * weight))) for i, j in zip(a, b))
 
 
 def background_surface():
@@ -469,6 +469,7 @@ class RobotHUD:
         self.wave_amp=.35
         self.heard=''
         self.heard_until=0.0
+        self.heard_kind=''
         self.thinking=False
         self.question=''
         self.answer=''
@@ -579,8 +580,9 @@ class RobotHUD:
     def handle_speech(self,text,t):
         """Route recognised speech to an offline command or the online AI."""
         self.heard=text
-        self.heard_until=t+6
+        self.heard_until=t+8
         kind,value=route(text,conversation=self.ai is not None and t<self.conversation_until)
+        self.heard_kind=kind
         if kind=='command':
             self.apply_actions(value,t)
         elif kind=='wake':
@@ -596,6 +598,7 @@ class RobotHUD:
         if not self.ai.ask(question):
             return  # still answering the previous question
         self.thinking=True
+        self.heard_until=t+3600
         self.question=question
         self.answer=''
         self.conversation_until=0.0
@@ -618,6 +621,7 @@ class RobotHUD:
                 self.thinking=False
                 self.answer=text
                 self.answer_until=t+20
+                self.heard_until=t+20
                 if kind=='error':
                     self.mood='sad'
                     self.mood_until=t+4
@@ -714,6 +718,7 @@ class RobotHUD:
                     draw_wave(self.canvas,motion_t,accent,amp)
                 self.draw_footer(t,state.upper()+'...')
                 self.draw_caption(t)
+                self.draw_you(t,y=478)
                 nav_bar(self.canvas,self.page,self.fonts,accent)
                 return
             dx,ey,sc,sy=LAYOUT_CHOICES[self.prefs['layout']]
@@ -728,6 +733,7 @@ class RobotHUD:
                   'TAP TO LOOK AROUND  •  SAY: HAPPY, SAD, ANGRY, LOOK LEFT...')
             self.draw_footer(t,hint)
             self.draw_caption(t)
+            self.draw_you(t)
         elif self.page=='Chat':
             chat_page(self.canvas,self.fonts,accent,t,self.chat_active)
         elif self.page=='Camera':
@@ -739,9 +745,9 @@ class RobotHUD:
     def draw_footer(self,t,default):
         """Bottom text: Luna's answer while relevant, otherwise the hint."""
         if self.thinking:
-            lines=wrap_text(self.fonts['small'],'YOU: '+self.question,1040,1)
+            lines=['LUNA IS THINKING...']
         elif self.answer and (speech.is_talking() or t<self.answer_until):
-            lines=wrap_text(self.fonts['small'],self.answer,1040,2)
+            lines=wrap_text(self.fonts['small'],'LUNA: '+self.answer,1040,2)
         else:
             lines=[default]
         color=MUTED if lines==[default] else TEXT
@@ -749,15 +755,36 @@ class RobotHUD:
         for i,text in enumerate(lines):
             draw_text(self.canvas,text,self.fonts['small'],color,center=(640,y+i*25))
 
+    def draw_you(self,t,y=132):
+        """Speech bubble with what you are saying (live) or what Luna last heard."""
+        live=self.voice.partial if self.voice else ''
+        if live:
+            text,color,note='YOU: '+live+' ...',TEXT,''
+        elif t<self.heard_until and self.heard:
+            text,color='YOU: '+self.heard,TEXT
+            note=('  (say "Hey Luna" first)' if self.heard_kind=='ignore' and self.ai else '')
+            if note:
+                color=MUTED
+        else:
+            return
+        font=self.fonts['body']
+        line=wrap_text(font,text+note,820,1)[0]
+        w=font.size(line)[0]+48
+        box=pygame.Rect(0,0,w,46)
+        box.center=(640,y)
+        accent=self.accent
+        edge=mix(accent,BACKGROUND,.25+.2*math.sin(t*6)) if live else mix(accent,BACKGROUND,.45)
+        pygame.draw.rect(self.canvas,(8,34,66),box,border_radius=23)
+        pygame.draw.rect(self.canvas,edge,box,2,border_radius=23)
+        if live:
+            pygame.draw.circle(self.canvas,accent,(box.left+18,box.centery),5)
+        draw_text(self.canvas,line,font,color,center=(box.centerx+(6 if live else 0),box.centery))
+
     def draw_caption(self,t):
         if self.voice is None and self.ai is None:
             return
         if self.thinking:
             text='THINKING...'
-        elif self.voice and self.voice.partial:
-            text='HEARING: '+self.voice.partial.upper()
-        elif t<self.heard_until:
-            text='HEARD: '+self.heard.upper()
         elif self.ai and t<self.conversation_until:
             text='LISTENING FOR YOUR FOLLOW-UP...'
         else:

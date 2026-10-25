@@ -79,9 +79,11 @@ AI answers (→ show + speak), and opens the follow-up window when speech ends.
   `draw_wave`, `draw_wave_bars`, `draw_wave_circle`. Amplitude `self.wave_amp` is smoothed
   toward `max(state base, live mic level)`; state is `listening` / `speaking` / `quiet`, and is
   overridden by `thinking` (AI busy) or `speaking` (speech playing).
-- **Footer / caption:** `draw_footer` shows the question while thinking, Luna's answer (2 wrapped
-  lines) while talking and for 20 s after, else a hint. `draw_caption` (top left) shows
-  THINKING / HEARING partial / HEARD text / follow-up / mic status plus `AI: ON|OFF`.
+- **Transcript / footer / caption:** `draw_you` draws a "YOU:" bubble (top in Face mode, above
+  the footer in Wave mode) with live `voice.partial` text (pulsing border) or the last heard
+  phrase; ignored phrases are dimmed with a "say Hey Luna first" note. `draw_footer` shows
+  "LUNA IS THINKING..." or "LUNA: answer" (2 lines, while talking and 20 s after), else a hint.
+  `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
 Two tabs (FACE MODE / WAVE MODE) choose which mode Home shows. Both tabs share colour and

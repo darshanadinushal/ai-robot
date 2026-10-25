@@ -44,7 +44,8 @@ def parse_command(text):
 
 # How the offline recogniser may spell "Luna".
 WAKE_WORDS = ("luna", "lunar", "loona", "looner")
-GREETINGS = ("hey", "hi", "hello", "ok", "okay")
+# Includes common speech-recognition mishearings of "hey".
+GREETINGS = ("hey", "hi", "hello", "ok", "okay", "he", "hay", "a", "eh", "oh")
 # Without the wake word, only short phrases count as commands (ignores background talk).
 MAX_COMMAND_WORDS = 4
 

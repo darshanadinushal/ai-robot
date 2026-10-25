@@ -117,7 +117,7 @@ On the Pi, `bash scripts/install-pi.sh` does this. Use `--no-voice` to disable.
 | face / wave | Switch mode |
 | cyan / purple / green / amber | Change theme colour |
 
-The Wave also reacts live to your microphone volume. Recognised text shows at the top left of Home.
+The Wave also reacts live to your microphone volume. What Luna hears is shown in a "YOU:" bubble on Home.
 
 Luna also **speaks a short confirmation** ("Looking left.", "Okay, I feel happy.") and mutes the
 microphone while talking so she does not hear herself. Windows uses the built-in voice; the Pi uses
@@ -126,7 +126,8 @@ microphone while talking so she does not hear herself. Windows uses the built-in
 ## Talk to Luna (online AI)
 
 Say **"Hey Luna, tell me about Mars."** Luna looks up while thinking, then speaks the answer and
-shows it on screen. For about 8 seconds afterwards you can ask a follow-up without saying "Luna".
+shows it on screen. What you say appears live in a **"YOU:"** bubble at the top, and Luna's
+reply appears at the bottom. For about 8 seconds afterwards you can ask a follow-up without saying "Luna".
 Saying just "Luna" makes her answer "Yes?" and wait for your question. Short commands such as
 "look left" or "happy" still work offline. Tap the screen (or press `S`) to stop her talking.
 

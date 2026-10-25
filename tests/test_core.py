@@ -68,6 +68,8 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(route("hey luna tell me about mars"), ("ai", "tell me about mars"))
         self.assertEqual(route("look left")[0], "command")
         self.assertEqual(route("luna")[0], "wake")
+        self.assertEqual(route("he luna")[0], "wake")
+        self.assertEqual(route("he luna what is mars"), ("ai", "what is mars"))
         self.assertEqual(route("so we went to the shop and bought some bread")[0], "ignore")
         self.assertEqual(route("why is the sky blue", conversation=True), ("ai", "why is the sky blue"))
         self.assertEqual(route("")[0], "ignore")
