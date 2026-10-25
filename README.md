@@ -105,6 +105,24 @@ No internet or key needed. Use `--no-voice` to disable the microphone.
 Luna answers with a short spoken confirmation ("Looking left.", "Okay, I feel happy.").
 Use `--no-speech` to silence her.
 
+### Natural voice (optional, offline)
+With the robot-setup **Natural voice** feature (`--with piper`), Luna speaks with a Piper voice:
+
+| Key | Voice |
+| --- | --- |
+| `EN_FEMALE` (default) | English female (Lessac) |
+| `EN_MALE` | English male (Ryan) |
+| `SV_FEMALE` | Svenska kvinna (Alma) |
+| `SV_MALE` | Svenska man (NST) |
+
+The voice files live in `~/.ai-robot-models/piper/`, outside Git. The caption shows
+`VOICE: NATURAL`, `LOADING` or `BASIC`; Settings shows the reason when the basic voice is used.
+Without Piper Luna simply keeps the basic voice. The choice is saved as `voice` in the
+preferences file; to try another voice without saving it, set `LUNA_VOICE=SV_MALE`.
+To force a sound player (e.g. a headset), set `LUNA_AUDIO_PLAYER`, for example
+`LUNA_AUDIO_PLAYER="aplay -D plughw:2,0"`. These voices are for the personal prototype only;
+see the licence notes in [`docs/VOICE_DESIGN.md`](docs/VOICE_DESIGN.md).
+
 ## Talk to Luna (online AI)
 
 1. Create an API key at https://platform.openai.com/api-keys
@@ -199,7 +217,8 @@ ai-robot/
 │   ├── app.py                  # UI, drawing, touch, voice/AI wiring (RobotHUD)
 │   ├── commands.py             # Words -> actions, wake-word routing, spoken replies
 │   ├── voice.py                # Microphone + Vosk recognition (background thread)
-│   ├── speech.py               # Text-to-speech queue (Windows / Linux)
+│   ├── speech.py               # Text-to-speech: sentence pipeline, Piper + basic voice
+│   ├── voices.py               # Voice catalogue (English/Svenska, female/male)
 │   ├── ai.py                   # OpenAI conversation (background thread)
 │   ├── preferences.py          # Settings saved to ~/.ai-robot-hud.json
 │   └── geometry.py             # Screen scaling and blink maths
@@ -225,6 +244,8 @@ ai-robot/
 | Top left says `MIC: VOICE PACKAGES MISSING` | Install `requirements.txt` (Windows) or run `install-pi.sh` (Pi). |
 | Mic hears nothing | Check the default input device (Windows Sound settings / Pi audio menu). |
 | No spoken replies on the Pi | `sudo apt install -y espeak-ng`; check the speaker/headset output. |
+| `VOICE: BASIC` instead of natural | Read the reason in Settings; install with robot-setup `--with piper`, then `verify`. |
+| Natural voice silent on a headset | Check `wpctl status` (default sink), try `pw-play file.wav`, or set `LUNA_AUDIO_PLAYER`. |
 | `AI: OFF` | The key is not set in this window / `~/.luna.env`, or `--no-ai` was used. |
 | "My AI key is not working" | Check or recreate the API key. |
 | "My AI model is not available" | Set `LUNA_AI_MODEL` to a model your account can use. |

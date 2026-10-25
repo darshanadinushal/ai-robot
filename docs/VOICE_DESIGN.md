@@ -29,7 +29,7 @@ language and gender. Swedish speech recognition and Swedish AI answers are separ
 | Phase | Scope | Project | Status |
 | --- | --- | --- | --- |
 | **1. Robot installer** | robot-setup "Natural voice" feature (`--with piper`): pinned `piper-tts` install, four voices (English + Swedish, female + male) downloaded to `~/.ai-robot-models/piper/` (outside Git) with size + SHA-256 checks, verify generates speech, listening check plays it, repair re-downloads | robot-setup | done (0.2.0), Pi test pending |
-| **2. Voice engine** | Voice catalogue, Piper kept in memory, sentence pipeline (prepare next while playing), immediate stop, safe voice switching, eSpeak/Windows fallback, tests (section 4) | ai-robot | not started |
+| **2. Voice engine** | Voice catalogue, Piper kept in memory, sentence pipeline (prepare next while playing), immediate stop, safe voice switching, eSpeak/Windows fallback, tests (section 4) | ai-robot | done, Pi test pending (headset audio) |
 | **3. Settings** | Language (English / Svenska) and Female / Male buttons, preview phrase, saved preference, readiness/loading status | ai-robot | not started |
 | **4. Response speed** | Stream the AI answer and speak each sentence as it arrives (today Luna waits for the full answer: 5-10 s) | ai-robot | not started |
 
@@ -84,7 +84,8 @@ unheard. Nothing stale is ever played.
   missing or damaged), Luna stays on the basic voice of the chosen gender and the status says
   why, e.g. "Basic voice - natural voice not downloaded".
 - Only one Piper voice is kept in memory; the old one is released after the switch.
-- Until Phase 3 adds the setting, the voice can be chosen for testing with `LUNA_VOICE=SV_MALE`.
+- The preference is saved as `voice` in Luna's preferences file (default `EN_FEMALE`). Until
+  Phase 3 adds the setting, it can be chosen for testing with `LUNA_VOICE=SV_MALE` (not saved).
 
 ### 4.6 Voice files
 Installed by robot-setup (phase 1). For Windows development, download the same pinned files

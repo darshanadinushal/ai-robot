@@ -17,7 +17,8 @@ robot_hud/
   app.py                    UI, rendering, input, main loop (class RobotHUD)
   commands.py               Pure: spoken words -> actions; actions -> spoken reply
   voice.py                  Mic capture + Vosk recognition in a background thread
-  speech.py                 Offline TTS in background threads (Windows / Linux)
+  speech.py                 Offline TTS: sentence pipeline, Piper natural voice, basic fallback
+  voices.py                 Voice catalogue (English/Svenska, female/male) and model paths
   preferences.py            User settings stored as JSON in the home folder
   geometry.py               Pure maths: viewport scaling, blink curve, clamp
   ai.py                     Online AI: env loading, LunaBrain (OpenAI), AIWorker thread
@@ -29,6 +30,7 @@ scripts/
   test_ai.py                Typed chat with LunaBrain (needs OPENAI_API_KEY)
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
+  test_speech.py            Speech engine tests with fake voices/player (no audio)
   test_visual_smoke.py      Launches the app headless and saves a screenshot
 docs/ARCHITECTURE.md        This file
 .github/workflows/tests.yml GitHub Actions: runs the tests headless
@@ -119,14 +121,26 @@ recogniser while Luna is talking and for `speech.TAIL_SECONDS` (0.8 s) afterward
 3. Add a case to `CommandTests` in `tests/test_core.py`.
 
 ## 4. Speech output (`speech.py`)
-- `speak(message)` is blocking; `speak_async(message)` queues text for one daemon worker,
-  so replies play in order. `clean_for_speech` strips markdown and limits text to 700 chars.
-- `stop()` bumps a generation counter: queued items are skipped and the playing process is
-  killed (tap Home or press `S`). `is_talking()` = audio playing; `is_speaking()` also
-  covers the 0.8 s tail and is used for mic muting.
-- Windows: PowerShell + `System.Speech` (text passed through stdin, never through the command
-  line). Linux/Pi: `espeak-ng` (speed `SPEECH_WPM` = 150) writes a temp WAV, then `pw-play`, `paplay` or `aplay`.
-- `speech.enabled = False` (CLI `--no-speech`) disables all speech.
+Design: `docs/VOICE_DESIGN.md`. Voices are listed in `voices.py` (English/Svenska × female/male).
+- `speak_async(message)` cleans the text (`clean_for_speech`: no markdown, max 700 chars) and
+  splits it into sentences (`split_sentences`: short pieces joined, long ones cut at 250 chars).
+- Two daemon threads: the **preparer** turns sentences into temp WAV files and stays at most
+  two sentences ahead; the **player** plays them in order. So the next sentence is ready while
+  one plays. Nothing runs on the pygame thread.
+- **Natural voice:** `PiperSynth` loads a Piper model once (Python API) and keeps it in memory.
+  **Basic voice:** `BasicSynth` = `espeak-ng` (Pi, 150 WPM) or Windows `System.Speech`, same
+  language and gender. Text goes through stdin, never through the command line.
+- `set_voice(key)` loads the voice in a background thread (newest request wins) and warms it
+  up; Luna keeps talking with the old voice meanwhile and switches only after success. On
+  failure she stays on the basic voice. `voice_state()` → (`natural`/`loading`/`basic`,
+  status text); the caption shows it and Settings shows the reason. If Piper fails while
+  speaking, that sentence is retried with the basic voice.
+- `stop()` is immediate: bumps a generation counter, kills the playing sound, drops prepared
+  and pending sentences (tap Home or press `S`). Playback starts under the same lock, so a
+  stale sentence never starts after a stop.
+- Players: `pw-play`, `paplay`, `aplay` (first found) or `LUNA_AUDIO_PLAYER`; Windows uses `winsound`.
+- `is_talking()` = a message is still being prepared or played; `is_speaking()` also covers the
+  0.8 s tail and is used for mic muting. `speech.enabled = False` (`--no-speech`) disables all speech.
 
 ## 5. Preferences (`preferences.py`)
 File: `~/.ai-robot-hud.json` (outside the repo; its name is gitignored).
@@ -138,6 +152,7 @@ File: `~/.ai-robot-hud.json` (outside the repo; its name is gitignored).
 | `layout` | `CLASSIC, COMPACT, MINIMAL` | `CLASSIC` |
 | `wave_layout` | `MESH, BARS, CIRCLE` | `MESH` |
 | `animations` | boolean | `true` |
+| `voice` | `EN_FEMALE, EN_MALE, SV_FEMALE, SV_MALE` (`voices.VOICES`) | `EN_FEMALE` |
 
 `read_preferences` validates every field and silently falls back to defaults on any error;
 unknown keys are ignored. Adding a setting means: default in `read_preferences`, validation,

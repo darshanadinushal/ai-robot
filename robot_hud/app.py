@@ -432,6 +432,8 @@ def settings_page(surface, fonts, accent, prefs):
               center=ANIM_RECT.center)
     draw_text(surface,'The selected mode is shown on Home. Settings save automatically.',
               fonts['small'],MUTED,center=(640,510))
+    if speech.enabled:
+        draw_text(surface,speech.voice_state()[1],fonts['mini'],MUTED,center=(640,486))
 
 
 class RobotHUD:
@@ -477,6 +479,8 @@ class RobotHUD:
         self.conversation_until=0.0
         self.followup_pending=False
         speech.enabled=not args.no_speech
+        # The voice is a preference; LUNA_VOICE overrides it for testing without saving it.
+        speech.set_voice(os.environ.get('LUNA_VOICE') or self.prefs['voice'])
         use_ai=not getattr(args,'no_ai',False) and ai_configured()
         self.ai=AIWorker() if use_ai else None
         self.voice=(VoiceListener(muted=speech.is_speaking,free_form=self.ai is not None)
@@ -790,6 +794,8 @@ class RobotHUD:
         else:
             text='MIC: '+(self.voice.status.upper() if self.voice else 'OFF')
         text+='   •   AI: '+('ON' if self.ai else 'OFF')
+        if speech.enabled:
+            text+='   •   VOICE: '+speech.voice_state()[0].upper()
         draw_text(self.canvas,wrap_text(self.fonts['mini'],text,1100,1)[0],self.fonts['mini'],MUTED,
                   topleft=(60,108))
 
@@ -816,6 +822,7 @@ class RobotHUD:
                     break
                 self.clock.tick(FPS)
         finally:
+            speech.stop()
             if self.voice:
                 self.voice.stop()
             pygame.quit()

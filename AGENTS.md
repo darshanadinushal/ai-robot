@@ -30,6 +30,8 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   User settings live in `~/.ai-robot-hud.json`, outside the repo; voice models in `~/.ai-robot-models`.
 - Draw on the 1280×720 logical canvas only; use the shared `*_RECTS` constants for both drawing and hit tests.
 - Worker threads (voice, speech, AI) must not call pygame; communicate via queue/float/status string.
+- Speech: `speech.py` (pipeline, Piper/basic voices, immediate `stop()`), catalogue in `voices.py`;
+  tests in `tests/test_speech.py` use fake voices/players. Design: `docs/VOICE_DESIGN.md`.
 - Voice and AI dependencies are optional; the app must still start without them
   (guarded imports, `--no-voice`, `--no-speech`, `--no-ai`).
 - Voice recognition is grammar-restricted to `commands.VOCABULARY` when AI is off, and free-form

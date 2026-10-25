@@ -1,6 +1,8 @@
-"""Persist only user-selected visual preferences in the home directory."""
+"""Persist only user-selected preferences (look and voice) in the home directory."""
 import json
 from pathlib import Path
+
+from .voices import DEFAULT_VOICE, VOICES
 
 COLOR_CHOICES = {
     "CYAN": (34, 216, 255),
@@ -26,7 +28,7 @@ def default_path():
 
 def read_preferences(path=None):
     result = {"color": "CYAN", "mode": "FACE", "layout": "CLASSIC",
-              "wave_layout": "MESH", "animations": True}
+              "wave_layout": "MESH", "animations": True, "voice": DEFAULT_VOICE}
     try:
         data = json.loads(Path(path or default_path()).read_text(encoding="utf-8"))
         if isinstance(data, dict):
@@ -40,6 +42,8 @@ def read_preferences(path=None):
                 result["layout"] = data["layout"]
             if isinstance(data.get("animations"), bool):
                 result["animations"] = data["animations"]
+            if data.get("voice") in VOICES:
+                result["voice"] = data["voice"]
     except (OSError, ValueError, TypeError):
         pass
     return result
@@ -49,5 +53,6 @@ def write_preferences(prefs, path=None):
     path = Path(path or default_path())
     content = {"color": prefs["color"], "mode": prefs.get("mode", "FACE"),
                "layout": prefs.get("layout", "CLASSIC"),
-               "wave_layout": prefs.get("wave_layout", "MESH"), "animations": bool(prefs["animations"])}
+               "wave_layout": prefs.get("wave_layout", "MESH"), "animations": bool(prefs["animations"]),
+               "voice": prefs.get("voice") if prefs.get("voice") in VOICES else DEFAULT_VOICE}
     path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
