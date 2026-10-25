@@ -23,7 +23,7 @@ from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_ope
 from .commands import parse_command, reply_for, route, spoken
 from . import i18n, languages, speech
 from .i18n import tr
-from .ai import AIWorker, ai_configured
+from .ai import LOST_CONNECTION, AIWorker, ai_configured
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 from .settings import SECTIONS, apply_choice
@@ -687,6 +687,9 @@ class RobotHUD:
         self.answer_until=0.0
         self.conversation_until=0.0
         self.followup_pending=False
+        self.ai_request=0  # id of the answer being shown/spoken (AIWorker.ask)
+        self.answer_streaming=False
+        self.answer_language='en'  # set to the voice language for each question
         self.settings_section=0
         self.settings_hits=[]
         self.preview=''  # '' | 'waiting' (voice still loading) | 'playing'
@@ -696,7 +699,7 @@ class RobotHUD:
         speech.set_voice(self.voice_key)
         use_ai=not getattr(args,'no_ai',False) and ai_configured()
         self.ai=AIWorker() if use_ai else None
-        self.voice=(VoiceListener(muted=speech.is_speaking,free_form=self.ai is not None,
+        self.voice=(VoiceListener(muted=self.mic_muted,free_form=self.ai is not None,
                                   language=self.talk_language)
                     if not args.no_voice else None)
         if self.voice:
@@ -745,9 +748,8 @@ class RobotHUD:
                 self.page=name
                 return
         if self.page=='Home':
-            if speech.is_talking():
-                speech.stop()
-                self.followup_pending=False
+            if speech.is_talking() or self.answer_streaming:
+                self.interrupt_answer()
             self.target_x=clamp((x-W/2)/(W/2),-1,1)
             self.target_y=clamp((y-292)/290,-1,1)
             self.touch_time=t
@@ -783,8 +785,7 @@ class RobotHUD:
         """Play a sample with the selected voice, once it has finished loading."""
         if not speech.enabled:
             return
-        speech.stop()
-        self.followup_pending=False
+        self.interrupt_answer()
         self.preview='waiting'
 
     def update_preview(self):
@@ -844,8 +845,13 @@ class RobotHUD:
         if self.ai is None:
             speech.speak_async(spoken('My AI brain is not set up yet.',self.talk_language))
             return
-        if not self.ai.ask(question,self.talk_language):
+        request=self.ai.ask(question,self.talk_language)
+        if not request:
             return  # still answering the previous question
+        self.ai_request=request
+        self.answer_language=self.talk_language
+        self.answer_streaming=True
+        self.followup_pending=False
         self.thinking=True
         self.heard_until=t+3600
         self.question=question
@@ -864,23 +870,58 @@ class RobotHUD:
         if self.ai:
             while True:
                 try:
-                    kind,text=self.ai.answers.get_nowait()
+                    kind,request,value=self.ai.answers.get_nowait()
                 except queue.Empty:
                     break
-                text=spoken(text,self.talk_language)
-                self.thinking=False
-                self.answer=text
-                self.answer_until=t+20
-                self.heard_until=t+20
-                if kind=='error':
-                    self.mood='sad'
-                    self.mood_until=t+4
-                speech.speak_async(text)
-                self.followup_pending=kind=='answer'
+                if request==self.ai_request:
+                    self.answer_event(kind,value,t)
         if self.followup_pending and not speech.is_speaking():
-            # Allow a follow-up question without saying "Luna" again.
+            # The whole answer was spoken: keep it in the conversation history, then allow a
+            # follow-up question without saying "Luna" again.
             self.followup_pending=False
+            if self.ai and self.ai_request:
+                self.ai.confirm(self.ai_request)
             self.conversation_until=t+8
+
+    def answer_event(self,kind,value,t):
+        """One message about the streamed answer (see AIWorker): show, speak or finish it."""
+        language=self.answer_language
+        self.thinking=False
+        self.answer_until=t+20
+        self.heard_until=t+20
+        if kind=='text':
+            self.answer+=value  # each piece arrives once, in order
+        elif kind=='sentence':
+            speech.speak_async(value)
+        elif kind=='say':
+            text=spoken(value,language)
+            self.answer=self.answer or text
+            speech.speak_async(text)
+        elif kind=='done':
+            self.answer_streaming=False
+            self.followup_pending=True
+        elif kind in ('error','lost'):
+            self.answer_streaming=False
+            text=spoken(value if kind=='error' else LOST_CONNECTION,language)
+            self.answer=text if kind=='error' else (self.answer.rstrip()+' '+text).strip()
+            self.mood='sad'
+            self.mood_until=t+4
+            speech.speak_async(text)
+
+    def mic_muted(self):
+        # Stay deaf between streamed sentences too, so Luna never hears herself.
+        return speech.is_speaking() or self.answer_streaming
+
+    def interrupt_answer(self):
+        """The user stopped Luna: silence her and drop the unfinished answer (not remembered)."""
+        speech.stop()
+        self.followup_pending=False
+        if self.answer_streaming or self.ai_request:
+            if self.ai and self.ai_request:
+                self.ai.cancel(self.ai_request)
+            self.ai_request=0
+            self.answer_streaming=False
+            self.thinking=False
 
     def events(self,t):
         for event in pygame.event.get():
@@ -896,8 +937,7 @@ class RobotHUD:
                 elif event.key==pygame.K_SPACE:
                     self.blink_start=t
                 elif event.key==pygame.K_s:
-                    speech.stop()
-                    self.followup_pending=False
+                    self.interrupt_answer()
                 elif event.unicode in ('1','2','3','4'):
                     self.page=NAV_NAMES[int(event.unicode)-1]
                 elif event.key in (pygame.K_UP,pygame.K_DOWN) and self.page=='Settings':

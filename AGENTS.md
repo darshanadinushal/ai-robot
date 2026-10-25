@@ -22,7 +22,9 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   "Adding a language" in `docs/ARCHITECTURE.md`; completeness checked by `tests/test_languages.py`.
 - Spoken word -> behaviour: `robot_hud/commands.py` (`ACTIONS`, `route`, `reply_for`; everything
   takes the voice language) + `RobotHUD.handle_speech` / `apply_actions`.
-- AI conversation: `robot_hud/ai.py` (`LunaBrain`, `AIWorker`) + `RobotHUD.ask_ai` / `poll_voice`.
+- AI conversation: `robot_hud/ai.py` (`LunaBrain.stream`, `AIWorker`) + `RobotHUD.ask_ai` / `poll_voice` /
+  `answer_event` / `interrupt_answer`. Answers stream sentence by sentence (`speech.SentenceStream`);
+  only completed, fully spoken answers enter the history (`AIWorker.confirm`).
 - Drawing and pages: `robot_hud/app.py`. Settings logic in `robot_hud/settings.py` (tested in
   `tests/test_settings.py`), stored by `robot_hud/preferences.py`.
 - Screen text is translated: wrap new on-screen text in `tr()` and add it to `screen` in every

@@ -34,6 +34,7 @@ scripts/
   test_ai.py                Typed chat with LunaBrain (needs OPENAI_API_KEY)
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
+  test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
   test_speech.py            Speech engine tests with fake voices/player (no audio)
   test_settings.py          Settings choices and taps on a headless screen
   test_swedish.py           Swedish listening, commands, replies and AI language
@@ -151,8 +152,9 @@ Up/Down keys change it). The section list and what each tap changes live in `set
    `ai_instruction` ("Always answer in Swedish."). Expressions revert after 10 s; `speaking` wave
    state lasts 6 s.
 
-**Echo protection:** `VoiceListener(muted=speech.is_speaking)` drops audio and resets the
-recogniser while Luna is talking and for `speech.TAIL_SECONDS` (0.8 s) afterwards.
+**Echo protection:** `VoiceListener(muted=RobotHUD.mic_muted)` drops audio and resets the
+recogniser while Luna is talking, for `speech.TAIL_SECONDS` (0.8 s) afterwards, and while an AI
+answer is still streaming (so she stays deaf in the gaps between streamed sentences).
 
 ### Adding a voice command
 1. New word for an existing action: add it to `commands` in each pack (`languages/<code>.json`).
@@ -222,9 +224,27 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
 - `LunaBrain` lazily imports `openai`, uses the Responses API with `previous_response_id`
   for conversation memory, timeout 30 s, 1 retry. Model: `LUNA_AI_MODEL` or `DEFAULT_MODEL`
   (unverified default). `INSTRUCTIONS` ask for 1–3 short plain sentences, because answers are spoken.
-- `AIWorker` handles one question at a time in a daemon thread (`ask()` returns False if busy)
-  and puts `("answer", text)` or `("error", friendly text)` on `answers`. Errors are logged by
-  class name only; `friendly_error` turns them into a short spoken sentence (no secrets).
+- **Streaming (phase 4):** `LunaBrain.stream()` calls the Responses API with `stream=True` and
+  yields text pieces (`response.output_text.delta`). It sets `completed_id` on
+  `response.completed`; `response.failed` / `incomplete` / `error`, or an end without
+  completion, raise `StreamError`. The stream is closed when the generator stops.
+  `ask()` (whole answer) is kept for `scripts/test_ai.py`.
+- `AIWorker` handles one question at a time in a daemon thread. `ask()` returns a request id
+  (False if busy). `speech.SentenceStream` turns the pieces into sentences (a sentence ends at
+  `.!?…` + space, so "3.5" is never cut; same 20/250/700-character rules as `split_sentences`).
+  It puts `(kind, request id, value)` on `answers`:
+  `text` (show it, appended once in order), `sentence` (speak now), `say` (fixed sentence, e.g.
+  empty answer), `done`, `error` (failed before anything was spoken: friendly sentence, as
+  before) and `lost` (failed after Luna started speaking: she says "Sorry, I lost my connection.",
+  translated by the pack). The time to the first sentence is logged.
+- **History:** `previous_id` is the last *completed and fully spoken* answer. After `done`,
+  `RobotHUD` calls `AIWorker.confirm(id)` once speech has finished, which calls
+  `LunaBrain.remember()`. Interrupted, failed or incomplete answers are never remembered.
+- **Interrupt:** tapping Home (or `S`, or Preview Voice) calls `RobotHUD.interrupt_answer()`:
+  `speech.stop()` plus `AIWorker.cancel(id)`, which stops the stream silently (no error
+  message), drops it from the history and frees the worker. Late messages for an old request id
+  are ignored by `poll_voice`.
+- Errors are logged by class name only; `friendly_error` turns them into a short spoken sentence (no secrets).
 - Privacy: only recognised text is sent, never audio.
 
 ## 6. Command-line options (`main.py`)

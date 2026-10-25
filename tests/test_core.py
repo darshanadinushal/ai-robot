@@ -97,15 +97,18 @@ class AIWorkerTests(unittest.TestCase):
                 pass
 
         w = AIWorker(brain_factory=Brain)
-        self.assertTrue(w.ask("mars?"))
-        self.assertEqual(self._get(w), ("answer", "Mars is red."))
+        request = w.ask("mars?")
+        self.assertTrue(request)
+        self.assertEqual(self._get(w), ("text", request, "Mars is red."))
+        self.assertEqual(self._get(w), ("sentence", request, "Mars is red."))
+        self.assertEqual(self._get(w), ("done", request, None))
         import time
         for _ in range(50):
             if not w.busy:
                 break
             time.sleep(0.01)
         self.assertTrue(w.ask("boom"))
-        kind, text = self._get(w)
+        kind, _, text = self._get(w)
         self.assertEqual(kind, "error")
         self.assertNotIn("secret", text)
 

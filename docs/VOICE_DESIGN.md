@@ -33,7 +33,7 @@ the Swedish model Luna keeps listening in English.
 | **1. Robot installer** | robot-setup "Natural voice" feature (`--with piper`): pinned `piper-tts` install, four voices (English + Swedish, female + male) downloaded to `~/.ai-robot-models/piper/` (outside Git) with size + SHA-256 checks, verify generates speech, listening check plays it, repair re-downloads | robot-setup | done (0.2.0), Pi test pending |
 | **2. Voice engine** | Voice catalogue, Piper kept in memory, sentence pipeline (prepare next while playing), immediate stop, safe voice switching, eSpeak/Windows fallback, tests (section 4) | ai-robot | done, Pi test pending (headset audio) |
 | **3. Settings** | Language (English / Svenska) and Female / Male buttons, preview phrase, saved preference, readiness/loading status | ai-robot | done (new Settings layout) |
-| **4. Response speed** | Stream the AI answer and speak each sentence as it arrives (today Luna waits for the full answer: 5-10 s) | ai-robot | not started |
+| **4. Response speed** | Stream the AI answer and speak each sentence as it arrives (today Luna waits for the full answer: 5-10 s) | ai-robot | done, Pi test pending |
 
 The Pi is tested at the end of every phase. Luna's engine (phase 2) reads the voices from the
 same folder and file names the installer uses; Luna does not download voices itself.
@@ -131,7 +131,15 @@ basic voice if anything fails.
 
 ## 7. Phase 4 design — response speed (summary)
 Stream the AI answer; whenever a complete sentence arrives, pass it to the speech pipeline.
-Luna starts talking after the first sentence instead of after the whole answer.
+Luna starts talking after the first sentence instead of after the whole answer, while the rest
+is still being generated. The answer text appears on the screen as it arrives.
+- Interrupted answers are forgotten: only a completed, fully spoken answer becomes the
+  conversation history checkpoint.
+- If the stream fails after Luna started speaking she says "Sorry, I lost my connection." /
+  "Förlåt, jag tappade anslutningen."; before that the existing error sentences are used.
+  Never an error after the user interrupts her.
+- The microphone stays muted until the stream has finished and the last sentence was spoken.
+- Details: `docs/ARCHITECTURE.md` section 5a.
 
 ## 8. Risks
 | Risk | Mitigation |

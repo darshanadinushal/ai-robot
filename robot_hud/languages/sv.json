@@ -103,7 +103,8 @@
     "I cannot reach the internet right now.": "Jag når inte internet just nu.",
     "My AI model is not available. Please check the model name.": "Min AI-modell är inte tillgänglig. Kontrollera modellnamnet.",
     "My AI brain is busy or out of credit. Please try again later.": "Min AI-hjärna är upptagen eller saknar kredit. Försök igen senare.",
-    "Sorry, my AI brain had a problem.": "Förlåt, min AI-hjärna fick ett problem."
+    "Sorry, my AI brain had a problem.": "Förlåt, min AI-hjärna fick ett problem.",
+    "Sorry, I lost my connection.": "Förlåt, jag tappade anslutningen."
   },
   "ai_instruction": "Always answer in Swedish.",
   "sample": "Hej, jag heter Luna. Så här låter min röst.",

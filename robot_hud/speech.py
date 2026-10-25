@@ -81,6 +81,74 @@ def split_sentences(text, min_chars=MIN_SENTENCE_CHARS, max_chars=MAX_SENTENCE_C
     return sentences
 
 
+_SENTENCE_END = re.compile(r"[.!?…]+[\"')\]]*\s+")
+
+
+class SentenceStream:
+    """Turns text that arrives in pieces (a streamed AI answer) into whole sentences.
+
+    feed() returns the sentences completed by a piece, flush() the rest at the end. Every
+    character is returned at most once and in order. A sentence only ends at . ! ? followed by
+    a space, so "3.5" is never cut; short pieces are joined like split_sentences does. After
+    `limit` characters the rest is dropped (same limit as one spoken message).
+    """
+
+    def __init__(self, min_chars=MIN_SENTENCE_CHARS, max_chars=MAX_SENTENCE_CHARS,
+                 limit=MAX_SPOKEN_CHARS):
+        self.min_chars, self.max_chars, self.limit = min_chars, max_chars, limit
+        self._buffer = ""
+        self._used = 0
+
+    @property
+    def full(self):
+        return self._used >= self.limit
+
+    def feed(self, piece):
+        self._buffer += str(piece or "")
+        out = []
+        while not self.full:
+            sentence = self._next()
+            if sentence is None:
+                break
+            self._emit(sentence, out)
+        return out
+
+    def flush(self):
+        out = []
+        rest, self._buffer = self._buffer.strip(), ""
+        if rest and not self.full:
+            for sentence in split_sentences(rest, self.min_chars, self.max_chars):
+                self._emit(sentence, out)
+        return out
+
+    def _next(self):
+        for match in _SENTENCE_END.finditer(self._buffer):
+            if len(self._buffer[:match.end()].strip()) >= self.min_chars:
+                sentence, self._buffer = self._buffer[:match.end()], self._buffer[match.end():]
+                return sentence.strip()
+        if len(self._buffer) > self.max_chars:
+            cut = self._buffer.rfind(", ", 0, self.max_chars) + 1
+            if cut < self.max_chars // 3:
+                cut = self._buffer.rfind(" ", 0, self.max_chars)
+            if cut <= 0:
+                cut = self.max_chars
+            sentence, self._buffer = self._buffer[:cut], self._buffer[cut:]
+            return sentence.strip()
+        return None
+
+    def _emit(self, sentence, out):
+        if not sentence or self.full:
+            return
+        room = self.limit - self._used
+        if len(sentence) > room:
+            sentence = clean_for_speech(sentence, room) if room > 20 else ""
+            self._used = self.limit
+        else:
+            self._used += len(sentence) + 1
+        if sentence:
+            out.append(sentence)
+
+
 # ---------------------------------------------------------------- voices (text -> WAV file)
 
 class PiperSynth:

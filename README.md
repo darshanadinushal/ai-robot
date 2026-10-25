@@ -22,7 +22,8 @@ with an online AI. Camera video, motors and home control are future work.
 - **Spoken replies** (Windows built-in voice / `espeak-ng` on the Pi); the mic is muted while
   Luna talks so she does not hear herself
 - **AI conversation** (optional): "Hey Luna, …" questions, spoken + on-screen answers,
-  follow-up questions, tap to stop
+  follow-up questions, tap to stop. Answers are streamed: Luna starts speaking after the first
+  sentence while the rest is still being generated, and the text appears as it arrives
 - **Live transcript:** what you say appears in a "YOU:" bubble; Luna's reply appears at the bottom
 - **Chat**, **Home**, **Camera**, **Settings** touchscreen navigation
 - Settings with a section menu: Display & Theme (mode, colour, layout), Language

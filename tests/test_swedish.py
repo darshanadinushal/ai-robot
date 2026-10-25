@@ -78,8 +78,9 @@ class SwedishAITests(unittest.TestCase):
                 return "Svar."
 
         worker = AIWorker(brain_factory=Brain)
-        worker.ask("fråga", "sv")
-        self.assertEqual(worker.answers.get(timeout=5), ("answer", "Svar."))
+        request = worker.ask("fråga", "sv")
+        self.assertEqual(worker.answers.get(timeout=5), ("text", request, "Svar."))
+        self.assertEqual(worker.answers.get(timeout=5), ("sentence", request, "Svar."))
         self.assertEqual(asked, ["sv"])
 
 
