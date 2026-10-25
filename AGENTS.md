@@ -22,6 +22,9 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   "Adding a language" in `docs/ARCHITECTURE.md`; completeness checked by `tests/test_languages.py`.
 - Spoken word -> behaviour: `robot_hud/commands.py` (`ACTIONS`, `route`, `reply_for`; everything
   takes the voice language) + `RobotHUD.handle_speech` / `apply_actions`.
+- Listening: Vosk final results are pieces; `listening.UtteranceAssembler` (via `RobotHUD.listen`)
+  joins them into one utterance (`commands.utterance_end` picks the wait). Route only complete
+  utterances; never call `handle_speech` per Vosk result. Tests: `tests/test_listening.py`.
 - AI conversation: `robot_hud/ai.py` (`LunaBrain.stream`, `AIWorker`) + `RobotHUD.ask_ai` / `poll_voice` /
   `answer_event` / `interrupt_answer`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`).

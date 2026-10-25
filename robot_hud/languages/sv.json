@@ -71,6 +71,22 @@
     "färg",
     "åt"
   ],
+  "continuation_words": [
+    "och",
+    "eller",
+    "men",
+    "att",
+    "som",
+    "eftersom",
+    "en",
+    "ett",
+    "min",
+    "din",
+    "öh",
+    "eh",
+    "ehm"
+  ],
+  "continue_seconds": 0.9,
   "replies": {
     "blink": "Klart.",
     "color.AMBER": "Färgen är nu bärnsten.",

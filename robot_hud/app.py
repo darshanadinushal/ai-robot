@@ -20,7 +20,8 @@ except ImportError as exc:
     ) from exc
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
-from .commands import parse_command, reply_for, route, spoken
+from .commands import parse_command, reply_for, route, spoken, utterance_end
+from .listening import UtteranceAssembler, continue_seconds
 from . import i18n, languages, speech
 from .i18n import tr
 from .ai import LOST_CONNECTION, AIWorker, ai_configured
@@ -688,6 +689,9 @@ class RobotHUD:
         self.conversation_until=0.0
         self.followup_pending=False
         self.ai_request=0  # id of the answer being shown/spoken (AIWorker.ask)
+        self.utterance=UtteranceAssembler(self.utterance_end)  # joins Vosk's pieces
+        self.mic_overruns=0
+        self.decode_mark=0.0
         self.answer_streaming=False
         self.answer_language='en'  # set to the voice language for each question
         self.settings_section=0
@@ -777,6 +781,7 @@ class RobotHUD:
                 self.voice_key=self.prefs['voice']
                 speech.set_voice(self.voice_key)
                 if self.voice:
+                    self.forget_utterance()
                     self.voice.set_language(self.talk_language)
             if changed:
                 self.save()
@@ -826,12 +831,67 @@ class RobotHUD:
                 self.glow=glow_disc(169,self.accent)
             self.save()
 
-    def handle_speech(self,text,t):
-        """Route recognised speech to an offline command or the online AI."""
+    def utterance_end(self,text,conversation):
+        return utterance_end(text,self.heard_language,conversation)
+
+    def in_conversation(self,t):
+        return self.ai is not None and t<self.conversation_until
+
+    def forget_utterance(self):
+        """Drop the unfinished question and its queued pieces."""
+        self.utterance.clear()
+        if self.voice:
+            while True:
+                try:
+                    self.voice.texts.get_nowait()
+                except queue.Empty:
+                    break
+
+    def listen(self,t):
+        """Join Vosk's pieces into one complete utterance (UtteranceAssembler) and route it once."""
+        voice=self.voice
+        overruns=getattr(voice,'overruns',0)
+        lost=overruns!=self.mic_overruns
+        self.mic_overruns=overruns
+        if self.mic_muted() or voice.status!='listening':
+            self.forget_utterance()  # Luna is talking (never hear herself) or the mic stopped
+            return
+        if lost:
+            self.forget_utterance()
+            self.utterance.invalidate(t)  # never answer a question with missing words
+            return
+        conversation=self.in_conversation(t)
+        self.utterance.continue_seconds=continue_seconds(self.heard_language)
+        while True:
+            try:
+                self.utterance.add_final(voice.texts.get_nowait(),t,conversation)
+            except queue.Empty:
+                break
+        self.utterance.add_partial(voice.partial,t,conversation)
+        done=self.utterance.poll(t)
+        if done:
+            self.log_utterance(done)
+            self.handle_speech(done.text,t,conversation=done.conversation)
+
+    def log_utterance(self,done):
+        decode=getattr(self.voice,'decode_seconds',0.0)
+        print('Luna heard: %d chars in %d part(s), %.1f s of speech, handled %.2f s after the '
+              'last words (%s); recogniser %.2f s CPU; dropped audio blocks %d'
+              % (len(done.text),done.parts,done.last_words-done.started,
+                 done.finished-done.last_words,done.ending,decode-self.decode_mark,
+                 getattr(self.voice,'dropped_blocks',0)),flush=True)
+        self.decode_mark=decode
+
+    def handle_speech(self,text,t,conversation=None):
+        """Route one complete utterance to an offline command or the online AI.
+
+        `conversation`: the follow-up window was open when the user started speaking.
+        """
         self.heard=text
         self.heard_until=t+8
-        kind,value=route(text,conversation=self.ai is not None and t<self.conversation_until,
-                         language=self.heard_language)
+        if conversation is None:
+            conversation=self.in_conversation(t)
+        kind,value=route(text,conversation=conversation,language=self.heard_language)
         self.heard_kind=kind
         if kind=='command':
             self.apply_actions(value,t)
@@ -862,11 +922,7 @@ class RobotHUD:
 
     def poll_voice(self,t):
         if self.voice:
-            while True:
-                try:
-                    self.handle_speech(self.voice.texts.get_nowait(),t)
-                except queue.Empty:
-                    break
+            self.listen(t)
         if self.ai:
             while True:
                 try:
@@ -915,6 +971,7 @@ class RobotHUD:
     def interrupt_answer(self):
         """The user stopped Luna: silence her and drop the unfinished answer (not remembered)."""
         speech.stop()
+        self.forget_utterance()
         self.followup_pending=False
         if self.answer_streaming or self.ai_request:
             if self.ai and self.ai_request:
@@ -1054,7 +1111,7 @@ class RobotHUD:
 
     def draw_you(self,t,y=132):
         """Speech bubble with what you are saying (live) or what Luna last heard."""
-        live=self.voice.partial if self.voice else ''
+        live=self.utterance.display() if self.voice else ''
         if live:
             text,color,note=tr('YOU: ')+live+' ...',TEXT,''
         elif t<self.heard_until and self.heard:
@@ -1065,6 +1122,13 @@ class RobotHUD:
         else:
             return
         font=self.fonts['body']
+        if live and font.size(text)[0]>820:
+            shown=[]  # a long question: show its newest words
+            for word in reversed(live.split()):
+                if shown and font.size(tr('YOU: ')+'... '+' '.join([word]+shown)+' ...')[0]>820:
+                    break
+                shown.insert(0,word)
+            text=tr('YOU: ')+'... '+' '.join(shown)+' ...'
         line=wrap_text(font,text+note,820,1)[0]
         w=font.size(line)[0]+48
         box=pygame.Rect(0,0,w,46)

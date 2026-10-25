@@ -141,6 +141,13 @@ is still being generated. The answer text appears on the screen as it arrives.
 - The microphone stays muted until the stream has finished and the last sentence was spoken.
 - Details: `docs/ARCHITECTURE.md` section 5a.
 
+## 7a. Phase 4.2 design — smart listening (summary)
+Luna waits for the whole question: Vosk's pieces are joined until the user really stopped
+(an exact command still acts at once; "Luna" alone or a sentence ending on "and"/"och" waits
+1.8 s). Limits 45 s / 1,000 characters, a 10 s microphone buffer, and lost audio drops the
+question instead of answering half of it. Optional cloud transcription is prepared but off.
+Details and measurements: `docs/ARCHITECTURE.md` section 3, "Smart listening".
+
 ## 8. Risks
 | Risk | Mitigation |
 | --- | --- |

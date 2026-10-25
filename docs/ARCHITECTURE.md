@@ -18,6 +18,8 @@ robot_hud/
   commands.py               Pure: spoken words -> actions; actions -> spoken reply (from the packs)
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
   voice.py                  Mic capture + Vosk recognition in a background thread
+  listening.py              Pure: UtteranceAssembler joins Vosk's pieces into one question
+  transcription.py          Optional cloud transcription interface (OFF, not used yet)
   speech.py                 Offline TTS: sentence pipeline, Piper natural voice, basic fallback
   voices.py                 Loads voices.json (the voice catalogue) and model paths
   voices.json               Voice catalogue: Piper model, eSpeak voice, files with SHA-256
@@ -32,9 +34,11 @@ scripts/
   download-voice-model.py   Downloads the small Vosk models (en, sv, ...: from the packs)
   setup-windows.ps1, run-windows.ps1   (+ SETUP_WINDOWS.bat / RUN_WINDOWS.bat)
   test_ai.py                Typed chat with LunaBrain (needs OPENAI_API_KEY)
+  measure_listening.py      Real Vosk + Piper timing of the smart listening (laptop or Pi)
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
+  test_listening.py         Phase 4.2: joining pauses, endpoints, limits, mic buffer, cloud interface
   test_speech.py            Speech engine tests with fake voices/player (no audio)
   test_settings.py          Settings choices and taps on a headless screen
   test_swedish.py           Swedish listening, commands, replies and AI language
@@ -48,8 +52,8 @@ AGENTS.md                   Rules and quick facts for AI coding assistants
 ## 2. Runtime overview
 
 ```text
- microphone ──> VoiceListener (thread) ──texts queue──> RobotHUD.handle_speech()
-                 │  level, partial                         │ commands.route()
+ microphone ──> VoiceListener (thread) ──texts──> UtteranceAssembler ──> RobotHUD.handle_speech()
+                 │  level, partial      (one question)         │ commands.route()
                  v                                         ├─ command ─> apply_actions() ─┐
  touch / mouse / keyboard ──> RobotHUD.events()            ├─ wake ────> "Yes?" ──────────┤
                                       │                    └─ ai ──────> ask_ai()          │
@@ -90,7 +94,8 @@ AI answers (→ show + speak), and opens the follow-up window when speech ends.
   toward `max(state base, live mic level)`; state is `listening` / `speaking` / `quiet`, and is
   overridden by `thinking` (AI busy) or `speaking` (speech playing).
 - **Transcript / footer / caption:** `draw_you` draws a "YOU:" bubble (top in Face mode, above
-  the footer in Wave mode) with live `voice.partial` text (pulsing border) or the last heard
+  the footer in Wave mode) with the question so far (`UtteranceAssembler.display()`: joined
+  pieces + live partial, the newest words when it is long; pulsing border) or the last heard
   phrase; ignored phrases are dimmed with a "say Hey Luna first" note. `draw_footer` shows
   "LUNA IS THINKING..." or "LUNA: answer" (2 lines, while talking and 20 s after), else a hint.
   `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
@@ -134,9 +139,11 @@ Up/Down keys change it). The section list and what each tap changes live in `set
 2. Recognition mode: **grammar-restricted** to `commands.vocabulary(language)` (+ `[unk]`) when
    AI is off (most accurate for commands), **free-form** (`VoiceListener(free_form=True)`) when AI
    is on. The Swedish model has a fixed graph, so it always recognises free speech.
-3. Finished phrases go to `VoiceListener.texts` (a `queue.Queue`); `level` is the mic volume and
-   `partial` the in-progress text.
-4. `commands.route(text, conversation)` decides:
+3. Vosk's final results go to `VoiceListener.texts` (a `queue.Queue`); `level` is the mic volume
+   and `partial` the in-progress text. Vosk ends a result after a short pause (about 0.5-1 s),
+   so one question can arrive in several pieces: see "Smart listening" below.
+4. `RobotHUD.listen` joins the pieces into one utterance and then
+   `commands.route(text, conversation)` decides, once per utterance:
    - `("command", actions)`: the phrase has actions and at most 4 words ("look left", "happy").
    - `("wake", "")`: only the wake word ("luna"; misheard variants lunar/loona/looner accepted).
      Each pack lists its `wake_words`: the Swedish model has no "luna", so sv.json lists what it
@@ -154,7 +161,59 @@ Up/Down keys change it). The section list and what each tap changes live in `set
 
 **Echo protection:** `VoiceListener(muted=RobotHUD.mic_muted)` drops audio and resets the
 recogniser while Luna is talking, for `speech.TAIL_SECONDS` (0.8 s) afterwards, and while an AI
-answer is still streaming (so she stays deaf in the gaps between streamed sentences).
+answer is still streaming (so she stays deaf in the gaps between streamed sentences). The
+unfinished utterance and queued pieces are dropped too (`forget_utterance`).
+
+### Smart listening (phase 4.2)
+One Vosk recogniser, no extra voice detector or model. `listening.UtteranceAssembler` (pure,
+times passed in, used from the UI loop by `RobotHUD.listen`) keeps the final results as
+confirmed text and the live partial as "still talking":
+- While a partial is showing, nothing is sent. When it stops, `commands.utterance_end` (words
+  only; Vosk has no punctuation) picks the wait after the last new words:
+  `command` (the whole utterance is an exact short command, e.g. "Luna, look left") → now;
+  `complete` → the pack's `continue_seconds` (en 0.6 s, sv 0.9 s: the Swedish model shows
+  resumed speech about 0.7 s late), + 0.04 s per word above 8 (at most +0.6 s) and + 0.3 s once
+  the user has paused inside this utterance; `wake` (only "Luna") and `unfinished` (ends on a
+  pack `continuation_words` word: and, the, of, och, att, som...) → 1.8 s. So "Luna" alone
+  says "Yes?" only if no question follows.
+- Exactly one utterance is routed; the follow-up window is checked at the time the user
+  **started** speaking (`Utterance.conversation`).
+- Limits: 45 s or 1,000 characters (`LUNA_MAX_UTTERANCE_SECONDS`, `LUNA_MAX_UTTERANCE_CHARS`);
+  then the text so far (cut at a word) is sent and the rest of that speech is skipped.
+- Microphone queue: at most 10 s (`LUNA_MIC_BUFFER_SECONDS`, 0.25 s blocks). While muted or
+  loading a model, queued audio is discarded. If blocks are dropped while listening (the Pi
+  cannot keep up) the recogniser is reset, `overruns` goes up and the app drops the unfinished
+  utterance (`invalidate`) and skips the rest of that speech: never an answer to missing words.
+- Cleared when Luna talks, the voice language changes, she is interrupted or the mic stops.
+- Tuning: `LUNA_CONTINUE_SECONDS` (all languages), `LUNA_LONG_PAUSE_SECONDS` (1.8).
+- Diagnostics (stdout / journal), one line per utterance: `Luna heard: N chars in P part(s),
+  S s of speech, handled X s after the last words (ending); recogniser C s CPU; dropped audio
+  blocks D`, plus a line when microphone audio is lost.
+
+Measured on the laptop (`scripts/measure_listening.py`: Piper speech into the real Vosk models;
+the Pi numbers still need to be measured there):
+
+| Case | Before (1st piece sent) | Now (sent after speech end) |
+| --- | --- | --- |
+| Command "Luna, look left" (en / sv) | 1.1 s / 0.7 s | same, immediately |
+| Short question (en / sv) | 0.6-0.7 s | 1.2-1.4 s / 1.6-1.7 s |
+| Question with 2 pauses (0.9 s, 1.2 s) | 3 separate pieces | 1 question, about 2 s |
+| 18 s question with 4 pauses | 5 separate pieces | 1 question, about 2.6 s |
+| "Hey Luna." 1.5 s pause, question | "Yes?" + separate question | 1 question |
+
+A pause after a complete-sounding phrase is joined up to about 1.2 s (en) / 1.0 s (sv);
+longer pauses or pauses after a word ending with a continuation word up to about 1.8 s. The
+recogniser used about 0.1x real time (en) and 0.02x (sv) of one laptop core.
+Simulated tests (`tests/test_listening.py`) are separate from these measurements.
+
+### Cloud transcription (prepared, OFF)
+`transcription.py` is an interface only; nothing calls it yet. It stays off unless
+`LUNA_CLOUD_TRANSCRIPTION=on` and an API key are set, uploads only for an utterance that the
+offline wake word authorised, keeps at most a 3 s in-memory pre-roll (never uploaded without
+the wake word) and at most 45 s, never writes audio to disk, drops the audio after the upload,
+on cancel and on errors, and returns `None` (keep the Vosk text) on any failure or timeout
+(15 s). Model `LUNA_TRANSCRIBE_MODEL` (default `gpt-4o-mini-transcribe`; check the current
+name before enabling).
 
 ### Adding a voice command
 1. New word for an existing action: add it to `commands` in each pack (`languages/<code>.json`).

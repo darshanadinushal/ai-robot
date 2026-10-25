@@ -69,6 +69,23 @@
     "go",
     "turn"
   ],
+  "continuation_words": [
+    "and",
+    "or",
+    "but",
+    "because",
+    "if",
+    "the",
+    "a",
+    "an",
+    "of",
+    "my",
+    "your",
+    "um",
+    "uh",
+    "erm"
+  ],
+  "continue_seconds": 0.6,
   "replies": {
     "blink": "Done.",
     "color.AMBER": "Colour changed to amber.",

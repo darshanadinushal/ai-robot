@@ -230,6 +230,8 @@ ai-robot/
 │   ├── commands.py             # Words -> actions, wake-word routing, spoken replies
 │   ├── languages/              # Language packs (en.json, sv.json): add a language here
 │   ├── voice.py                # Microphone + Vosk recognition (background thread)
+│   ├── listening.py            # Joins pauses into one complete question
+│   ├── transcription.py        # Optional cloud transcription (off, not used yet)
 │   ├── speech.py               # Text-to-speech: sentence pipeline, Piper + basic voice
 │   ├── voices.json             # Voice catalogue (also used by robot-setup): add voices here
 │   ├── voices.py               # Loads the voice catalogue
@@ -241,6 +243,7 @@ ai-robot/
 │   ├── install-pi.sh / run-pi.sh
 │   ├── setup-windows.ps1 / run-windows.ps1
 │   ├── download-voice-model.py
+│   ├── measure_listening.py    # Listening timing with the real models
 │   └── test_ai.py              # Typed chat test for the AI
 ├── tests/                      # Unit tests + headless visual smoke test
 ├── docs/ARCHITECTURE.md        # How the code works

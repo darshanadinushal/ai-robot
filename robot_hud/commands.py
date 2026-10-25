@@ -85,6 +85,30 @@ def route(text, conversation=False, language="en"):
     return ("ignore", "")
 
 
+def utterance_end(text, language="en", conversation=False):
+    """How long Luna should wait for more speech after `text` (words only, no punctuation).
+
+    "command"    an exact short command ("Luna, look left"): act now
+    "wake"       only the wake word: the question may follow after a pause
+    "unfinished" ends on a word like "and", "the", "och", "att": wait longer
+    "complete"   anything else (an apparently complete question): a short wait
+    """
+    pack = languages.get(language)
+    words = _words(text)
+    if not words:
+        return "complete"
+    if words[-1] in pack.continuation_words:
+        return "unfinished"
+    kind, _ = route(text, conversation, language)
+    if kind == "wake":
+        return "wake"
+    if kind == "command":
+        known = set(pack.commands) | set(pack.filler_words) | set(pack.wake_words) | set(pack.greetings)
+        if all(w in known for w in words):
+            return "command"
+    return "complete"
+
+
 def reply_for(actions, language="en"):
     """Short spoken confirmation for the first recognised action, or None."""
     if not actions:

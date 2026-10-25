@@ -12,6 +12,10 @@ Fields:
                   listening_model_mb is its download size, shown by robot-setup
   wake_words      how the recogniser hears "Luna";  greetings: "hey", "hej", ...
   commands        spoken word -> action ID (see commands.ACTIONS); filler_words are ignored
+  continuation_words  words that rarely end a question ("and", "the", "och", "att"): when
+                  speech stops on one, Luna waits longer for the rest (not taken from English)
+  continue_seconds  pause after an apparently complete question before Luna answers; slower
+                  listening models need more (they show resumed speech later); 0 = default
   replies         action ID -> Luna's spoken confirmation
   speech          Luna's fixed English sentences -> translated sentence
   ai_instruction  added to the AI instructions so answers come in this language
@@ -43,6 +47,8 @@ class LanguagePack:
     sample: str
     warm_up: str
     windows_culture: str
+    continuation_words: tuple = ()
+    continue_seconds: float = 0.0
 
     def reply(self, action_id):
         return self.replies.get(action_id)
@@ -82,7 +88,9 @@ def _build(data, english):
         replies=replies, speech=dict(data.get("speech") or {}),
         ai_instruction=data.get("ai_instruction") or "Always answer in %s." % data["name"],
         sample=field("sample", ""), warm_up=field("warm_up", "Hello."),
-        windows_culture=str(data.get("windows_culture") or ""))
+        windows_culture=str(data.get("windows_culture") or ""),
+        continuation_words=tuple(w.lower() for w in data.get("continuation_words") or ()),
+        continue_seconds=float(data.get("continue_seconds") or 0.0))
 
 
 def load(folder=FOLDER):
