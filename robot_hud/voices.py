@@ -32,6 +32,12 @@ VOICES = {
                      "sv_SE-nst-medium", "sv+m3", "CC0 training data"),
 }
 DEFAULT_VOICE = "EN_FEMALE"
+LANGUAGES = {"en": "English", "sv": "Svenska"}
+GENDERS = ("female", "male")
+SAMPLES = {
+    "en": "Hello, I am Luna. This is how my voice sounds.",
+    "sv": "Hej, jag heter Luna. Så här låter min röst.",
+}
 
 
 def models_dir():
@@ -50,3 +56,16 @@ def model_path(voice, folder=None):
 def is_installed(voice, folder=None):
     model = model_path(voice, folder)
     return model.is_file() and model.with_name(model.name + ".json").is_file()
+
+
+def voice_for(language, gender):
+    """The catalogue voice with this language and gender, or None."""
+    for voice in VOICES.values():
+        if voice.language == language and voice.gender == gender:
+            return voice
+    return None
+
+
+def sample_text(voice):
+    """A short preview sentence in the voice's own language."""
+    return SAMPLES.get(voice.language, SAMPLES["en"])

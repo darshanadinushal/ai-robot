@@ -19,7 +19,10 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 - Spoken word -> behaviour: `robot_hud/commands.py` (`KEYWORDS`, `route`, `reply_for`) +
   `RobotHUD.handle_speech` / `apply_actions`.
 - AI conversation: `robot_hud/ai.py` (`LunaBrain`, `AIWorker`) + `RobotHUD.ask_ai` / `poll_voice`.
-- Drawing and pages: `robot_hud/app.py`. Settings stored by `robot_hud/preferences.py`.
+- Drawing and pages: `robot_hud/app.py`. Settings logic in `robot_hud/settings.py` (tested in
+  `tests/test_settings.py`), stored by `robot_hud/preferences.py`.
+- Screen text is translated: wrap new on-screen text in `tr()` and add a Swedish entry to
+  `SWEDISH` in `robot_hud/i18n.py` (the tests check this).
 - Pure logic needs tests in `tests/test_core.py`; keep pure modules free of pygame imports.
 
 ## Rules and gotchas

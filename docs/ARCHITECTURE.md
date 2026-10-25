@@ -19,6 +19,8 @@ robot_hud/
   voice.py                  Mic capture + Vosk recognition in a background thread
   speech.py                 Offline TTS: sentence pipeline, Piper natural voice, basic fallback
   voices.py                 Voice catalogue (English/Svenska, female/male) and model paths
+  settings.py               Settings page model: sections and applying choices
+  i18n.py                   Screen text translations (English / Svenska) and tr()
   preferences.py            User settings stored as JSON in the home folder
   geometry.py               Pure maths: viewport scaling, blink curve, clamp
   ai.py                     Online AI: env loading, LunaBrain (OpenAI), AIWorker thread
@@ -31,6 +33,7 @@ scripts/
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_speech.py            Speech engine tests with fake voices/player (no audio)
+  test_settings.py          Settings choices and taps on a headless screen
   test_visual_smoke.py      Launches the app headless and saves a screenshot
 docs/ARCHITECTURE.md        This file
 .github/workflows/tests.yml GitHub Actions: runs the tests headless
@@ -60,9 +63,9 @@ AI answers (→ show + speak), and opens the follow-up window when speech ends.
 - Everything is drawn on a fixed **1280×720 logical canvas** (`CANVAS_WIDTH/HEIGHT` in
   `geometry.py`). `Viewport` letterboxes/scales it to the real screen and maps touch
   coordinates back (`Viewport.to_logical`). Never use raw screen coordinates for UI logic.
-- Layout rectangles are module constants in `app.py` (`NAV_RECTS`, `TAB_RECTS`, `COLOR_RECTS`,
-  `LAYOUT_RECTS`, `ANIM_RECT`, `CHAT_RECT`, `QUIT_RECT`). Drawing and hit-testing share them,
-  so change a rect in one place.
+- Layout rectangles are module constants in `app.py` (`NAV_RECTS`, `CHAT_RECT`, `QUIT_RECT`,
+  and for Settings `SIDEBAR_RECT`, `SECTION_RECTS`, `CONTENT_RECT`, `CONTENT_CLIP`). Drawing and
+  hit-testing share them, so change a rect in one place.
 - Colours: theme accent comes from `COLOR_CHOICES` (`preferences.py`); neutral palette
   constants (`BACKGROUND`, `TEXT`, `MUTED`) are at the top of `app.py`.
 
@@ -88,9 +91,25 @@ AI answers (→ show + speak), and opens the follow-up window when speech ends.
   `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
-Two tabs (FACE MODE / WAVE MODE) choose which mode Home shows. Both tabs share colour and
-animation toggle; the layout row shows face layouts or wave layouts depending on the tab.
-Every change calls `RobotHUD.save()`.
+A section menu on the left (Display & Theme, Language, Voice, Animations, About) works like
+tabs: the panel on the right shows **only the selected section** (`self.settings_section`;
+Up/Down keys change it). The section list and what each tap changes live in `settings.py`
+(no pygame, unit-tested).
+- `settings_page(...)` draws the selected section and **returns the tap targets**
+  `[(rect, action)]`; `handle_touch` uses the ones from the last frame, so only visible
+  controls can be tapped.
+- Display & Theme: FACE / WAVE mode (which one Home shows), colour, and face or wave layouts.
+- Language (ENGLISH / SVENSKA) changes only the screen text on every page and saves
+  `language`. Each on-screen text goes through `i18n.tr()`, which looks it up in
+  `i18n.SWEDISH`; a test fails if a `tr('...')` text in `app.py` has no Swedish entry.
+  Voice commands, spoken replies and AI answers stay English.
+- Voice: Voice language (ENGLISH / SVENSKA) and Voice type (FEMALE / MALE) pick one of the four
+  catalogue voices (`voices.voice_for`), call `speech.set_voice` and save `voice`.
+- **Play sample** stops current speech and waits until the voice has loaded
+  (`preview` = `waiting` → `playing`), then speaks `voices.sample_text` in that language.
+- Status shows `speech.voice_state()` with a dot: green natural, amber loading, red basic.
+- Every change goes through `settings.apply_choice` and calls `RobotHUD.save()` only when
+  something changed. The sci-fi frame is not drawn behind Settings.
 
 ## 3. Voice pipeline
 
@@ -153,10 +172,11 @@ File: `~/.ai-robot-hud.json` (outside the repo; its name is gitignored).
 | `wave_layout` | `MESH, BARS, CIRCLE` | `MESH` |
 | `animations` | boolean | `true` |
 | `voice` | `EN_FEMALE, EN_MALE, SV_FEMALE, SV_MALE` (`voices.VOICES`) | `EN_FEMALE` |
+| `language` | `en, sv` — screen text (`i18n.LANGUAGES`) | `en` |
 
 `read_preferences` validates every field and silently falls back to defaults on any error;
 unknown keys are ignored. Adding a setting means: default in `read_preferences`, validation,
-`write_preferences`, UI in `settings_page` + `handle_touch`, and updating the tests.
+`write_preferences`, a choice in `settings.apply_choice`, a control in `settings_page`, and updating the tests.
 
 ## 5a. AI conversation (`ai.py`)
 - `ai_configured()` loads `~/.luna.env` (only `OPENAI_*` / `LUNA_*` keys, never overriding

@@ -21,10 +21,13 @@ except ImportError as exc:
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
 from .commands import parse_command, reply_for, route
-from . import speech
+from . import i18n, speech
+from .i18n import tr
 from .ai import AIWorker, ai_configured
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
+from .settings import SECTIONS, apply_choice
+from .voices import GENDERS, LANGUAGES as VOICE_LANGUAGES, get_voice, sample_text
 
 FPS = 30
 BACKGROUND = (4, 11, 28)
@@ -34,10 +37,14 @@ FAINT = (45, 95, 143)
 NAV_NAMES = ("Chat", "Home", "Camera", "Settings")
 NAV_RECTS = [pygame.Rect(216 + i * 216, 597, 199, 93) for i in range(4)]
 QUIT_RECT = pygame.Rect(1214, 23, 43, 43)
-TAB_RECTS = [pygame.Rect(410 + i * 240, 146, 220, 46) for i in range(2)]
-COLOR_RECTS = [pygame.Rect(341 + i * 159, 228, 131, 66) for i in range(4)]
-LAYOUT_RECTS = [pygame.Rect(320 + i * 220, 332, 200, 52) for i in range(3)]
-ANIM_RECT = pygame.Rect(470, 408, 340, 58)
+# Settings page: section menu on the left, the selected section on the right.
+SIDEBAR_RECT = pygame.Rect(22, 86, 280, 498)
+SECTION_RECTS = [pygame.Rect(36, 100 + i * 72, 252, 62) for i in range(len(SECTIONS))]
+CONTENT_RECT = pygame.Rect(316, 86, 942, 498)
+CONTENT_CLIP = pygame.Rect(330, 98, 900, 474)
+LABEL_X = 362
+CONTROL_X = 545
+CONTROL_RIGHT = 1205
 CHAT_RECT = pygame.Rect(485, 460, 310, 63)
 
 
@@ -320,7 +327,7 @@ def nav_bar(surface, page, fonts, accent):
         if active:
             line(surface, accent, (rect.left+24,rect.top+2), (rect.right-24,rect.top+2), 3)
         nav_icon(surface,name,rect.centerx,rect.top+34,accent)
-        draw_text(surface,name,fonts['nav'],TEXT if active else MUTED,
+        draw_text(surface,tr(name),fonts['nav'],TEXT if active else MUTED,
                   center=(rect.centerx,rect.top+73))
 
 
@@ -361,8 +368,8 @@ def panel_base(surface, accent):
 
 def chat_page(surface, fonts, accent, t, chat_active):
     panel_base(surface,accent)
-    draw_text(surface,'AI VOICE ASSISTANT',fonts['title'],TEXT,center=(640,205))
-    draw_text(surface,'Microphone / AI integration is not connected yet.',fonts['body'],MUTED,
+    draw_text(surface,tr('AI VOICE ASSISTANT'),fonts['title'],TEXT,center=(640,205))
+    draw_text(surface,tr('Microphone / AI integration is not connected yet.'),fonts['body'],MUTED,
               center=(640,251))
     bar_count=43
     for i in range(bar_count):
@@ -373,15 +380,15 @@ def chat_page(surface, fonts, accent, t, chat_active):
         pygame.draw.line(surface,col,(x,349-height/2),(x,349+height/2),6)
     pygame.draw.rect(surface,(11,49,84),CHAT_RECT,border_radius=13)
     pygame.draw.rect(surface,accent,CHAT_RECT,2,border_radius=13)
-    draw_text(surface,'Stop demo' if chat_active else 'Start waveform demo',fonts['body'],TEXT,
+    draw_text(surface,tr('Stop demo' if chat_active else 'Start waveform demo'),fonts['body'],TEXT,
               center=CHAT_RECT.center)
-    draw_text(surface,'Waveform is simulated: no microphone recording.',fonts['small'],MUTED,
+    draw_text(surface,tr('Waveform is simulated: no microphone recording.'),fonts['small'],MUTED,
               center=(640,431))
 
 
 def camera_page(surface, fonts, accent, t):
     panel_base(surface,accent)
-    draw_text(surface,'CAMERA',fonts['title'],TEXT,center=(640,182))
+    draw_text(surface,tr('CAMERA'),fonts['title'],TEXT,center=(640,182))
     preview=pygame.Rect(359,218,562,236)
     pygame.draw.rect(surface,(3,14,31),preview,border_radius=6)
     pygame.draw.rect(surface,mix(accent,BACKGROUND,.38),preview,2,border_radius=6)
@@ -395,45 +402,197 @@ def camera_page(surface, fonts, accent, t):
         for y,dy in [(preview.top+20,1),(preview.bottom-20,-1)]:
             line(surface,accent,(x,y),(x+28*dx,y),3)
             line(surface,accent,(x,y),(x,y+23*dy),3)
-    draw_text(surface,'NO CAMERA FEED',fonts['body'],TEXT,center=preview.center)
-    draw_text(surface,'This is a placeholder, not a live image.',fonts['small'],MUTED,
+    draw_text(surface,tr('NO CAMERA FEED'),fonts['body'],TEXT,center=preview.center)
+    draw_text(surface,tr('This is a placeholder, not a live image.'),fonts['small'],MUTED,
               center=(640,493))
 
 
-def settings_page(surface, fonts, accent, prefs):
-    panel_base(surface,accent)
-    for name,rect in zip(MODES,TAB_RECTS):
-        selected = prefs['mode']==name
-        pygame.draw.rect(surface,(11,49,84) if selected else (8,32,62),rect,border_radius=12)
-        pygame.draw.rect(surface,accent if selected else (33,73,109),rect,3 if selected else 1,
-                         border_radius=12)
-        draw_text(surface,name+' MODE',fonts['body'],TEXT if selected else MUTED,center=rect.center)
-    draw_text(surface,'Theme colour',fonts['small'],MUTED,center=(640,212))
-    for name,rect in zip(COLOR_CHOICES,COLOR_RECTS):
-        selected = prefs['color']==name
-        pygame.draw.rect(surface,(9,39,76),rect,border_radius=13)
-        pygame.draw.rect(surface,COLOR_CHOICES[name] if selected else (33,73,109),
-                         rect,3 if selected else 1,border_radius=13)
-        pygame.draw.circle(surface,COLOR_CHOICES[name],(rect.centerx,rect.top+24),14)
-        draw_text(surface,name,fonts['small'],TEXT,center=(rect.centerx,rect.top+51))
-    wave = prefs['mode']=='WAVE'
-    choices = WAVE_LAYOUTS if wave else tuple(LAYOUT_CHOICES)
-    current = prefs['wave_layout'] if wave else prefs['layout']
-    draw_text(surface,('Wave' if wave else 'Face')+' layout',fonts['small'],MUTED,center=(640,316))
-    for name,rect in zip(choices,LAYOUT_RECTS):
-        selected = current==name
-        pygame.draw.rect(surface,(9,39,76),rect,border_radius=13)
-        pygame.draw.rect(surface,accent if selected else (33,73,109),
-                         rect,3 if selected else 1,border_radius=13)
-        draw_text(surface,name,fonts['small'],TEXT,center=rect.center)
-    pygame.draw.rect(surface,(10,42,76),ANIM_RECT,border_radius=13)
-    pygame.draw.rect(surface,accent,ANIM_RECT,2,border_radius=13)
-    draw_text(surface,'Animations: '+('ON' if prefs['animations'] else 'OFF'),fonts['body'],TEXT,
-              center=ANIM_RECT.center)
-    draw_text(surface,'The selected mode is shown on Home. Settings save automatically.',
-              fonts['small'],MUTED,center=(640,510))
-    if speech.enabled:
-        draw_text(surface,speech.voice_state()[1],fonts['mini'],MUTED,center=(640,486))
+def section_icon(surface, name, x, y, color):
+    """Small line icons for the Settings sections."""
+    if name == 'Display & Theme':
+        pygame.draw.circle(surface,color,(x,y),15,2)
+        for dx,dy,col in ((-6,-6,(34,216,255)),(4,-8,(184,113,255)),(8,2,(67,235,179))):
+            pygame.draw.circle(surface,col,(x+dx,y+dy),3)
+        pygame.draw.circle(surface,color,(x-5,y+6),4)
+    elif name == 'Language':
+        pygame.draw.circle(surface,color,(x,y),15,2)
+        pygame.draw.ellipse(surface,color,(x-7,y-15,14,30),2)
+        line(surface,color,(x-15,y),(x+15,y),2)
+        line(surface,color,(x-12,y-8),(x+12,y-8),1)
+        line(surface,color,(x-12,y+8),(x+12,y+8),1)
+    elif name == 'Voice':
+        pygame.draw.rect(surface,color,(x-6,y-16,12,21),2,border_radius=6)
+        draw_arc(surface,color,x,y-3,12,math.pi,2*math.pi,2)
+        line(surface,color,(x,y+9),(x,y+16),2)
+        line(surface,color,(x-7,y+16),(x+7,y+16),2)
+    elif name == 'Animations':
+        pygame.draw.ellipse(surface,color,(x-16,y-9,32,18),2)
+        pygame.draw.circle(surface,color,(x,y),5)
+        for dx in (-9,0,9):
+            line(surface,color,(x+dx,y-11),(x+dx*1.2,y-16),2)
+    else:
+        pygame.draw.circle(surface,color,(x,y),15,2)
+        pygame.draw.circle(surface,color,(x,y-7),2)
+        line(surface,color,(x,y-2),(x,y+8),3)
+
+
+def settings_sidebar(surface, fonts, accent, active):
+    pygame.draw.rect(surface,(6,26,52),SIDEBAR_RECT,border_radius=18)
+    pygame.draw.rect(surface,mix(accent,BACKGROUND,.45),SIDEBAR_RECT,2,border_radius=18)
+    for i,(name,rect) in enumerate(zip(SECTIONS,SECTION_RECTS)):
+        selected = i==active
+        if selected:
+            pygame.draw.rect(surface,(11,49,84),rect,border_radius=12)
+            pygame.draw.rect(surface,mix(accent,BACKGROUND,.6),rect.inflate(6,6),2,border_radius=14)
+            pygame.draw.rect(surface,accent,rect,2,border_radius=12)
+        else:
+            line(surface,(20,52,88),(rect.left+6,rect.bottom+5),(rect.right-6,rect.bottom+5),1)
+        section_icon(surface,name,rect.left+30,rect.centery,TEXT if selected else MUTED)
+        draw_text(surface,tr(name),fonts['side'],TEXT if selected else MUTED,
+                  topleft=(rect.left+58,rect.centery-13))
+        chevron=MUTED if not selected else TEXT
+        line(surface,chevron,(rect.right-24,rect.centery-7),(rect.right-17,rect.centery),2)
+        line(surface,chevron,(rect.right-17,rect.centery),(rect.right-24,rect.centery+7),2)
+
+
+def control_rects(y, count, height, max_width, gap=14):
+    """`count` buttons in a row starting at CONTROL_X, each at most `max_width` wide."""
+    width = min(max_width, (CONTROL_RIGHT-CONTROL_X-gap*(count-1))//count)
+    return [pygame.Rect(CONTROL_X+i*(width+gap), y, width, height) for i in range(count)]
+
+
+def add_hit(hits, rect, action):
+    visible = rect.clip(CONTENT_CLIP)
+    if visible.width > 0 and visible.height > 0:
+        hits.append((visible, action))
+
+
+def choice_button(surface, fonts, accent, rect, text, selected, hits, action, swatch=None):
+    pygame.draw.rect(surface,(11,49,84) if selected else (8,32,62),rect,border_radius=10)
+    if selected:
+        pygame.draw.rect(surface,mix(accent,BACKGROUND,.6),rect.inflate(6,6),2,border_radius=12)
+    pygame.draw.rect(surface,accent if selected else (33,73,109),rect,2 if selected else 1,
+                     border_radius=10)
+    if swatch is not None:
+        pygame.draw.circle(surface,swatch,(rect.centerx,rect.top+22),11)
+        draw_text(surface,text,fonts['small'],TEXT if selected else MUTED,
+                  center=(rect.centerx,rect.bottom-18))
+    else:
+        draw_text(surface,text,fonts['small'],TEXT if selected else MUTED,center=rect.center)
+    add_hit(hits,rect,action)
+
+
+def section_header(surface, fonts, name, y, subtitle=None):
+    section_icon(surface,name,LABEL_X+8,y+32,TEXT)
+    draw_text(surface,tr(name),fonts['heading'],TEXT,topleft=(LABEL_X+42,y+14))
+    if subtitle:
+        draw_text(surface,tr(subtitle),fonts['mini'],MUTED,topleft=(LABEL_X+43,y+52))
+    line(surface,(20,52,88),(CONTENT_CLIP.left+10,y+78),(CONTENT_CLIP.right-10,y+78),1)
+
+
+def row_label(surface, fonts, text, center_y):
+    draw_text(surface,tr(text),fonts['small'],MUTED,topleft=(LABEL_X,center_y-12))
+
+
+def voice_status(voice):
+    """(state, translated status line) for the selected voice."""
+    if not speech.enabled:
+        return 'off',tr('Speech is off (--no-speech)')
+    state,status = speech.voice_state()
+    if state=='natural':
+        return state,tr('Natural voice: {label}',label=voice.label)
+    if state=='loading':
+        return state,tr('Loading {label}...',label=voice.label)
+    return state,tr('Basic voice: {reason}',reason=status.partition(': ')[2] or status)
+
+
+def mic_status(status):
+    prefix = 'microphone error: '
+    if status.startswith(prefix):
+        return tr(prefix)+status[len(prefix):]
+    return tr(status)
+
+
+def settings_page(surface, fonts, accent, prefs, active, preview):
+    """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
+    hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
+    settings_sidebar(surface,fonts,accent,active)
+    pygame.draw.rect(surface,(6,26,52),CONTENT_RECT,border_radius=18)
+    pygame.draw.rect(surface,mix(accent,BACKGROUND,.6),CONTENT_RECT.inflate(6,6),2,border_radius=20)
+    pygame.draw.rect(surface,accent,CONTENT_RECT,2,border_radius=18)
+    voice = get_voice(prefs['voice'])
+    name = SECTIONS[active]
+    y = CONTENT_CLIP.top
+
+    if name=='Display & Theme':
+        section_header(surface,fonts,name,y,'How Luna looks on the Home screen')
+        row_label(surface,fonts,'Mode',y+130)
+        for mode,rect in zip(MODES,control_rects(y+107,2,46,220)):
+            choice_button(surface,fonts,accent,rect,tr(mode+' MODE'),prefs['mode']==mode,hits,('mode',mode))
+        row_label(surface,fonts,'Theme colour',y+217)
+        for color,rect in zip(COLOR_CHOICES,control_rects(y+184,4,66,160)):
+            choice_button(surface,fonts,accent,rect,tr(color),prefs['color']==color,hits,('color',color),
+                          swatch=COLOR_CHOICES[color])
+        wave = prefs['mode']=='WAVE'
+        current = prefs['wave_layout'] if wave else prefs['layout']
+        choices = WAVE_LAYOUTS if wave else tuple(LAYOUT_CHOICES)
+        row_label(surface,fonts,'Wave layout' if wave else 'Face layout',y+304)
+        for layout,rect in zip(choices,control_rects(y+281,3,46,220)):
+            choice_button(surface,fonts,accent,rect,tr(layout),current==layout,hits,('layout',layout))
+    elif name=='Language':
+        section_header(surface,fonts,name,y,'The language of the texts on the screen')
+        row_label(surface,fonts,'App language',y+130)
+        for (code,label),rect in zip(i18n.LANGUAGES.items(),control_rects(y+107,2,46,220)):
+            choice_button(surface,fonts,accent,rect,label,prefs['language']==code,hits,
+                          ('language',code))
+        draw_text(surface,tr('Voice commands and spoken replies are in English for now.'),
+                  fonts['mini'],MUTED,topleft=(CONTROL_X,y+170))
+    elif name=='Voice':
+        section_header(surface,fonts,name,y,voice.label)
+        row_label(surface,fonts,'Voice language',y+130)
+        for (code,label),rect in zip(VOICE_LANGUAGES.items(),control_rects(y+107,2,46,220)):
+            choice_button(surface,fonts,accent,rect,label.upper(),voice.language==code,hits,
+                          ('voice_language',code))
+        row_label(surface,fonts,'Voice type',y+197)
+        for gender,rect in zip(GENDERS,control_rects(y+174,2,46,220)):
+            choice_button(surface,fonts,accent,rect,tr(gender.upper()),voice.gender==gender,hits,
+                          ('gender',gender))
+        row_label(surface,fonts,'Test voice',y+264)
+        button = pygame.Rect(CONTROL_X,y+241,260,46)
+        label = {'waiting':'Loading voice...','playing':'Playing...'}.get(preview,'Play sample')
+        pygame.draw.rect(surface,(8,32,62),button,border_radius=10)
+        pygame.draw.rect(surface,accent,button,2,border_radius=10)
+        pygame.draw.polygon(surface,TEXT,[(button.left+26,button.centery-10),
+                                          (button.left+26,button.centery+10),
+                                          (button.left+44,button.centery)])
+        draw_text(surface,tr(label),fonts['small'],TEXT,center=(button.centerx+18,button.centery))
+        add_hit(hits,button,('preview',None))
+        row_label(surface,fonts,'Status',y+331)
+        state,status = voice_status(voice)
+        dot = {'natural':(67,235,179),'loading':(255,185,67)}.get(state,(255,110,110))
+        pygame.draw.circle(surface,dot,(CONTROL_X+9,y+331),7)
+        status_line = wrap_text(fonts['small'],status,CONTROL_RIGHT-CONTROL_X-30,1)[0]
+        draw_text(surface,status_line,fonts['small'],TEXT,topleft=(CONTROL_X+26,y+319))
+    elif name=='Animations':
+        section_header(surface,fonts,name,y,'Blinking, looking around and moving effects')
+        row_label(surface,fonts,'Animations',y+130)
+        on = prefs['animations']
+        track = pygame.Rect(CONTROL_X,y+111,76,38)
+        pygame.draw.rect(surface,accent if on else (24,52,84),track,border_radius=19)
+        pygame.draw.circle(surface,TEXT,(track.right-19 if on else track.left+19,track.centery),15)
+        draw_text(surface,tr('ON' if on else 'OFF'),fonts['small'],TEXT,
+                  topleft=(track.right+16,track.centery-12))
+        add_hit(hits,pygame.Rect(track.left-10,track.top-10,150,58),('animations',None))
+    else:
+        section_header(surface,fonts,name,y)
+        about = (tr('Luna 1.0 - personal robot for Raspberry Pi 5.'),
+                 tr('Voice: {label} ({note}).',label=voice.label,note=tr(voice.license_note)),
+                 tr('Natural voices use Piper. Check licences before sharing Luna.'),
+                 tr('Settings save automatically.'))
+        for i,text in enumerate(about):
+            draw_text(surface,wrap_text(fonts['small'],text,820,1)[0],fonts['small'],
+                      TEXT if i==0 else MUTED,topleft=(LABEL_X,y+104+i*32))
+    return hits
 
 
 class RobotHUD:
@@ -452,9 +611,12 @@ class RobotHUD:
             'small':pygame.font.SysFont('dejavusans',20),
             'body':pygame.font.SysFont('dejavusans',25),
             'title':pygame.font.SysFont('dejavusans',46,bold=True),
+            'heading':pygame.font.SysFont('dejavusans',27,bold=True),
+            'side':pygame.font.SysFont('dejavusans',22),
         }
         self.clock=pygame.time.Clock()
         self.prefs=read_preferences()
+        i18n.set_language(self.prefs['language'])
         self.glow=glow_disc(169,self.accent)
         self.page='Home'
         self.gaze_x=self.gaze_y=self.target_x=self.target_y=0.0
@@ -478,6 +640,9 @@ class RobotHUD:
         self.answer_until=0.0
         self.conversation_until=0.0
         self.followup_pending=False
+        self.settings_section=0
+        self.settings_hits=[]
+        self.preview=''  # '' | 'waiting' (voice still loading) | 'playing'
         speech.enabled=not args.no_speech
         # The voice is a preference; LUNA_VOICE overrides it for testing without saving it.
         speech.set_voice(os.environ.get('LUNA_VOICE') or self.prefs['voice'])
@@ -529,26 +694,41 @@ class RobotHUD:
         elif self.page=='Chat' and CHAT_RECT.collidepoint(x,y):
             self.chat_active=not self.chat_active
         elif self.page=='Settings':
-            for name,rect in zip(MODES,TAB_RECTS):
+            for rect,(kind,value) in self.settings_hits:
                 if rect.collidepoint(x,y):
-                    self.prefs['mode']=name
-                    self.save()
+                    self.settings_choice(kind,value)
                     return
-            for name,rect in zip(COLOR_CHOICES,COLOR_RECTS):
-                if rect.collidepoint(x,y):
-                    self.prefs['color']=name
-                    self.glow=glow_disc(169,self.accent)
-                    self.save()
-                    return
-            wave=self.prefs['mode']=='WAVE'
-            for name,rect in zip(WAVE_LAYOUTS if wave else tuple(LAYOUT_CHOICES),LAYOUT_RECTS):
-                if rect.collidepoint(x,y):
-                    self.prefs['wave_layout' if wave else 'layout']=name
-                    self.save()
-                    return
-            if ANIM_RECT.collidepoint(x,y):
-                self.prefs['animations']=not self.prefs['animations']
+
+    def settings_choice(self,kind,value):
+        if kind=='section':
+            self.settings_section=value
+        elif kind=='preview':
+            self.preview_voice()
+        else:
+            changed=apply_choice(self.prefs,kind,value)
+            if changed=='color':
+                self.glow=glow_disc(169,self.accent)
+            elif changed=='language':
+                i18n.set_language(self.prefs['language'])
+            elif changed=='voice':
+                speech.set_voice(self.prefs['voice'])
+            if changed:
                 self.save()
+
+    def preview_voice(self):
+        """Play a sample with the selected voice, once it has finished loading."""
+        if not speech.enabled:
+            return
+        speech.stop()
+        self.followup_pending=False
+        self.preview='waiting'
+
+    def update_preview(self):
+        if self.preview=='waiting' and speech.voice_state()[0]!='loading':
+            speech.speak_async(sample_text(get_voice(self.prefs['voice'])))
+            self.preview='playing'
+        elif self.preview=='playing' and not speech.is_talking():
+            self.preview=''
 
     def apply_commands(self,text,t):
         self.heard=text
@@ -654,6 +834,9 @@ class RobotHUD:
                     self.followup_pending=False
                 elif event.unicode in ('1','2','3','4'):
                     self.page=NAV_NAMES[int(event.unicode)-1]
+                elif event.key in (pygame.K_UP,pygame.K_DOWN) and self.page=='Settings':
+                    step=-1 if event.key==pygame.K_UP else 1
+                    self.settings_section=(self.settings_section+step)%len(SECTIONS)
             elif event.type in (pygame.MOUSEBUTTONDOWN,pygame.FINGERDOWN):
                 if event.type==pygame.MOUSEBUTTONDOWN:
                     if event.button!=1:
@@ -682,7 +865,9 @@ class RobotHUD:
         accent=self.accent
         self.canvas.blit(self.background,(0,0))
         motion_t = t if self.prefs['animations'] else 0.0
-        draw_scifi_chrome(self.canvas,accent,motion_t)
+        self.update_preview()
+        if self.page!='Settings':
+            draw_scifi_chrome(self.canvas,accent,motion_t)
         status_bar(self.canvas,self.fonts,accent)
         talking=speech.is_talking()
         if self.page=='Home':
@@ -720,7 +905,7 @@ class RobotHUD:
                 else:
                     draw_mic(self.canvas,accent,640,200,motion_t)
                     draw_wave(self.canvas,motion_t,accent,amp)
-                self.draw_footer(t,state.upper()+'...')
+                self.draw_footer(t,tr(state.upper()+'...'))
                 self.draw_caption(t)
                 self.draw_you(t,y=478)
                 nav_bar(self.canvas,self.page,self.fonts,accent)
@@ -733,8 +918,8 @@ class RobotHUD:
                 draw_eye(self.canvas,ex,ey,motion_t,self.gaze_x,self.gaze_y,openness,accent,self.glow,sc,side,mood)
             if sy is not None:
                 smile(self.canvas,t,accent,sy,mood,talking)
-            hint=('SAY "HEY LUNA" AND ASK ANYTHING  •  TAP TO STOP TALKING' if self.ai else
-                  'TAP TO LOOK AROUND  •  SAY: HAPPY, SAD, ANGRY, LOOK LEFT...')
+            hint=tr('SAY "HEY LUNA" AND ASK ANYTHING  •  TAP TO STOP TALKING' if self.ai else
+                    'TAP TO LOOK AROUND  •  SAY: HAPPY, SAD, ANGRY, LOOK LEFT...')
             self.draw_footer(t,hint)
             self.draw_caption(t)
             self.draw_you(t)
@@ -743,13 +928,14 @@ class RobotHUD:
         elif self.page=='Camera':
             camera_page(self.canvas,self.fonts,accent,t)
         elif self.page=='Settings':
-            settings_page(self.canvas,self.fonts,accent,self.prefs)
+            self.settings_hits=settings_page(self.canvas,self.fonts,accent,self.prefs,
+                                             self.settings_section,self.preview)
         nav_bar(self.canvas,self.page,self.fonts,accent)
 
     def draw_footer(self,t,default):
         """Bottom text: Luna's answer while relevant, otherwise the hint."""
         if self.thinking:
-            lines=['LUNA IS THINKING...']
+            lines=[tr('LUNA IS THINKING...')]
         elif self.answer and (speech.is_talking() or t<self.answer_until):
             lines=wrap_text(self.fonts['small'],'LUNA: '+self.answer,1040,2)
         else:
@@ -763,10 +949,10 @@ class RobotHUD:
         """Speech bubble with what you are saying (live) or what Luna last heard."""
         live=self.voice.partial if self.voice else ''
         if live:
-            text,color,note='YOU: '+live+' ...',TEXT,''
+            text,color,note=tr('YOU: ')+live+' ...',TEXT,''
         elif t<self.heard_until and self.heard:
-            text,color='YOU: '+self.heard,TEXT
-            note=('  (say "Hey Luna" first)' if self.heard_kind=='ignore' and self.ai else '')
+            text,color=tr('YOU: ')+self.heard,TEXT
+            note=(tr('  (say "Hey Luna" first)') if self.heard_kind=='ignore' and self.ai else '')
             if note:
                 color=MUTED
         else:
@@ -788,14 +974,14 @@ class RobotHUD:
         if self.voice is None and self.ai is None:
             return
         if self.thinking:
-            text='THINKING...'
+            text=tr('THINKING...')
         elif self.ai and t<self.conversation_until:
-            text='LISTENING FOR YOUR FOLLOW-UP...'
+            text=tr('LISTENING FOR YOUR FOLLOW-UP...')
         else:
-            text='MIC: '+(self.voice.status.upper() if self.voice else 'OFF')
-        text+='   •   AI: '+('ON' if self.ai else 'OFF')
+            text=tr('MIC: ')+(mic_status(self.voice.status).upper() if self.voice else tr('OFF'))
+        text+='   •   '+tr('AI: ')+tr('ON' if self.ai else 'OFF')
         if speech.enabled:
-            text+='   •   VOICE: '+speech.voice_state()[0].upper()
+            text+='   •   '+tr('VOICE: ')+tr(speech.voice_state()[0].upper())
         draw_text(self.canvas,wrap_text(self.fonts['mini'],text,1100,1)[0],self.fonts['mini'],MUTED,
                   topleft=(60,108))
 

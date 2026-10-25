@@ -30,7 +30,7 @@ language and gender. Swedish speech recognition and Swedish AI answers are separ
 | --- | --- | --- | --- |
 | **1. Robot installer** | robot-setup "Natural voice" feature (`--with piper`): pinned `piper-tts` install, four voices (English + Swedish, female + male) downloaded to `~/.ai-robot-models/piper/` (outside Git) with size + SHA-256 checks, verify generates speech, listening check plays it, repair re-downloads | robot-setup | done (0.2.0), Pi test pending |
 | **2. Voice engine** | Voice catalogue, Piper kept in memory, sentence pipeline (prepare next while playing), immediate stop, safe voice switching, eSpeak/Windows fallback, tests (section 4) | ai-robot | done, Pi test pending (headset audio) |
-| **3. Settings** | Language (English / Svenska) and Female / Male buttons, preview phrase, saved preference, readiness/loading status | ai-robot | not started |
+| **3. Settings** | Language (English / Svenska) and Female / Male buttons, preview phrase, saved preference, readiness/loading status | ai-robot | done (new Settings layout) |
 | **4. Response speed** | Stream the AI answer and speak each sentence as it arrives (today Luna waits for the full answer: 5-10 s) | ai-robot | not started |
 
 The Pi is tested at the end of every phase. Luna's engine (phase 2) reads the voices from the
@@ -111,9 +111,13 @@ sentence starts quickly, there are no long gaps between sentences, tap stops imm
 Luna does not hear herself.
 
 ## 5. Phase 3 design — Settings (summary)
-Bottom rows: **ENGLISH | SVENSKA** and **FEMALE | MALE**, plus a status line. Tapping a choice
-saves `voice` in `~/.ai-robot-hud.json`, calls `set_voice`, and plays "Hi, I'm Luna." once the
-voice is ready. Old settings files default to `EN_FEMALE`. The preview phrase is spoken in the chosen language.
+Settings was redesigned with a section menu; the panel shows one section at a time. The Voice section's
+**Voice language: ENGLISH | SVENSKA** and **Voice type: FEMALE | MALE** pick the voice (the
+separate Language section changes only the screen text); a tap saves `voice` in
+`~/.ai-robot-hud.json` and calls `set_voice`. **Play sample** waits until the voice has loaded,
+then speaks a short phrase in the chosen language. A status line with a coloured dot shows
+natural / loading / basic (with the reason). Old settings files default to `EN_FEMALE`.
+Not included yet (shown in the design image): volume slider, voice on/off switch, System section.
 
 ## 6. Phase 1 design — robot-setup (summary)
 Extend the **Offline voice** feature: pinned `piper-tts` install in Luna's venv, voice

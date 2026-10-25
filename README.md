@@ -21,8 +21,10 @@ with an online AI. Camera video, motors and home control are future work.
   follow-up questions, tap to stop
 - **Live transcript:** what you say appears in a "YOU:" bubble; Luna's reply appears at the bottom
 - **Chat**, **Home**, **Camera**, **Settings** touchscreen navigation
-- Settings: theme colour (cyan, purple, green, amber), mode tabs, layouts, animation toggle —
-  saved automatically in `~/.ai-robot-hud.json`
+- Settings with a section menu: Display & Theme (mode, colour, layout), Language
+  (screen text in English / Svenska), Voice (voice language, female / male, **Play sample**,
+  loading status), Animations,
+  About — saved automatically in `~/.ai-robot-hud.json`
 - Fullscreen on the Pi with correct touch scaling; resizable window on Windows
 - Chat page waveform is **simulated**; Camera page is a **placeholder**; Wi-Fi/audio/battery
   icons are decorative
@@ -118,7 +120,8 @@ With the robot-setup **Natural voice** feature (`--with piper`), Luna speaks wit
 The voice files live in `~/.ai-robot-models/piper/`, outside Git. The caption shows
 `VOICE: NATURAL`, `LOADING` or `BASIC`; Settings shows the reason when the basic voice is used.
 Without Piper Luna simply keeps the basic voice. The choice is saved as `voice` in the
-preferences file; to try another voice without saving it, set `LUNA_VOICE=SV_MALE`.
+preferences file — choose it in **Settings → Voice** and tap **Play sample**. To try
+another voice for one run without saving it, set `LUNA_VOICE=SV_MALE`.
 To force a sound player (e.g. a headset), set `LUNA_AUDIO_PLAYER`, for example
 `LUNA_AUDIO_PLAYER="aplay -D plughw:2,0"`. These voices are for the personal prototype only;
 see the licence notes in [`docs/VOICE_DESIGN.md`](docs/VOICE_DESIGN.md).
@@ -173,7 +176,7 @@ Then talk:
 | Bottom **Home** | Return to the face / wave |
 | Bottom **Chat** | Simulated voice waveform page |
 | Bottom **Camera** | Camera placeholder page |
-| Bottom **Settings** | Face/Wave tabs, colour, layout, idle animations |
+| Bottom **Settings** | Mode, colour, layout, screen language, voice, preview, animations (menu on the left; Up / Down keys change section) |
 | `1` / `2` / `3` / `4` | Chat / Home / Camera / Settings |
 | `Space` | Blink |
 | `S` | Stop speaking |
@@ -219,6 +222,7 @@ ai-robot/
 │   ├── voice.py                # Microphone + Vosk recognition (background thread)
 │   ├── speech.py               # Text-to-speech: sentence pipeline, Piper + basic voice
 │   ├── voices.py               # Voice catalogue (English/Svenska, female/male)
+│   ├── settings.py             # Settings sections and choices
 │   ├── ai.py                   # OpenAI conversation (background thread)
 │   ├── preferences.py          # Settings saved to ~/.ai-robot-hud.json
 │   └── geometry.py             # Screen scaling and blink maths

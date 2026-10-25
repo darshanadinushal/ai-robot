@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+from .i18n import DEFAULT_LANGUAGE, LANGUAGES
 from .voices import DEFAULT_VOICE, VOICES
 
 COLOR_CHOICES = {
@@ -28,7 +29,8 @@ def default_path():
 
 def read_preferences(path=None):
     result = {"color": "CYAN", "mode": "FACE", "layout": "CLASSIC",
-              "wave_layout": "MESH", "animations": True, "voice": DEFAULT_VOICE}
+              "wave_layout": "MESH", "animations": True, "voice": DEFAULT_VOICE,
+              "language": DEFAULT_LANGUAGE}
     try:
         data = json.loads(Path(path or default_path()).read_text(encoding="utf-8"))
         if isinstance(data, dict):
@@ -44,6 +46,8 @@ def read_preferences(path=None):
                 result["animations"] = data["animations"]
             if data.get("voice") in VOICES:
                 result["voice"] = data["voice"]
+            if data.get("language") in LANGUAGES:
+                result["language"] = data["language"]
     except (OSError, ValueError, TypeError):
         pass
     return result
@@ -54,5 +58,6 @@ def write_preferences(prefs, path=None):
     content = {"color": prefs["color"], "mode": prefs.get("mode", "FACE"),
                "layout": prefs.get("layout", "CLASSIC"),
                "wave_layout": prefs.get("wave_layout", "MESH"), "animations": bool(prefs["animations"]),
-               "voice": prefs.get("voice") if prefs.get("voice") in VOICES else DEFAULT_VOICE}
+               "voice": prefs.get("voice") if prefs.get("voice") in VOICES else DEFAULT_VOICE,
+               "language": prefs.get("language") if prefs.get("language") in LANGUAGES else DEFAULT_LANGUAGE}
     path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
