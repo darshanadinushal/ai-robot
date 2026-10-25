@@ -104,8 +104,51 @@
     "My AI model is not available. Please check the model name.": "Min AI-modell är inte tillgänglig. Kontrollera modellnamnet.",
     "My AI brain is busy or out of credit. Please try again later.": "Min AI-hjärna är upptagen eller saknar kredit. Försök igen senare.",
     "Sorry, my AI brain had a problem.": "Förlåt, min AI-hjärna fick ett problem.",
-    "Sorry, I lost my connection.": "Förlåt, jag tappade anslutningen."
+    "Sorry, I lost my connection.": "Förlåt, jag tappade anslutningen.",
+    "Sorry, I cannot understand {language} yet.": "Förlåt, jag kan inte förstå {language} än."
   },
+  "switch_phrases": {
+    "sv": [
+      "prata svenska",
+      "tala svenska",
+      "prata på svenska",
+      "tala på svenska",
+      "byt till svenska",
+      "byta till svenska",
+      "byt tillbaka till svenska",
+      "bit till svenska",
+      "by till svenska",
+      "bytt till svenska",
+      "gå tillbaka till svenska"
+    ],
+    "en": [
+      "prata engelska",
+      "tala engelska",
+      "prata på engelska",
+      "tala på engelska",
+      "byt till engelska",
+      "byta till engelska",
+      "byt tillbaka till engelska",
+      "bit till engelska",
+      "by till engelska",
+      "bytt till engelska",
+      "gå tillbaka till engelska"
+    ]
+  },
+  "switch_extra_words": [
+    "kan",
+    "du",
+    "kunde",
+    "skulle",
+    "snälla",
+    "nu",
+    "igen",
+    "tack",
+    "luna",
+    "från",
+    "och"
+  ],
+  "switch_confirmation": "Självklart! Nu pratar jag svenska.",
   "ai_instruction": "Always answer in Swedish.",
   "sample": "Hej, jag heter Luna. Så här låter min röst.",
   "warm_up": "Hej.",

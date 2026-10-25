@@ -26,6 +26,9 @@ ACTION_IDS = {action: action_id for action_id, action in ACTIONS.items()}
 # Without the wake word, only short phrases count as commands (ignores background talk).
 MAX_COMMAND_WORDS = 4
 
+# Said in the current language when a voice switch is not possible (model or voice missing).
+CANNOT_SWITCH = "Sorry, I cannot understand {language} yet."
+
 
 def command_words(language="en"):
     """Spoken word -> (kind, value) for a language."""
@@ -40,7 +43,18 @@ KEYWORDS = command_words("en")
 def vocabulary(language="en"):
     """Words the command-only recogniser listens for in `language`."""
     pack = languages.get(language)
-    return sorted(set(pack.commands) | set(pack.filler_words) | set(pack.wake_words))
+    return sorted(set(pack.commands) | set(pack.filler_words) | set(pack.wake_words)
+                  | switch_vocabulary(language))
+
+
+def switch_vocabulary(language="en"):
+    """Words of the "Luna, speak <language>" requests in `language`."""
+    pack = languages.get(language)
+    words = set(pack.switch_extra_words) | set(pack.wake_words) | set(pack.greetings)
+    for phrases in pack.switch_phrases.values():
+        for phrase in phrases:
+            words.update(phrase.split())
+    return words
 
 
 VOCABULARY = vocabulary("en")
@@ -60,6 +74,32 @@ def parse_command(text, language="en"):
 def _words(text):
     cleaned = "".join(c if c.isalnum() or c == "'" else " " for c in str(text).lower())
     return cleaned.split()
+
+
+def language_switch(text, language="en", conversation=False):
+    """The language code if `text` explicitly asks Luna to speak another language, else None.
+
+    `text` was heard in `language`. It must contain the wake word (or come right after an
+    answer) and one of the pack's switch phrases, with only greetings, wake words and the
+    pack's switch_extra_words around it: "hey luna can you speak swedish please" matches,
+    "luna don't speak swedish" or "luna how do you say hello in swedish" do not.
+    """
+    pack = languages.get(language)
+    words = _words(text)
+    if not (conversation or any(w in pack.wake_words for w in words)):
+        return None
+    allowed = set(pack.wake_words) | set(pack.greetings) | set(pack.switch_extra_words)
+    for target, phrases in pack.switch_phrases.items():
+        if target not in languages.PACKS:
+            continue
+        for phrase in phrases:
+            needed = phrase.split()
+            for start in range(len(words) - len(needed) + 1):
+                if words[start:start + len(needed)] == needed:
+                    rest = words[:start] + words[start + len(needed):]
+                    if all(w in allowed for w in rest):
+                        return target
+    return None
 
 
 def route(text, conversation=False, language="en"):

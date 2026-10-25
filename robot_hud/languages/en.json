@@ -93,6 +93,42 @@
     "wave.speaking": "I am speaking."
   },
   "speech": {},
+  "switch_phrases": {
+    "en": [
+      "speak english",
+      "talk english",
+      "speak in english",
+      "talk in english",
+      "switch to english",
+      "change to english",
+      "switch back to english",
+      "go back to english"
+    ],
+    "sv": [
+      "speak swedish",
+      "talk swedish",
+      "speak in swedish",
+      "talk in swedish",
+      "switch to swedish",
+      "change to swedish",
+      "switch back to swedish",
+      "go back to swedish"
+    ]
+  },
+  "switch_extra_words": [
+    "can",
+    "could",
+    "would",
+    "will",
+    "you",
+    "please",
+    "now",
+    "again",
+    "luna",
+    "from",
+    "on"
+  ],
+  "switch_confirmation": "Of course! I'll speak English now.",
   "ai_instruction": "Always answer in English.",
   "sample": "Hello, I am Luna. This is how my voice sounds.",
   "warm_up": "Hello.",

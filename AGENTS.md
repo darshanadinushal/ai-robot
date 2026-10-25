@@ -25,6 +25,9 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 - AI conversation: `robot_hud/ai.py` (`LunaBrain.stream`, `AIWorker`) + `RobotHUD.ask_ai` / `poll_voice` /
   `answer_event` / `interrupt_answer`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`).
+- Voice language switch: `commands.language_switch` (checked before `route`), `voice.SwitchEar`
+  (other-language recogniser → `VoiceListener.switches`), `RobotHUD.voice_switch` (reuses
+  `settings_choice('voice_language', ...)`). Phrases and confirmations are in the language packs.
 - Drawing and pages: `robot_hud/app.py`. Settings logic in `robot_hud/settings.py` (tested in
   `tests/test_settings.py`), stored by `robot_hud/preferences.py`.
 - Screen text is translated: wrap new on-screen text in `tr()` and add it to `screen` in every

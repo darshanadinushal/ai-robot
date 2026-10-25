@@ -10,7 +10,7 @@ from robot_hud.preferences import read_preferences
 from robot_hud.settings import apply_choice
 
 FIXED_SENTENCES = {"Yes?", "My AI brain is not set up yet.", "I am not sure what to say.",
-                   ai.LOST_CONNECTION}
+                   ai.LOST_CONNECTION, commands.CANNOT_SWITCH}
 
 
 def ai_errors():
