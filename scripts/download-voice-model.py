@@ -1,7 +1,8 @@
 """Download the small offline Vosk models Luna listens with.
 
-Usage: download-voice-model.py [en] [sv]   (default: en). Swedish is used when the
-selected voice is Swedish; without it Luna keeps listening in English.
+Usage: download-voice-model.py [en] [sv] ...   (default: en). Each language pack names its
+model (robot_hud/languages/<code>.json, "listening_model"). Luna listens in the language of the
+selected voice; without that language's model she keeps listening in English.
 """
 import sys
 import urllib.request

@@ -41,6 +41,8 @@ same folder and file names the installer uses; Luna does not download voices its
 ## 4. Phase 2 design — voice engine
 
 ### 4.1 Voice catalogue (`robot_hud/voices.py`, new, pure Python)
+*Update:* the catalogue is now data in `robot_hud/voices.json` (loaded by `voices.py`, and
+read by robot-setup for downloads), and each language is a pack in `robot_hud/languages/`.
 Each voice is a data record: `key`, `language` (en/sv), `label`, `gender` (female/male), Piper `model` name,
 download location, `license_note`. Helper functions give the model file paths
 (`~/.ai-robot-models/piper/<model>.onnx` + `.onnx.json`), download URLs, and "is it installed?".

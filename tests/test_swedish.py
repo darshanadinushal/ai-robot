@@ -7,9 +7,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from robot_hud import voice
-from robot_hud.commands import (SWEDISH_SPEECH, parse_command, reply_for, route, spoken,
-                                vocabulary)
+from robot_hud import languages, voice
+from robot_hud.commands import parse_command, reply_for, route, spoken, vocabulary
 from robot_hud.preferences import read_preferences
 from test_settings import FakeSpeech
 
@@ -52,7 +51,7 @@ class SwedishCommandTests(unittest.TestCase):
             "AuthenticationError", "APIConnectionError", "NotFoundError", "RateLimitError",
             "Other")]
         for error in errors:
-            self.assertIn(ai.friendly_error(error), SWEDISH_SPEECH)
+            self.assertIn(ai.friendly_error(error), languages.get("sv").speech)
 
 
 class SwedishAITests(unittest.TestCase):

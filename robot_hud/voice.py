@@ -6,11 +6,14 @@ import struct
 import threading
 from pathlib import Path
 
+from . import languages
 from .commands import vocabulary
 
-# Offline recognition model for each listening language (follows the voice language).
-MODELS = {"en": "vosk-model-small-en-us-0.15", "sv": "vosk-model-small-sv-rhasspy-0.15"}
-MODEL_NAME = MODELS["en"]
+# Offline recognition model for each listening language (follows the voice language), from the
+# language packs. Languages without one are heard with the English model.
+MODELS = {code: pack.listening_model for code, pack in languages.PACKS.items()
+          if pack.listening_model}
+MODEL_NAME = MODELS[languages.DEFAULT]
 SAMPLE_RATE = 16000
 
 
@@ -30,7 +33,7 @@ class VoiceListener:
     def __init__(self, muted=None, free_form=False, language="en"):
         self._muted = muted or (lambda: False)
         self.free_form = free_form
-        self.language = language if language in MODELS else "en"
+        self.language = language if language in MODELS else languages.DEFAULT
         self.active_language = None
         self._loaded_for = None
         self._model = None
@@ -42,7 +45,7 @@ class VoiceListener:
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def set_language(self, language):
-        self.language = language if language in MODELS else "en"
+        self.language = language if language in MODELS else languages.DEFAULT
 
     def start(self):
         self._thread.start()

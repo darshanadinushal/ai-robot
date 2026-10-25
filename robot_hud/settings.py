@@ -5,7 +5,7 @@ is applied with `apply_choice` and saved straight away.
 """
 from .i18n import LANGUAGES
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS
-from .voices import get_voice, voice_for
+from .voices import VOICES, get_voice, voice_for, voices_for
 
 SECTIONS = ("Display & Theme", "Language", "Voice", "Animations", "About")
 
@@ -25,10 +25,17 @@ def apply_choice(prefs, kind, value=None):
         key, new = "animations", not prefs.get("animations", True)
     elif kind == "language" and value in LANGUAGES:
         key, new = "language", value  # screen texts only, not the voice
-    elif kind in ("voice_language", "gender"):
+    elif kind == "voice" and value in VOICES:
+        key, new = "voice", value
+    elif kind == "voice_language":
+        # Keep the voice type if the new language has it, otherwise take its first voice.
         current = get_voice(prefs.get("voice"))
-        found = voice_for(value if kind == "voice_language" else current.language,
-                          value if kind == "gender" else current.gender)
+        found = voice_for(value, current.gender) or next(iter(voices_for(value)), None)
+        if found is None:
+            return None
+        key, new = "voice", found.key
+    elif kind == "gender":
+        found = voice_for(get_voice(prefs.get("voice")).language, value)
         if found is None:
             return None
         key, new = "voice", found.key

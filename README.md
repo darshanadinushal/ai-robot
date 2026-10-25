@@ -16,7 +16,9 @@ with an online AI. Camera video, motors and home control are future work.
   circle voice-wave) — the wave reacts to your microphone volume
 - **Offline voice commands** with Vosk: expressions, looking around, blinking, colours, modes
 - **English or Swedish**: Luna listens, speaks and answers in the language of the selected
-  voice (Swedish commands such as "titta åt vänster", "var glad", "blinka")
+  voice (Swedish commands such as "titta åt vänster", "var glad", "blinka"). More languages and
+  voices are added as data, without code changes (see "Adding a language" in
+  `docs/ARCHITECTURE.md`)
 - **Spoken replies** (Windows built-in voice / `espeak-ng` on the Pi); the mic is muted while
   Luna talks so she does not hear herself
 - **AI conversation** (optional): "Hey Luna, …" questions, spoken + on-screen answers,
@@ -225,9 +227,11 @@ ai-robot/
 ├── robot_hud/
 │   ├── app.py                  # UI, drawing, touch, voice/AI wiring (RobotHUD)
 │   ├── commands.py             # Words -> actions, wake-word routing, spoken replies
+│   ├── languages/              # Language packs (en.json, sv.json): add a language here
 │   ├── voice.py                # Microphone + Vosk recognition (background thread)
 │   ├── speech.py               # Text-to-speech: sentence pipeline, Piper + basic voice
-│   ├── voices.py               # Voice catalogue (English/Svenska, female/male)
+│   ├── voices.json             # Voice catalogue (also used by robot-setup): add voices here
+│   ├── voices.py               # Loads the voice catalogue
 │   ├── settings.py             # Settings sections and choices
 │   ├── ai.py                   # OpenAI conversation (background thread)
 │   ├── preferences.py          # Settings saved to ~/.ai-robot-hud.json

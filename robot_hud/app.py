@@ -21,13 +21,13 @@ except ImportError as exc:
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
 from .commands import parse_command, reply_for, route, spoken
-from . import i18n, speech
+from . import i18n, languages, speech
 from .i18n import tr
 from .ai import AIWorker, ai_configured
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 from .settings import SECTIONS, apply_choice
-from .voices import GENDERS, LANGUAGES as VOICE_LANGUAGES, get_voice, sample_text
+from .voices import LANGUAGES as VOICE_LANGUAGES, get_voice, sample_text, voices_for
 
 FPS = 30
 BACKGROUND = (4, 11, 28)
@@ -455,10 +455,22 @@ def settings_sidebar(surface, fonts, accent, active):
         line(surface,chevron,(rect.right-17,rect.centery),(rect.right-24,rect.centery+7),2)
 
 
-def control_rects(y, count, height, max_width, gap=14):
-    """`count` buttons in a row starting at CONTROL_X, each at most `max_width` wide."""
-    width = min(max_width, (CONTROL_RIGHT-CONTROL_X-gap*(count-1))//count)
-    return [pygame.Rect(CONTROL_X+i*(width+gap), y, width, height) for i in range(count)]
+def control_rects(y, count, height, max_width, gap=14, per_row=None):
+    """`count` buttons starting at CONTROL_X, each at most `max_width` wide.
+
+    With `per_row`, longer lists wrap onto more rows (see rows_height)."""
+    columns = min(count, per_row or count) or 1
+    width = min(max_width, (CONTROL_RIGHT-CONTROL_X-gap*(columns-1))//columns)
+    return [pygame.Rect(CONTROL_X+(i%columns)*(width+gap), y+(i//columns)*(height+gap), width, height)
+            for i in range(count)]
+
+
+CHOICES_PER_ROW = 4
+
+
+def extra_rows_height(count, height=46, gap=14, per_row=CHOICES_PER_ROW):
+    """Extra height used when `count` choices wrap onto more than one row."""
+    return max(0, (count-1)//per_row)*(height+gap)
 
 
 def add_hit(hits, rect, action):
@@ -513,12 +525,9 @@ def mic_status(status):
     return tr(status)
 
 
-LANGUAGE_NAMES = {'en':'English','sv':'Swedish'}
-
-
 def listening_status(listener, language):
     """(state, translated line) for what Luna listens with; the state picks the dot colour."""
-    name = tr(LANGUAGE_NAMES.get(language,language))
+    name = tr(languages.get(language).name)
     if listener is None:
         return 'basic',tr('Microphone off')
     if listener.status!='listening':
@@ -528,6 +537,14 @@ def listening_status(listener, language):
         return 'basic',tr('English - the {language} listening model is not installed',
                           language=name)
     return 'natural',tr('Listening in {language}',language=name)
+
+
+def voice_type_label(voice, choices):
+    """FEMALE / MALE, plus the voice name when a language has several voices of that type."""
+    label = tr(voice.gender.upper())
+    if sum(other.gender==voice.gender for other in choices)>1 and voice.name:
+        label += ' - '+voice.name.upper()
+    return label
 
 
 def status_row(surface, fonts, label, y, status):
@@ -568,21 +585,29 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
     elif name=='Language':
         section_header(surface,fonts,name,y,'The language of the texts on the screen')
         row_label(surface,fonts,'App language',y+130)
-        for (code,label),rect in zip(i18n.LANGUAGES.items(),control_rects(y+107,2,46,220)):
+        codes = i18n.LANGUAGES
+        for (code,label),rect in zip(codes.items(),control_rects(y+107,len(codes),46,220,
+                                                                 per_row=CHOICES_PER_ROW)):
             choice_button(surface,fonts,accent,rect,label,prefs['language']==code,hits,
                           ('language',code))
         draw_text(surface,tr('Luna listens, speaks and answers in the Voice language.'),
-                  fonts['mini'],MUTED,topleft=(CONTROL_X,y+170))
+                  fonts['mini'],MUTED,topleft=(CONTROL_X,y+170+extra_rows_height(len(codes))))
     elif name=='Voice':
         section_header(surface,fonts,name,y,voice.label)
         row_label(surface,fonts,'Voice language',y+130)
-        for (code,label),rect in zip(VOICE_LANGUAGES.items(),control_rects(y+107,2,46,220)):
+        for (code,label),rect in zip(VOICE_LANGUAGES.items(),
+                                     control_rects(y+107,len(VOICE_LANGUAGES),46,220,
+                                                   per_row=CHOICES_PER_ROW)):
             choice_button(surface,fonts,accent,rect,label.upper(),voice.language==code,hits,
                           ('voice_language',code))
+        y += extra_rows_height(len(VOICE_LANGUAGES))
         row_label(surface,fonts,'Voice type',y+197)
-        for gender,rect in zip(GENDERS,control_rects(y+174,2,46,220)):
-            choice_button(surface,fonts,accent,rect,tr(gender.upper()),voice.gender==gender,hits,
-                          ('gender',gender))
+        choices = voices_for(voice.language)
+        for option,rect in zip(choices,control_rects(y+174,len(choices),46,220,
+                                                     per_row=CHOICES_PER_ROW)):
+            choice_button(surface,fonts,accent,rect,voice_type_label(option,choices),
+                          option.key==voice.key,hits,('voice',option.key))
+        y += extra_rows_height(len(choices))
         row_label(surface,fonts,'Test voice',y+264)
         button = pygame.Rect(CONTROL_X,y+241,260,46)
         label = {'waiting':'Loading voice...','playing':'Playing...'}.get(preview,'Play sample')
@@ -685,6 +710,13 @@ class RobotHUD:
         return get_voice(self.voice_key).language
 
     @property
+    def heard_language(self):
+        """The language Luna actually listens in (English if the voice language's model is missing)."""
+        if self.voice and self.voice.active_language:
+            return self.voice.active_language
+        return self.talk_language
+
+    @property
     def accent(self):
         return COLOR_CHOICES[self.prefs['color']]
 
@@ -765,7 +797,7 @@ class RobotHUD:
     def apply_commands(self,text,t):
         self.heard=text
         self.heard_until=t+6
-        self.apply_actions(parse_command(text,self.talk_language),t)
+        self.apply_actions(parse_command(text,self.heard_language),t)
 
     def apply_actions(self,actions,t):
         reply=reply_for(actions,self.talk_language)
@@ -798,7 +830,7 @@ class RobotHUD:
         self.heard=text
         self.heard_until=t+8
         kind,value=route(text,conversation=self.ai is not None and t<self.conversation_until,
-                         language=self.talk_language)
+                         language=self.heard_language)
         self.heard_kind=kind
         if kind=='command':
             self.apply_actions(value,t)

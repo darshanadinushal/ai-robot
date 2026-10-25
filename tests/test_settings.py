@@ -118,7 +118,7 @@ class SettingsTouchTests(unittest.TestCase):
         self.assertEqual(self.speech.loaded, ["EN_FEMALE"])
         self.tap(("section", 2))
         self.tap(("voice_language", "sv"))
-        self.tap(("gender", "male"))
+        self.tap(("voice", "SV_MALE"))
         self.assertEqual(self.speech.loaded, ["EN_FEMALE", "SV_FEMALE", "SV_MALE"])
         self.assertEqual(self.saved[-1]["voice"], "SV_MALE", "saved automatically")
         self.speech.state = "loading"
@@ -146,7 +146,7 @@ class SettingsTouchTests(unittest.TestCase):
             self.draw()
             return {a[0] for _, a in self.hud.settings_hits} - {"section"}
         self.assertEqual(actions(), {"mode", "color", "layout"})
-        expected = {1: {"language"}, 2: {"voice_language", "gender", "preview"},
+        expected = {1: {"language"}, 2: {"voice_language", "voice", "preview"},
                     3: {"animations"}, 4: set()}
         for index, kinds in expected.items():
             self.tap(("section", index))
@@ -171,12 +171,14 @@ class TranslationTests(unittest.TestCase):
     def tearDown(self):
         i18n.set_language("en")
 
-    def test_every_screen_text_has_swedish(self):
+    def test_every_screen_text_is_translated(self):
         source = Path(__file__).parents[1].joinpath("robot_hud", "app.py").read_text(encoding="utf-8")
         texts = set(re.findall(r"tr\('((?:[^'\\]|\\.)*)'", source))
         texts |= set(re.findall(r"(?:'|\()'([^']+)' if ", source))  # tr('A' if x else 'B')
         texts |= set(re.findall(r" else '([^']+)'\)", source))
-        names = set(SECTIONS) | {"English", "Swedish", "Listening", "Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
+        from robot_hud import languages
+        names = set(SECTIONS) | {pack.name for pack in languages.PACKS.values()}
+        names |= {"Listening", "Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
                                  "FEMALE", "MALE", "Wave layout", "Face layout"}
         from robot_hud.preferences import COLOR_CHOICES, LAYOUT_CHOICES, WAVE_LAYOUTS
         from robot_hud.voices import VOICES
@@ -185,9 +187,11 @@ class TranslationTests(unittest.TestCase):
         names |= {"LISTENING...", "SPEAKING...", "QUIET...", "THINKING...", "NATURAL",
                   "LOADING", "BASIC", "starting", "listening", "voice packages missing",
                   "voice model missing"}
-        missing = sorted(t for t in texts | names if t not in i18n.SWEDISH and "{" not in t
-                         and t not in ("Status", "AI: "))
-        self.assertEqual(missing, [])
+        for code in languages.codes()[1:]:
+            screen = i18n.translations(code)
+            missing = sorted(t for t in texts | names if t not in screen and "{" not in t
+                             and t not in ("Status", "AI: "))
+            self.assertEqual(missing, [], "%s.json screen texts" % code)
         self.assertGreater(len(texts), 20, "the source scan found the tr() calls")
 
     def test_tr_and_set_language(self):

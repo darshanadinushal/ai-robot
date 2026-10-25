@@ -16,14 +16,17 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 ```
 
 ## Where things go
-- Spoken word -> behaviour: `robot_hud/commands.py` (`KEYWORDS` / `SWEDISH_KEYWORDS`, `route`,
-  `reply_for`; everything takes the voice language, tested in `tests/test_swedish.py`) +
-  `RobotHUD.handle_speech` / `apply_actions`.
+- Languages are data: `robot_hud/languages/<code>.json` (screen texts, command words, wake
+  words, replies, AI instruction...). Voices are data: `robot_hud/voices.json` (also read by
+  robot-setup). Never add `if language == "sv"` code; add pack fields instead. Guide:
+  "Adding a language" in `docs/ARCHITECTURE.md`; completeness checked by `tests/test_languages.py`.
+- Spoken word -> behaviour: `robot_hud/commands.py` (`ACTIONS`, `route`, `reply_for`; everything
+  takes the voice language) + `RobotHUD.handle_speech` / `apply_actions`.
 - AI conversation: `robot_hud/ai.py` (`LunaBrain`, `AIWorker`) + `RobotHUD.ask_ai` / `poll_voice`.
 - Drawing and pages: `robot_hud/app.py`. Settings logic in `robot_hud/settings.py` (tested in
   `tests/test_settings.py`), stored by `robot_hud/preferences.py`.
-- Screen text is translated: wrap new on-screen text in `tr()` and add a Swedish entry to
-  `SWEDISH` in `robot_hud/i18n.py` (the tests check this).
+- Screen text is translated: wrap new on-screen text in `tr()` and add it to `screen` in every
+  non-English pack (the tests check this).
 - Pure logic needs tests in `tests/test_core.py`; keep pure modules free of pygame imports.
 
 ## Rules and gotchas
@@ -34,12 +37,12 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   User settings live in `~/.ai-robot-hud.json`, outside the repo; voice models in `~/.ai-robot-models`.
 - Draw on the 1280×720 logical canvas only; use the shared `*_RECTS` constants for both drawing and hit tests.
 - Worker threads (voice, speech, AI) must not call pygame; communicate via queue/float/status string.
-- Speech: `speech.py` (pipeline, Piper/basic voices, immediate `stop()`), catalogue in `voices.py`;
+- Speech: `speech.py` (pipeline, Piper/basic voices, immediate `stop()`), catalogue in `voices.json`;
   tests in `tests/test_speech.py` use fake voices/players. Design: `docs/VOICE_DESIGN.md`.
 - Voice and AI dependencies are optional; the app must still start without them
   (guarded imports, `--no-voice`, `--no-speech`, `--no-ai`).
-- Voice recognition is grammar-restricted to `commands.VOCABULARY` when AI is off, and free-form
-  when AI is on; new commands must be added to `KEYWORDS` either way.
+- Voice recognition is grammar-restricted to `commands.vocabulary(language)` when AI is off, and
+  free-form when AI is on; new command words go in the packs' `commands` either way.
 - Changing a setting means updating `read_preferences`, `write_preferences`, the Settings UI,
   `handle_touch`, and the preference tests (they compare the whole dict).
 - Raspberry Pi uses apt `python3-pygame`; do not "fix" this by pinning pygame there.

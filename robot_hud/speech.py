@@ -25,6 +25,7 @@ import time
 import wave
 from pathlib import Path
 
+from . import languages
 from . import voices as catalogue
 
 enabled = True
@@ -37,7 +38,6 @@ READY_AHEAD = 2  # sentences prepared while one plays (limits CPU and memory on 
 MIN_SENTENCE_CHARS = 20  # shorter pieces are joined with the next sentence
 MAX_SENTENCE_CHARS = 250
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-WARM_UP = {"en": "Hello.", "sv": "Hej."}
 
 
 class VoiceLoadError(Exception):
@@ -132,7 +132,7 @@ class BasicSynth:
         if os.name == "nt":
             cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_TTS]
             env = {**os.environ, "LUNA_WAV": str(wav), "LUNA_GENDER": self.voice.gender.title(),
-                   "LUNA_CULTURE": "sv-SE" if self.voice.language == "sv" else "en-US"}
+                   "LUNA_CULTURE": languages.get(self.voice.language).windows_culture}
         else:
             # Text goes through stdin so it can never be parsed as a command-line option.
             cmd = ["espeak-ng", "-v", self.voice.espeak, "-s", str(SPEECH_WPM),
@@ -296,7 +296,7 @@ class SpeechEngine:
             synth = self._make_natural(voice)
             warm = self._temp_wav()
             try:
-                synth.synthesize(WARM_UP.get(voice.language, "Hello."), warm)  # proves it works
+                synth.synthesize(languages.get(voice.language).warm_up, warm)  # proves it works
             finally:
                 _remove(warm)
         except VoiceLoadError as error:
