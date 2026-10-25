@@ -20,8 +20,9 @@ except ImportError as exc:
     ) from exc
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
-from .commands import parse_command, reply_for
+from .commands import parse_command, reply_for, route
 from . import speech
+from .ai import AIWorker, ai_configured
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 
@@ -46,6 +47,25 @@ def draw_text(surface, text, font, color, center=None, topleft=None):
         surface.blit(glyphs, glyphs.get_rect(center=center))
     else:
         surface.blit(glyphs, topleft)
+
+
+def wrap_text(font, text, width, max_lines=2):
+    """Split text into at most `max_lines` lines that fit `width`; adds '...' if cut."""
+    lines, current = [], ''
+    words = str(text).split()
+    for word in words:
+        trial = (current + ' ' + word).strip()
+        if font.size(trial)[0] <= width:
+            current = trial
+            continue
+        lines.append(current)
+        current = word
+        if len(lines) == max_lines:
+            lines[-1] = lines[-1].rstrip('.,;:') + '...'
+            return lines
+    if current:
+        lines.append(current)
+    return lines
 
 
 def line(surface, color, a, b, thickness=2):
@@ -238,10 +258,23 @@ def draw_wave_circle(surface, t, accent, amp=1.0, cx=640, cy=330):
         pygame.draw.lines(surface, mix(col, BACKGROUND, .15), True, pts, 1)
 
 
-def smile(surface, t, accent, y=474, mood='neutral'):
+def smile(surface, t, accent, y=474, mood='neutral', talking=False):
+    if talking:
+        h = 8 + int(20 * abs(math.sin(t * 9.0) * math.sin(t * 3.7 + 1)))
+        rect = pygame.Rect(640 - 34, y + 8 - h // 2, 68, h)
+        pygame.draw.ellipse(surface, mix(accent, BACKGROUND, .76), rect.inflate(12, 12))
+        pygame.draw.ellipse(surface, accent, rect, 4)
+        return
     if mood == 'surprised':
         pygame.draw.circle(surface, mix(accent, BACKGROUND, .76), (640, y+8), 24, 12)
         pygame.draw.circle(surface, accent, (640, y+8), 24, 4)
+        return
+    if mood == 'thinking':
+        for i in range(3):
+            phase = (t * 2.5 - i * .35) % 1.0
+            r = 5 + int(3 * math.sin(math.pi * phase))
+            pygame.draw.circle(surface, mix(accent, BACKGROUND, .2 + .5 * (1 - phase)),
+                               (616 + i * 24, y + 10), r)
         return
     curve = {'happy': 36, 'sad': -20, 'angry': -6, 'sleepy': 3}.get(mood, 17)
     dots=[]
@@ -436,8 +469,17 @@ class RobotHUD:
         self.wave_amp=.35
         self.heard=''
         self.heard_until=0.0
+        self.thinking=False
+        self.question=''
+        self.answer=''
+        self.answer_until=0.0
+        self.conversation_until=0.0
+        self.followup_pending=False
         speech.enabled=not args.no_speech
-        self.voice=VoiceListener(muted=speech.is_speaking) if not args.no_voice else None
+        use_ai=not getattr(args,'no_ai',False) and ai_configured()
+        self.ai=AIWorker() if use_ai else None
+        self.voice=(VoiceListener(muted=speech.is_speaking,free_form=self.ai is not None)
+                    if not args.no_voice else None)
         if self.voice:
             self.voice.start()
         self.last_touch=(-100.0, -10000.0,-10000.0)
@@ -472,6 +514,9 @@ class RobotHUD:
                 self.page=name
                 return
         if self.page=='Home':
+            if speech.is_talking():
+                speech.stop()
+                self.followup_pending=False
             self.target_x=clamp((x-W/2)/(W/2),-1,1)
             self.target_y=clamp((y-292)/290,-1,1)
             self.touch_time=t
@@ -503,7 +548,9 @@ class RobotHUD:
     def apply_commands(self,text,t):
         self.heard=text
         self.heard_until=t+6
-        actions=parse_command(text)
+        self.apply_actions(parse_command(text),t)
+
+    def apply_actions(self,actions,t):
         reply=reply_for(actions)
         if reply:
             speech.speak_async(reply)
@@ -529,14 +576,57 @@ class RobotHUD:
                 self.glow=glow_disc(169,self.accent)
             self.save()
 
-    def poll_voice(self,t):
-        if not self.voice:
+    def handle_speech(self,text,t):
+        """Route recognised speech to an offline command or the online AI."""
+        self.heard=text
+        self.heard_until=t+6
+        kind,value=route(text,conversation=self.ai is not None and t<self.conversation_until)
+        if kind=='command':
+            self.apply_actions(value,t)
+        elif kind=='wake':
+            speech.speak_async('Yes?')
+            self.followup_pending=True
+        elif kind=='ai':
+            self.ask_ai(value,t)
+
+    def ask_ai(self,question,t):
+        if self.ai is None:
+            speech.speak_async('My AI brain is not set up yet.')
             return
-        while True:
-            try:
-                self.apply_commands(self.voice.texts.get_nowait(),t)
-            except queue.Empty:
-                break
+        if not self.ai.ask(question):
+            return  # still answering the previous question
+        self.thinking=True
+        self.question=question
+        self.answer=''
+        self.conversation_until=0.0
+        self.mood='neutral'
+        self.wave_state='listening'
+
+    def poll_voice(self,t):
+        if self.voice:
+            while True:
+                try:
+                    self.handle_speech(self.voice.texts.get_nowait(),t)
+                except queue.Empty:
+                    break
+        if self.ai:
+            while True:
+                try:
+                    kind,text=self.ai.answers.get_nowait()
+                except queue.Empty:
+                    break
+                self.thinking=False
+                self.answer=text
+                self.answer_until=t+20
+                if kind=='error':
+                    self.mood='sad'
+                    self.mood_until=t+4
+                speech.speak_async(text)
+                self.followup_pending=kind=='answer'
+        if self.followup_pending and not speech.is_speaking():
+            # Allow a follow-up question without saying "Luna" again.
+            self.followup_pending=False
+            self.conversation_until=t+8
 
     def events(self,t):
         for event in pygame.event.get():
@@ -551,6 +641,9 @@ class RobotHUD:
                     self.toggle_fullscreen()
                 elif event.key==pygame.K_SPACE:
                     self.blink_start=t
+                elif event.key==pygame.K_s:
+                    speech.stop()
+                    self.followup_pending=False
                 elif event.unicode in ('1','2','3','4'):
                     self.page=NAV_NAMES[int(event.unicode)-1]
             elif event.type in (pygame.MOUSEBUTTONDOWN,pygame.FINGERDOWN):
@@ -583,8 +676,13 @@ class RobotHUD:
         motion_t = t if self.prefs['animations'] else 0.0
         draw_scifi_chrome(self.canvas,accent,motion_t)
         status_bar(self.canvas,self.fonts,accent)
+        talking=speech.is_talking()
         if self.page=='Home':
-            if t-self.touch_time > 2.7:
+            if self.thinking:
+                # Look up and to the side while waiting for the AI.
+                self.target_x=.55+.12*math.sin(t*1.3)
+                self.target_y=-.8
+            elif t-self.touch_time > 2.7:
                 self.target_x=.36*math.sin(t*.42) if self.prefs['animations'] else 0
                 self.target_y=.2*math.sin(t*.29) if self.prefs['animations'] else 0
             self.gaze_x+=(self.target_x-self.gaze_x)*.13
@@ -594,9 +692,15 @@ class RobotHUD:
                 self.next_blink=t+random.uniform(3.0,5.0)
             openness=blink_openness(t,self.blink_start)
             if self.prefs['mode']=='WAVE':
-                base={'listening':.35,'speaking':1.0,'quiet':.08}[self.wave_state]
+                state=self.wave_state
+                if self.thinking:
+                    state='thinking'
+                elif talking:
+                    state='speaking'
+                base={'listening':.35,'speaking':.65+.35*abs(math.sin(t*6.5)),'quiet':.08,
+                      'thinking':.18+.08*math.sin(t*3)}[state]
                 level=self.voice.level if self.voice else 0.0
-                self.wave_amp+=(max(base,min(1.0,level*1.6) if self.wave_state!='quiet' else 0)-self.wave_amp)*.15
+                self.wave_amp+=(max(base,min(1.0,level*1.6) if state!='quiet' else 0)-self.wave_amp)*.15
                 amp=self.wave_amp
                 wl=self.prefs['wave_layout']
                 if wl=='BARS':
@@ -608,19 +712,21 @@ class RobotHUD:
                 else:
                     draw_mic(self.canvas,accent,640,200,motion_t)
                     draw_wave(self.canvas,motion_t,accent,amp)
-                draw_text(self.canvas,self.wave_state.upper()+'...',self.fonts['small'],MUTED,center=(640,542))
+                self.draw_footer(t,state.upper()+'...')
                 self.draw_caption(t)
                 nav_bar(self.canvas,self.page,self.fonts,accent)
                 return
             dx,ey,sc,sy=LAYOUT_CHOICES[self.prefs['layout']]
             if self.mood=='surprised':
                 sc*=1.12
+            mood='thinking' if self.thinking else self.mood
             for ex,side in ((640-dx,-1),(640+dx,1)):
-                draw_eye(self.canvas,ex,ey,motion_t,self.gaze_x,self.gaze_y,openness,accent,self.glow,sc,side,self.mood)
+                draw_eye(self.canvas,ex,ey,motion_t,self.gaze_x,self.gaze_y,openness,accent,self.glow,sc,side,mood)
             if sy is not None:
-                smile(self.canvas,motion_t,accent,sy,self.mood)
-            draw_text(self.canvas,'TAP TO LOOK AROUND  •  SAY: HAPPY, SAD, ANGRY, LOOK LEFT...',self.fonts['small'],MUTED,
-                      center=(640,542))
+                smile(self.canvas,t,accent,sy,mood,talking)
+            hint=('SAY "HEY LUNA" AND ASK ANYTHING  •  TAP TO STOP TALKING' if self.ai else
+                  'TAP TO LOOK AROUND  •  SAY: HAPPY, SAD, ANGRY, LOOK LEFT...')
+            self.draw_footer(t,hint)
             self.draw_caption(t)
         elif self.page=='Chat':
             chat_page(self.canvas,self.fonts,accent,t,self.chat_active)
@@ -630,14 +736,35 @@ class RobotHUD:
             settings_page(self.canvas,self.fonts,accent,self.prefs)
         nav_bar(self.canvas,self.page,self.fonts,accent)
 
-    def draw_caption(self,t):
-        if self.voice is None:
-            return
-        if t<self.heard_until:
-            text='HEARD: '+self.heard.upper()
+    def draw_footer(self,t,default):
+        """Bottom text: Luna's answer while relevant, otherwise the hint."""
+        if self.thinking:
+            lines=wrap_text(self.fonts['small'],'YOU: '+self.question,1040,1)
+        elif self.answer and (speech.is_talking() or t<self.answer_until):
+            lines=wrap_text(self.fonts['small'],self.answer,1040,2)
         else:
-            text='MIC: '+self.voice.status.upper()
-        draw_text(self.canvas,text,self.fonts['mini'],MUTED,topleft=(60,108))
+            lines=[default]
+        color=MUTED if lines==[default] else TEXT
+        y=542-12*(len(lines)-1)
+        for i,text in enumerate(lines):
+            draw_text(self.canvas,text,self.fonts['small'],color,center=(640,y+i*25))
+
+    def draw_caption(self,t):
+        if self.voice is None and self.ai is None:
+            return
+        if self.thinking:
+            text='THINKING...'
+        elif self.voice and self.voice.partial:
+            text='HEARING: '+self.voice.partial.upper()
+        elif t<self.heard_until:
+            text='HEARD: '+self.heard.upper()
+        elif self.ai and t<self.conversation_until:
+            text='LISTENING FOR YOUR FOLLOW-UP...'
+        else:
+            text='MIC: '+(self.voice.status.upper() if self.voice else 'OFF')
+        text+='   •   AI: '+('ON' if self.ai else 'OFF')
+        draw_text(self.canvas,wrap_text(self.fonts['mini'],text,1100,1)[0],self.fonts['mini'],MUTED,
+                  topleft=(60,108))
 
     def present(self):
         self.screen.fill((0,0,0))
@@ -674,6 +801,7 @@ def main():
     mode.add_argument('--fullscreen',action='store_true',help='Use current display fullscreen')
     parser.add_argument('--no-voice',action='store_true',help='Disable microphone commands')
     parser.add_argument('--no-speech',action='store_true',help='Disable spoken replies')
+    parser.add_argument('--no-ai',action='store_true',help='Disable online AI conversation')
     parser.add_argument('--screenshot',metavar='FILE',help='Save first frame as PNG and exit')
     args=parser.parse_args()
     RobotHUD(args).run(screenshot=args.screenshot)

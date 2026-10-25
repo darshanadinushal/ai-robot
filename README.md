@@ -123,6 +123,34 @@ Luna also **speaks a short confirmation** ("Looking left.", "Okay, I feel happy.
 microphone while talking so she does not hear herself. Windows uses the built-in voice; the Pi uses
 `espeak-ng` with `pw-play`, `paplay` or `aplay`. Use `--no-speech` to silence replies.
 
+## Talk to Luna (online AI)
+
+Say **"Hey Luna, tell me about Mars."** Luna looks up while thinking, then speaks the answer and
+shows it on screen. For about 8 seconds afterwards you can ask a follow-up without saying "Luna".
+Saying just "Luna" makes her answer "Yes?" and wait for your question. Short commands such as
+"look left" or "happy" still work offline. Tap the screen (or press `S`) to stop her talking.
+
+Only the recognised **text** is sent to OpenAI, never microphone audio. Setup (once):
+
+1. Create an API key at https://platform.openai.com/api-keys (API billing is separate from ChatGPT).
+2. Install the library: Windows `.\.venv\Scripts\python.exe -m pip install openai`,
+   Pi `.venv/bin/pip install openai` (the Pi install script already does this).
+3. Store the key **outside the repository** in `~/.luna.env`:
+
+   ```bash
+   # Raspberry Pi
+   read -rsp "OpenAI API key: " KEY; echo
+   printf 'OPENAI_API_KEY=%s\n' "$KEY" > ~/.luna.env; chmod 600 ~/.luna.env; unset KEY
+   ```
+
+   On Windows you can instead set it for one session: `$env:OPENAI_API_KEY = Read-Host "Key"`.
+4. Optional: add `LUNA_AI_MODEL=<model name>` to `~/.luna.env` to choose another model.
+5. Test typed chat first with `scripts/test_ai.py`, then run Luna normally.
+
+When a key is found the top-left status shows `AI: ON` and the microphone switches to free
+speech recognition (slightly less accurate for single command words). Use `--no-ai` to keep the
+command-only mode. Never commit the key or `~/.luna.env`.
+
 ## Controls
 
 | Input | Effect |
@@ -134,6 +162,7 @@ microphone while talking so she does not hear herself. Windows uses the built-in
 | Bottom **Settings** | Choose colour, layout, and enable/disable idle animations |
 | `1` / `2` / `3` / `4` | Chat / Home / Camera / Settings |
 | `Space` | Blink |
+| `S` / tap while Luna talks | Stop speaking |
 | `F11` | Toggle fullscreen / windowed mode |
 | `Esc`, `Q`, or top-right `X` | Exit |
 

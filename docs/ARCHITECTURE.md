@@ -3,10 +3,11 @@
 Luna is a touchscreen robot "face" written in Python with **pygame**. It targets a
 Raspberry Pi 5 with the 7" Touch Display 2 (1280×720, landscape) and is developed on Windows.
 It shows animated eyes or a voice-wave, reacts to **offline voice commands** (Vosk), and talks
-back with **offline text-to-speech**. An online AI "brain" is planned but not wired into the app yet.
+back with **offline text-to-speech**. With an OpenAI key it also holds **"Hey Luna" conversations**
+through an online AI "brain"; everything else keeps working offline.
 
-No secrets live in this repository. The only planned secret is `OPENAI_API_KEY`, read from an
-environment variable (see "Planned work").
+No secrets live in this repository. The only secret is `OPENAI_API_KEY`, read from the
+environment or from `~/.luna.env` outside the repo (see section 5a).
 
 ## 1. Repository map
 
@@ -19,7 +20,7 @@ robot_hud/
   speech.py                 Offline TTS in background threads (Windows / Linux)
   preferences.py            User settings stored as JSON in the home folder
   geometry.py               Pure maths: viewport scaling, blink curve, clamp
-  ai.py                     Online AI client (LunaBrain). NOT used by app.py yet
+  ai.py                     Online AI: env loading, LunaBrain (OpenAI), AIWorker thread
 scripts/
   install-pi.sh             Raspberry Pi OS setup (apt, venv, Vosk, model)
   run-pi.sh                 Start fullscreen on the Pi (uses .venv if present)
@@ -27,7 +28,7 @@ scripts/
   setup-windows.ps1, run-windows.ps1   (+ SETUP_WINDOWS.bat / RUN_WINDOWS.bat)
   test_ai.py                Typed chat with LunaBrain (needs OPENAI_API_KEY)
 tests/
-  test_core.py              Unit tests: geometry, preferences, command parsing
+  test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_visual_smoke.py      Launches the app headless and saves a screenshot
 docs/ARCHITECTURE.md        This file
 .github/workflows/tests.yml GitHub Actions: runs the tests headless
@@ -37,20 +38,21 @@ AGENTS.md                   Rules and quick facts for AI coding assistants
 ## 2. Runtime overview
 
 ```text
- microphone ──> VoiceListener (thread) ──texts queue──┐
-                 │  level (0..1)                       │
-                 └──────────────┐                      v
- touch / mouse / keyboard ──> RobotHUD.events() ──> RobotHUD.handle_touch()
-                                      │              RobotHUD.apply_commands()
-                                      v                │   │
-                              RobotHUD.frame(t)  <─────┘   └─> speech.speak_async(reply)
-                                      │                            (thread: espeak-ng / SAPI)
-                                      v
-                    canvas 1280x720 ──scaled──> window / fullscreen
+ microphone ──> VoiceListener (thread) ──texts queue──> RobotHUD.handle_speech()
+                 │  level, partial                         │ commands.route()
+                 v                                         ├─ command ─> apply_actions() ─┐
+ touch / mouse / keyboard ──> RobotHUD.events()            ├─ wake ────> "Yes?" ──────────┤
+                                      │                    └─ ai ──────> ask_ai()          │
+                                      v                                  │ AIWorker (thread)
+                              RobotHUD.frame(t)                          │ OpenAI Responses API
+                                      │            answers queue <───────┘                 │
+                                      v                    │                               v
+                    canvas 1280x720 ──scaled──>    poll_voice() ──> speech.speak_async() (queue worker)
 ```
 
 Main loop (`RobotHUD.run`, 30 FPS): `events(t)` → `frame(t)` → `present()`.
-`frame()` first calls `poll_voice(t)`, which drains recognised text and calls `apply_commands`.
+`frame()` first calls `poll_voice(t)`, which drains recognised text (→ `handle_speech`) and
+AI answers (→ show + speak), and opens the follow-up window when speech ends.
 
 ### Rendering model
 - Everything is drawn on a fixed **1280×720 logical canvas** (`CANVAS_WIDTH/HEIGHT` in
@@ -70,10 +72,16 @@ Main loop (`RobotHUD.run`, 30 FPS): `events(t)` → `frame(t)` → `present()`.
 - **FACE**: two `draw_eye` calls + `smile`. Face layouts live in `LAYOUT_CHOICES`
   (`preferences.py`) as `(eye offset, eye y, eye scale, smile y | None)`.
   Mood (`self.mood`) changes lid cuts and smile curve: `neutral, happy, sad, angry,
-  sleepy, surprised`. Gaze follows touch or a slow idle drift.
+  sleepy, surprised`, plus `thinking` (pulsing dots, gaze up-right) while the AI works.
+  `smile(..., talking=True)` animates an open mouth while speech plays. Gaze follows touch
+  or a slow idle drift.
 - **WAVE**: microphone icon + one of `WAVE_LAYOUTS` (`MESH`, `BARS`, `CIRCLE`), drawn by
   `draw_wave`, `draw_wave_bars`, `draw_wave_circle`. Amplitude `self.wave_amp` is smoothed
-  toward `max(state base, live mic level)`; state is `listening` / `speaking` / `quiet`.
+  toward `max(state base, live mic level)`; state is `listening` / `speaking` / `quiet`, and is
+  overridden by `thinking` (AI busy) or `speaking` (speech playing).
+- **Footer / caption:** `draw_footer` shows the question while thinking, Luna's answer (2 wrapped
+  lines) while talking and for 20 s after, else a hint. `draw_caption` (top left) shows
+  THINKING / HEARING partial / HEARD text / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
 Two tabs (FACE MODE / WAVE MODE) choose which mode Home shows. Both tabs share colour and
@@ -86,26 +94,34 @@ Every change calls `RobotHUD.save()`.
    `vosk` and `sounddevice` and the model folder `~/.ai-robot-models/vosk-model-small-en-us-0.15`
    (fetched by `scripts/download-voice-model.py`). If anything is missing it sets
    `status` (shown on screen) and the app keeps working without voice.
-2. Recognition is **grammar-restricted** to `commands.VOCABULARY` (+ `[unk]`) for accuracy.
-   Consequence: it can only recognise our command words — free-form questions need a
-   different recogniser setup (see Planned work).
-3. Finished phrases go to `VoiceListener.texts` (a `queue.Queue`); `level` is the mic volume.
-4. `commands.parse_command(text)` maps each word through `KEYWORDS` to
-   `(kind, value)` actions: `expression`, `look`, `blink`, `wave`, `mode`, `color`.
-5. `RobotHUD.apply_commands` applies the actions, then `speech.speak_async(reply_for(actions))`.
-   Expressions revert to neutral after 10 s; `speaking` wave state lasts 6 s.
+2. Recognition mode: **grammar-restricted** to `commands.VOCABULARY` (+ `[unk]`) when AI is off
+   (most accurate for commands), **free-form** (`VoiceListener(free_form=True)`) when AI is on.
+3. Finished phrases go to `VoiceListener.texts` (a `queue.Queue`); `level` is the mic volume and
+   `partial` the in-progress text.
+4. `commands.route(text, conversation)` decides:
+   - `("command", actions)`: the phrase has actions and at most 4 words ("look left", "happy").
+   - `("wake", "")`: only the wake word ("luna"; misheard variants lunar/loona/looner accepted).
+   - `("ai", question)`: wake word plus more words (leading hey/hi/hello/ok are stripped), or any
+     longer phrase during the 8 s follow-up window (`conversation=True`).
+   - `("ignore", "")`: background talk without the wake word.
+5. `commands.parse_command(text)` maps each word through `KEYWORDS` to `(kind, value)` actions:
+   `expression`, `look`, `blink`, `wave`, `mode`, `color`. `RobotHUD.apply_actions` applies them
+   and speaks `reply_for(actions)`. Expressions revert after 10 s; `speaking` wave state lasts 6 s.
 
 **Echo protection:** `VoiceListener(muted=speech.is_speaking)` drops audio and resets the
 recogniser while Luna is talking and for `speech.TAIL_SECONDS` (0.8 s) afterwards.
 
 ### Adding a voice command
 1. Add the word(s) to `KEYWORDS` in `commands.py` (vocabulary updates automatically).
-2. Handle a new `kind` in `RobotHUD.apply_commands` and add a spoken line in `reply_for`.
+2. Handle a new `kind` in `RobotHUD.apply_actions` and add a spoken line in `reply_for`.
 3. Add a case to `CommandTests` in `tests/test_core.py`.
 
 ## 4. Speech output (`speech.py`)
-- `speak(message)` is blocking; `speak_async(message)` starts a daemon thread.
-- A non-blocking lock means a new request is **dropped** while one is playing.
+- `speak(message)` is blocking; `speak_async(message)` queues text for one daemon worker,
+  so replies play in order. `clean_for_speech` strips markdown and limits text to 700 chars.
+- `stop()` bumps a generation counter: queued items are skipped and the playing process is
+  killed (tap Home or press `S`). `is_talking()` = audio playing; `is_speaking()` also
+  covers the 0.8 s tail and is used for mic muting.
 - Windows: PowerShell + `System.Speech` (text passed through stdin, never through the command
   line). Linux/Pi: `espeak-ng` writes a temp WAV, then `pw-play`, `paplay` or `aplay`.
 - `speech.enabled = False` (CLI `--no-speech`) disables all speech.
@@ -125,13 +141,25 @@ File: `~/.ai-robot-hud.json` (outside the repo; its name is gitignored).
 unknown keys are ignored. Adding a setting means: default in `read_preferences`, validation,
 `write_preferences`, UI in `settings_page` + `handle_touch`, and updating the tests.
 
+## 5a. AI conversation (`ai.py`)
+- `ai_configured()` loads `~/.luna.env` (only `OPENAI_*` / `LUNA_*` keys, never overriding
+  the real environment) and returns whether `OPENAI_API_KEY` is set. The app creates an
+  `AIWorker` only if it is configured and `--no-ai` is not given.
+- `LunaBrain` lazily imports `openai`, uses the Responses API with `previous_response_id`
+  for conversation memory, timeout 30 s, 1 retry. Model: `LUNA_AI_MODEL` or `DEFAULT_MODEL`
+  (unverified default). `INSTRUCTIONS` ask for 1–3 short plain sentences, because answers are spoken.
+- `AIWorker` handles one question at a time in a daemon thread (`ask()` returns False if busy)
+  and puts `("answer", text)` or `("error", friendly text)` on `answers`. Errors are logged by
+  class name only; `friendly_error` turns them into a short spoken sentence (no secrets).
+- Privacy: only recognised text is sent, never audio.
+
 ## 6. Command-line options (`main.py`)
 `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
-`--no-voice`, `--no-speech`, `--screenshot FILE` (save first frame and exit).
-Keyboard: `1-4` pages, `Space` blink, `F11` fullscreen, `Esc`/`Q` quit.
+`--no-voice`, `--no-speech`, `--no-ai`, `--screenshot FILE` (save first frame and exit).
+Keyboard: `1-4` pages, `Space` blink, `S` stop speaking, `F11` fullscreen, `Esc`/`Q` quit.
 
 ## 7. Platform notes
-- **Windows dev:** `.venv` + `requirements.txt` (pygame, vosk, sounddevice).
+- **Windows dev:** `.venv` + `requirements.txt` (pygame, vosk, sounddevice, openai).
 - **Raspberry Pi OS:** pygame comes from apt (`python3-pygame`); the venv is created with
   `--system-site-packages` so it can still import it. Needs `libportaudio2`, `espeak-ng`,
   and a PipeWire/Pulse/ALSA player. Run from the desktop session (or `DISPLAY=:0` over SSH).
@@ -141,11 +169,13 @@ Keyboard: `1-4` pages, `Space` blink, `F11` fullscreen, `Esc`/`Q` quit.
 `python -m unittest discover -s tests -v`. `test_core.py` is pure Python (no display).
 `test_visual_smoke.py` renders one frame headless. Visual changes are best checked by
 rendering to PNG (`--screenshot`) or by building `RobotHUD` with a dummy driver and saving
-`canvas` — pass a namespace with `fullscreen, windowed, no_voice, no_speech`.
+`canvas` — pass a namespace with `fullscreen, windowed, no_voice, no_speech, no_ai`.
+To preview AI states, assign a fake object with an `answers` queue to `hud.ai` and set
+`thinking`, `question`, `answer`, `answer_until`.
 
 ## 9. Design decisions worth knowing
 - **Offline first:** recognition, commands, expressions and speech work with no internet.
-  Only the future AI conversation needs the network, and only recognised *text* would be sent.
+  Only the AI conversation needs the network, and only recognised *text* is sent.
 - **Optional heavy dependencies:** voice and AI imports are lazy/guarded so the face always starts.
 - **Pure modules** (`commands.py`, `geometry.py`, `preferences.py`) have no pygame import and
   are the easiest place to add tested logic.
@@ -153,14 +183,13 @@ rendering to PNG (`--screenshot`) or by building `RobotHUD` with a dummy driver 
 - Threads never touch pygame; they communicate through a queue, a float (`level`) and a status string.
 
 ## 10. Planned work (not implemented)
-1. **AI conversation:** `robot_hud/ai.py` (`LunaBrain`, OpenAI Responses API with
-   `previous_response_id` history) exists and is exercised only by `scripts/test_ai.py`.
-   Needs: unrestricted/wake-word recognition for open questions, a call from the app, and
-   showing/speaking the answer. Key via `OPENAI_API_KEY` environment variable only.
-2. **Settings tab to pick the AI model** (saved as a preference).
-3. **Autostart on Pi boot** (desktop autostart entry + auto-login).
-4. Real camera, motors, smart-home control (UI placeholders exist).
+1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
+2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
+3. Real camera, motors, smart-home control (UI placeholders exist).
+4. Streaming AI answers so Luna starts speaking sooner.
 
 ## 11. Known gaps
 - Wi-Fi, audio and battery icons are decorative, not live readings.
-- Speech requests arriving during playback are dropped rather than queued.
+- The small Vosk model may mishear "Luna"; variants are accepted in `commands.route`.
+- Free-form recognition (AI on) is less accurate for one-word commands than grammar mode.
+- The microphone is muted while Luna speaks, so you cannot interrupt her by voice (tap instead).

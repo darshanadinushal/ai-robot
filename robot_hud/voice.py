@@ -1,4 +1,4 @@
-"""Offline voice commands using Vosk and sounddevice (both optional)."""
+"""Offline speech recognition using Vosk and sounddevice (both optional)."""
 import json
 import math
 import queue
@@ -17,11 +17,17 @@ def model_path():
 
 
 class VoiceListener:
-    """Runs recognition in a thread; poll `texts` and `level` from the UI loop."""
+    """Runs recognition in a thread; poll `texts`, `partial` and `level` from the UI loop.
 
-    def __init__(self, muted=None):
+    free_form=True recognises any English sentence (needed for AI questions);
+    False restricts recognition to the command vocabulary, which is more accurate.
+    """
+
+    def __init__(self, muted=None, free_form=False):
         self._muted = muted or (lambda: False)
+        self.free_form = free_form
         self.texts = queue.Queue()
+        self.partial = ""
         self.level = 0.0
         self.status = "starting"
         self._stop = threading.Event()
@@ -46,8 +52,12 @@ class VoiceListener:
             return
         try:
             SetLogLevel(-1)
-            recognizer = KaldiRecognizer(
-                Model(str(path)), SAMPLE_RATE, json.dumps(VOCABULARY + ["[unk]"]))
+            model = Model(str(path))
+            if self.free_form:
+                recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+            else:
+                recognizer = KaldiRecognizer(
+                    model, SAMPLE_RATE, json.dumps(VOCABULARY + ["[unk]"]))
             audio = queue.Queue()
 
             def callback(data, frames, time_info, status):
@@ -65,13 +75,19 @@ class VoiceListener:
                     if self._muted():
                         recognizer.Reset()
                         self.level = 0.0
+                        self.partial = ""
                         continue
                     samples = struct.unpack("<%dh" % (len(data) // 2), data)
                     rms = math.sqrt(sum(s * s for s in samples) / max(len(samples), 1))
                     self.level = min(1.0, rms / 6000.0)
                     if recognizer.AcceptWaveform(data):
+                        self.partial = ""
                         text = json.loads(recognizer.Result()).get("text", "")
-                        if text and text != "[unk]":
+                        text = text.replace("[unk]", "").strip()
+                        if text:
                             self.texts.put(text)
+                    else:
+                        partial = json.loads(recognizer.PartialResult()).get("partial", "")
+                        self.partial = partial.replace("[unk]", "").strip()
         except Exception as exc:  # no microphone, busy device, etc.
             self.status = "microphone error: " + str(exc)[:60]

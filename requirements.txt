@@ -4,3 +4,5 @@ pygame>=2.6,<3
 # Optional offline voice commands (run scripts/download-voice-model.py once)
 vosk>=0.3.45
 sounddevice>=0.4.6
+# Optional online AI conversation (needs OPENAI_API_KEY)
+openai>=1.40

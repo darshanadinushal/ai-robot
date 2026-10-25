@@ -61,5 +61,51 @@ class CommandTests(unittest.TestCase):
         self.assertIsNone(reply_for([]))
 
 
+
+class RouteTests(unittest.TestCase):
+    def test_routes(self):
+        from robot_hud.commands import route
+        self.assertEqual(route("hey luna tell me about mars"), ("ai", "tell me about mars"))
+        self.assertEqual(route("look left")[0], "command")
+        self.assertEqual(route("luna")[0], "wake")
+        self.assertEqual(route("so we went to the shop and bought some bread")[0], "ignore")
+        self.assertEqual(route("why is the sky blue", conversation=True), ("ai", "why is the sky blue"))
+        self.assertEqual(route("")[0], "ignore")
+
+    def test_clean_for_speech(self):
+        from robot_hud.speech import clean_for_speech
+        self.assertEqual(clean_for_speech("**Hi** `there`\n- one"), "Hi there one")
+        self.assertLessEqual(len(clean_for_speech("word " * 500)), 701)
+
+
+class AIWorkerTests(unittest.TestCase):
+    def _get(self, worker):
+        import queue
+        return worker.answers.get(timeout=5)
+
+    def test_answer_and_error(self):
+        from robot_hud.ai import AIWorker
+
+        class Brain:
+            def ask(self, q):
+                if q == "boom":
+                    raise RuntimeError("secret detail")
+                return "Mars is red."
+            def forget(self):
+                pass
+
+        w = AIWorker(brain_factory=Brain)
+        self.assertTrue(w.ask("mars?"))
+        self.assertEqual(self._get(w), ("answer", "Mars is red."))
+        import time
+        for _ in range(50):
+            if not w.busy:
+                break
+            time.sleep(0.01)
+        self.assertTrue(w.ask("boom"))
+        kind, text = self._get(w)
+        self.assertEqual(kind, "error")
+        self.assertNotIn("secret", text)
+
 if __name__=='__main__':
     unittest.main()

@@ -42,6 +42,40 @@ def parse_command(text):
     return actions
 
 
+# How the offline recogniser may spell "Luna".
+WAKE_WORDS = ("luna", "lunar", "loona", "looner")
+GREETINGS = ("hey", "hi", "hello", "ok", "okay")
+# Without the wake word, only short phrases count as commands (ignores background talk).
+MAX_COMMAND_WORDS = 4
+
+
+def _words(text):
+    cleaned = "".join(c if c.isalnum() or c == "'" else " " for c in str(text).lower())
+    return cleaned.split()
+
+
+def route(text, conversation=False):
+    """Decide what to do with recognised speech.
+
+    Returns ("command", actions), ("ai", question), ("wake", "") or ("ignore", "").
+    `conversation` is True right after Luna answered, so follow-ups need no wake word.
+    """
+    words = _words(text)
+    woke = any(w in WAKE_WORDS for w in words)
+    if woke:
+        words = [w for w in words if w not in WAKE_WORDS]
+        while words and words[0] in GREETINGS:
+            words = words[1:]
+    if not words:
+        return ("wake", "") if woke else ("ignore", "")
+    actions = parse_command(" ".join(words))
+    if actions and len(words) <= MAX_COMMAND_WORDS:
+        return ("command", actions)
+    if woke or conversation:
+        return ("ai", " ".join(words))
+    return ("ignore", "")
+
+
 _LOOK_NAMES = {(-1.0, 0.0): "left", (1.0, 0.0): "right", (0.0, -1.0): "up",
                (0.0, 1.0): "down", (0.0, 0.0): "ahead"}
 
