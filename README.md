@@ -24,9 +24,6 @@ with an online AI. Camera video, motors and home control are future work.
 - **AI conversation** (optional): "Hey Luna, …" questions, spoken + on-screen answers,
   follow-up questions, tap to stop. Answers are streamed: Luna starts speaking after the first
   sentence while the rest is still being generated, and the text appears as it arrives
-- **Switch language by voice:** "Luna, can you speak Swedish?", "Luna, switch to English",
-  "Hej Luna, kan du prata engelska?", "Hej Luna, byt till svenska". Works whichever language
-  Luna is listening in; she confirms in the new voice
 - **Live transcript:** what you say appears in a "YOU:" bubble; Luna's reply appears at the bottom
 - **Chat**, **Home**, **Camera**, **Settings** touchscreen navigation
 - Settings with a section menu: Display & Theme (mode, colour, layout), Language

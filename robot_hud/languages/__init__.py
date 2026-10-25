@@ -14,10 +14,6 @@ Fields:
   commands        spoken word -> action ID (see commands.ACTIONS); filler_words are ignored
   replies         action ID -> Luna's spoken confirmation
   speech          Luna's fixed English sentences -> translated sentence
-  switch_phrases  target language code -> phrases in this language that ask Luna to speak it
-                  ("speak swedish", "byt till engelska"); switch_extra_words may surround them
-                  ("can you ... please"). Not taken from English.
-  switch_confirmation  said in this language after switching to it by voice
   ai_instruction  added to the AI instructions so answers come in this language
   sample          voice preview sentence;  warm_up: short word used to test a natural voice
   windows_culture culture of the built-in Windows voice (local testing), e.g. "sv-SE"
@@ -47,9 +43,6 @@ class LanguagePack:
     sample: str
     warm_up: str
     windows_culture: str
-    switch_phrases: dict = None
-    switch_extra_words: tuple = ()
-    switch_confirmation: str = ""
 
     def reply(self, action_id):
         return self.replies.get(action_id)
@@ -89,11 +82,7 @@ def _build(data, english):
         replies=replies, speech=dict(data.get("speech") or {}),
         ai_instruction=data.get("ai_instruction") or "Always answer in %s." % data["name"],
         sample=field("sample", ""), warm_up=field("warm_up", "Hello."),
-        windows_culture=str(data.get("windows_culture") or ""),
-        switch_phrases={code: tuple(" ".join(p.lower().split()) for p in phrases)
-                        for code, phrases in (data.get("switch_phrases") or {}).items()},
-        switch_extra_words=tuple(w.lower() for w in data.get("switch_extra_words") or ()),
-        switch_confirmation=str(data.get("switch_confirmation") or ""))
+        windows_culture=str(data.get("windows_culture") or ""))
 
 
 def load(folder=FOLDER):

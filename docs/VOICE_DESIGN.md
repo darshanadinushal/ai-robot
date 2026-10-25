@@ -34,7 +34,6 @@ the Swedish model Luna keeps listening in English.
 | **2. Voice engine** | Voice catalogue, Piper kept in memory, sentence pipeline (prepare next while playing), immediate stop, safe voice switching, eSpeak/Windows fallback, tests (section 4) | ai-robot | done, Pi test pending (headset audio) |
 | **3. Settings** | Language (English / Svenska) and Female / Male buttons, preview phrase, saved preference, readiness/loading status | ai-robot | done (new Settings layout) |
 | **4. Response speed** | Stream the AI answer and speak each sentence as it arrives (today Luna waits for the full answer: 5-10 s) | ai-robot | done, Pi test pending |
-| **4.1 Voice language switch** | "Luna, can you speak Swedish?" / "Hej Luna, byt till engelska": same as the Settings button, confirmed in the new voice, works across languages (switch ear), see ARCHITECTURE.md section 3 | ai-robot | done, Pi test pending |
 
 The Pi is tested at the end of every phase. Luna's engine (phase 2) reads the voices from the
 same folder and file names the installer uses; Luna does not download voices itself.

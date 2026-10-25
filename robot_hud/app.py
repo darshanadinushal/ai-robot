@@ -20,11 +20,11 @@ except ImportError as exc:
     ) from exc
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
-from .commands import CANNOT_SWITCH, language_switch, parse_command, reply_for, route, spoken
+from .commands import parse_command, reply_for, route, spoken
 from . import i18n, languages, speech
 from .i18n import tr
 from .ai import LOST_CONNECTION, AIWorker, ai_configured
-from .voice import VoiceListener, listening_installed
+from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 from .settings import SECTIONS, apply_choice
 from .voices import LANGUAGES as VOICE_LANGUAGES, get_voice, sample_text, voices_for
@@ -693,7 +693,6 @@ class RobotHUD:
         self.settings_section=0
         self.settings_hits=[]
         self.preview=''  # '' | 'waiting' (voice still loading) | 'playing'
-        self.switch_confirm=''  # language switched to by voice; confirmed once its voice loaded
         speech.enabled=not args.no_speech
         # The voice is a preference; LUNA_VOICE overrides it for testing without saving it.
         self.voice_key=os.environ.get('LUNA_VOICE') or self.prefs['voice']
@@ -749,7 +748,7 @@ class RobotHUD:
                 self.page=name
                 return
         if self.page=='Home':
-            if speech.is_talking() or self.answer_streaming or self.switch_confirm:
+            if speech.is_talking() or self.answer_streaming:
                 self.interrupt_answer()
             self.target_x=clamp((x-W/2)/(W/2),-1,1)
             self.target_y=clamp((y-292)/290,-1,1)
@@ -796,30 +795,6 @@ class RobotHUD:
         elif self.preview=='playing' and not speech.is_talking():
             self.preview=''
 
-    def update_switch(self):
-        if self.switch_confirm and speech.voice_state()[0]!='loading':
-            pack=languages.get(self.switch_confirm)
-            speech.speak_async(pack.switch_confirmation or pack.warm_up)
-            self.switch_confirm=''
-
-    def voice_switch(self,target,t):
-        """'Luna, speak Swedish': change the voice language like Settings does (keeping the
-        voice type and the screen language), then confirm in the new voice once it has loaded."""
-        self.heard_kind='switch'
-        self.heard_until=t+8
-        self.interrupt_answer()  # stops speech and any AI answer, silently
-        self.preview=''
-        self.conversation_until=0.0
-        current=self.talk_language
-        if target!=current and not (voices_for(target) and listening_installed(target)):
-            # Keep the current language: Luna could not understand the new one.
-            name=languages.get(target).name
-            name=languages.get(current).screen.get(name,name)
-            speech.speak_async(spoken(CANNOT_SWITCH,current).format(language=name))
-            return
-        self.settings_choice('voice_language',target)
-        self.switch_confirm=target
-
     def apply_commands(self,text,t):
         self.heard=text
         self.heard_until=t+6
@@ -855,12 +830,8 @@ class RobotHUD:
         """Route recognised speech to an offline command or the online AI."""
         self.heard=text
         self.heard_until=t+8
-        conversation=self.ai is not None and t<self.conversation_until
-        target=language_switch(text,self.heard_language,conversation)
-        if target:  # before commands and AI: "speak" is also a command word
-            self.voice_switch(target,t)
-            return
-        kind,value=route(text,conversation=conversation,language=self.heard_language)
+        kind,value=route(text,conversation=self.ai is not None and t<self.conversation_until,
+                         language=self.heard_language)
         self.heard_kind=kind
         if kind=='command':
             self.apply_actions(value,t)
@@ -896,14 +867,6 @@ class RobotHUD:
                     self.handle_speech(self.voice.texts.get_nowait(),t)
                 except queue.Empty:
                     break
-            switches=getattr(self.voice,'switches',None)
-            while switches is not None:
-                try:
-                    target,heard_in,text=switches.get_nowait()
-                except queue.Empty:
-                    break
-                self.heard=text
-                self.voice_switch(target,t)
         if self.ai:
             while True:
                 try:
@@ -947,13 +910,12 @@ class RobotHUD:
 
     def mic_muted(self):
         # Stay deaf between streamed sentences too, so Luna never hears herself.
-        return speech.is_speaking() or self.answer_streaming or bool(self.switch_confirm)
+        return speech.is_speaking() or self.answer_streaming
 
     def interrupt_answer(self):
         """The user stopped Luna: silence her and drop the unfinished answer (not remembered)."""
         speech.stop()
         self.followup_pending=False
-        self.switch_confirm=''
         if self.answer_streaming or self.ai_request:
             if self.ai and self.ai_request:
                 self.ai.cancel(self.ai_request)
@@ -1010,7 +972,6 @@ class RobotHUD:
         self.canvas.blit(self.background,(0,0))
         motion_t = t if self.prefs['animations'] else 0.0
         self.update_preview()
-        self.update_switch()
         if self.page!='Settings':
             draw_scifi_chrome(self.canvas,accent,motion_t)
         status_bar(self.canvas,self.fonts,accent)

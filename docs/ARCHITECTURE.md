@@ -35,7 +35,6 @@ scripts/
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
-  test_language_switch.py   Phase 4.1: "Luna, speak Swedish": matcher, switch ears (fake Vosk), app flow
   test_speech.py            Speech engine tests with fake voices/player (no audio)
   test_settings.py          Settings choices and taps on a headless screen
   test_swedish.py           Swedish listening, commands, replies and AI language
@@ -137,10 +136,7 @@ Up/Down keys change it). The section list and what each tap changes live in `set
    is on. The Swedish model has a fixed graph, so it always recognises free speech.
 3. Finished phrases go to `VoiceListener.texts` (a `queue.Queue`); `level` is the mic volume and
    `partial` the in-progress text.
-4. **Language switch first** (phase 4.1): `commands.language_switch(text, language,
-   conversation)` returns a target language for "Luna, can you speak Swedish?", "Hej Luna, byt
-   till engelska" etc. (see *Voice language switching* below). Only otherwise:
-   `commands.route(text, conversation)` decides:
+4. `commands.route(text, conversation)` decides:
    - `("command", actions)`: the phrase has actions and at most 4 words ("look left", "happy").
    - `("wake", "")`: only the wake word ("luna"; misheard variants lunar/loona/looner accepted).
      Each pack lists its `wake_words`: the Swedish model has no "luna", so sv.json lists what it
@@ -160,44 +156,6 @@ Up/Down keys change it). The section list and what each tap changes live in `set
 recogniser while Luna is talking, for `speech.TAIL_SECONDS` (0.8 s) afterwards, and while an AI
 answer is still streaming (so she stays deaf in the gaps between streamed sentences).
 
-### Voice language switching (phase 4.1)
-- **Phrases** live in each pack: `switch_phrases` (target code → phrases *in that pack's
-  language*), `switch_extra_words` and `switch_confirmation` (said in the new language).
-  `language_switch` needs the wake word (or the follow-up window) and a phrase surrounded only
-  by wake words, greetings and extra words, so "Luna, how do you say hello in Swedish?" or
-  "Luna, don't speak Swedish" go on to the AI / are ignored. It runs before commands and AI
-  ("speak" is also a command word). The Swedish model often hears "byt" as "bit"/"by", so
-  sv.json lists those spellings too.
-- **Cross-language:** while Luna listens in Swedish, the Swedish model cannot understand
-  "Luna, can you speak English?". `VoiceListener` therefore runs a `SwitchEar` for each other
-  installed language (`LUNA_SWITCH_EARS`, default 1; `0` turns it off): a recogniser on the same
-  audio whose grammar holds only the switch words (`commands.switch_vocabulary`) plus `[unk]`.
-  Results with `[unk]` are rejected. The Swedish model has no runtime grammar, so its ear
-  hears freely, and only `language_switch` filters it.
-- **Cost on the Pi:** the ears use the main recogniser's model cache (switching language
-  reuses the loaded model, unused models are freed), so both listening models stay in memory.
-  They load in a background thread and only get audio while someone speaks (level >=
-  `VOICE_LEVEL`, plus 1 s), then `FinalResult()`. Measured on the laptop: about 0.1-0.2 s of CPU
-  per 5 s of speech, against about 0.8 s for the English free-form main recogniser.
-- **RAM limit:** an ear is only made for a model up to `LUNA_SWITCH_EAR_MB` on disk (default
-  300). The Swedish model (769 MB, a 736 MB `HCLG.fst`) takes about 1.3 GB of RAM, which pushed
-  the Pi into swap and made Luna slow. So while Luna listens in English there is no Swedish ear:
-  say "Luna, switch to Swedish" in English, or use Settings. While listening in Swedish, the
-  English ear (68 MB model, about 0.5 GB RAM) still hears "Luna, can you speak English?".
-- **One answer per sentence:** if an ear is hearing the wake word when the main recogniser
-  finishes a sentence, that sentence is held (at most `HOLD_SECONDS`, 1.5 s). If the ear
-  recognises a switch, the held or later main result of the same sentence is dropped and
-  `(target, heard language, text)` goes to `VoiceListener.switches`.
-- **App:** `RobotHUD.voice_switch(target)` stops speech and any AI stream silently
-  (`interrupt_answer`), then calls `settings_choice('voice_language', target)`, the same path
-  as the Settings button. That keeps the voice type, saves the preference, loads the voice and
-  switches the microphone. It does not change the screen language. The pack's
-  `switch_confirmation` is spoken once `speech.voice_state()` is no longer `loading`; the mic
-  stays muted until then. If the target has no voice, or its listening model is missing
-  (`voice.listening_installed`), Luna keeps her language and says
-  `commands.CANNOT_SWITCH` ("Sorry, I cannot understand Swedish yet."). Asking for the current
-  language just confirms. A tap on Home cancels a pending confirmation.
-
 ### Adding a voice command
 1. New word for an existing action: add it to `commands` in each pack (`languages/<code>.json`).
 2. New action: add its ID to `commands.ACTIONS`, a word and a reply for it in **every** pack
@@ -207,10 +165,7 @@ answer is still streaming (so she stays deaf in the gaps between streamed senten
 ### Adding a language (no code changes)
 1. Copy `robot_hud/languages/en.json` to `<code>.json` (e.g. `de.json`) and translate it:
    `name`, `native_name`, `screen` (English text → translation), `commands`, `wake_words`,
-   `greetings`, `replies`, `speech`, `ai_instruction`, `sample`, `warm_up`, `windows_culture`,
-   `switch_phrases` (for every language), `switch_extra_words`, `switch_confirmation`.
-   Also add phrases for the new language to `switch_phrases` in **every** other pack
-   ("speak german", "byt till tyska"); `test_language_switch` checks this.
+   `greetings`, `replies`, `speech`, `ai_instruction`, `sample`, `warm_up`, `windows_culture`.
 2. Set `listening_model` (and `listening_model_mb`) to a small Vosk model from
    alphacephei.com/vosk/models. Find the wake words by testing what that model hears for "Luna".
 3. Add at least one voice of the language to `voices.json` (below), then run the tests.
@@ -327,6 +282,7 @@ To preview AI states, assign a fake object with an `answers` queue to `hud.ai` a
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
 3. Real camera, motors, smart-home control (UI placeholders exist).
+4. Streaming AI answers so Luna starts speaking sooner.
 
 ## 11. Known gaps
 - Wi-Fi, audio and battery icons are decorative, not live readings.
