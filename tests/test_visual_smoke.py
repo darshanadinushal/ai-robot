@@ -18,7 +18,8 @@ class VisualTests(unittest.TestCase):
             env=os.environ.copy()
             env['SDL_VIDEODRIVER']='dummy'
             env['SDL_AUDIODRIVER']='dummy'
-            proc=subprocess.run([sys.executable,'main.py','--windowed','--screenshot',str(output)],
+            proc=subprocess.run([sys.executable,'main.py','--windowed','--no-voice','--no-speech',
+                                 '--no-ai','--screenshot',str(output)],
                                 cwd=root,env=env,capture_output=True,text=True,timeout=35)
             self.assertEqual(proc.returncode,0,proc.stdout+'\n'+proc.stderr)
             self.assertGreater(output.stat().st_size,2000)

@@ -831,6 +831,9 @@ def main():
     parser.add_argument('--no-ai',action='store_true',help='Disable online AI conversation')
     parser.add_argument('--screenshot',metavar='FILE',help='Save first frame as PNG and exit')
     args=parser.parse_args()
+    if args.screenshot:
+        # One static frame: don't start the microphone, speech or AI threads.
+        args.no_voice=args.no_speech=args.no_ai=True
     RobotHUD(args).run(screenshot=args.screenshot)
 
 

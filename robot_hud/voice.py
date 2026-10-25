@@ -36,8 +36,11 @@ class VoiceListener:
     def start(self):
         self._thread.start()
 
-    def stop(self):
+    def stop(self, timeout=3.0):
+        """Stop and wait so native audio code is not running at interpreter exit."""
         self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout)
 
     def _run(self):
         try:
@@ -53,6 +56,8 @@ class VoiceListener:
         try:
             SetLogLevel(-1)
             model = Model(str(path))
+            if self._stop.is_set():
+                return
             if self.free_form:
                 recognizer = KaldiRecognizer(model, SAMPLE_RATE)
             else:

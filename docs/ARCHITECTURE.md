@@ -157,7 +157,9 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
 
 ## 6. Command-line options (`main.py`)
 `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
-`--no-voice`, `--no-speech`, `--no-ai`, `--screenshot FILE` (save first frame and exit).
+`--no-voice`, `--no-speech`, `--no-ai`, `--screenshot FILE` (save first frame and exit; implies
+no voice/speech/AI so no native audio thread is alive at exit — on the Pi that caused a segfault).
+`VoiceListener.stop()` joins the thread (3 s timeout) for the same reason.
 Keyboard: `1-4` pages, `Space` blink, `S` stop speaking, `F11` fullscreen, `Esc`/`Q` quit.
 
 ## 7. Platform notes
