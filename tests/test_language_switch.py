@@ -236,6 +236,17 @@ class EarLoadingTests(unittest.TestCase):
             self.assertEqual(listener._make_ears(FakeModel, FakeRecognizer), [])
         self.assertEqual(list(listener._models), ["sv"], "unused models are freed")
 
+    def test_large_models_get_no_ear(self):
+        self.install("en", "sv")
+        (self.home / voice.MODELS["sv"] / "HCLG.fst").write_bytes(bytes(2 * 2**20))
+        english = voice.VoiceListener(language="en")
+        english._load(FakeModel, FakeRecognizer)
+        with mock.patch.object(voice, "SWITCH_EAR_MB", 1):
+            self.assertEqual(english.ear_languages(), [], "no Swedish ear: too much RAM")
+            swedish = voice.VoiceListener(language="sv")
+            swedish._load(FakeModel, FakeRecognizer)
+            self.assertEqual(swedish.ear_languages(), ["en"], "the small English model is fine")
+
     def test_listening_installed(self):
         self.assertFalse(voice.listening_installed("sv"))
         self.install("sv")

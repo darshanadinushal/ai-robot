@@ -21,7 +21,10 @@ SAMPLE_RATE = 16000
 # Cross-language switching ("Luna, speak English" while Luna listens in Swedish): a small
 # recogniser per other installed language that only knows its switch phrases.
 # LUNA_SWITCH_EARS limits how many (each keeps one more Vosk model in memory); 0 turns it off.
+# Only models up to LUNA_SWITCH_EAR_MB on disk are used: the Swedish model has a 736 MB graph
+# that takes over 1 GB of RAM, far too much to keep loaded just for switch requests.
 SWITCH_EARS = max(0, int(os.environ.get("LUNA_SWITCH_EARS", "1") or 0))
+SWITCH_EAR_MB = max(0, int(os.environ.get("LUNA_SWITCH_EAR_MB", "300") or 0))
 VOICE_LEVEL = 0.04     # microphone level that counts as someone speaking
 SWITCH_HANGOVER = 1.0  # seconds the switch ears keep listening after the speech stops
 HOLD_SECONDS = 1.5     # longest a heard sentence waits for the switch ears to decide
@@ -29,6 +32,15 @@ HOLD_SECONDS = 1.5     # longest a heard sentence waits for the switch ears to d
 
 def model_path(language="en"):
     return Path.home() / ".ai-robot-models" / MODELS.get(language, MODEL_NAME)
+
+
+def model_size_mb(language):
+    """Size of a language's listening model on disk (a guide to the RAM it needs)."""
+    folder = model_path(language)
+    try:
+        return sum(f.stat().st_size for f in folder.rglob("*") if f.is_file()) / 2**20
+    except OSError:
+        return 0.0
 
 
 def listening_installed(language):
@@ -242,10 +254,11 @@ class VoiceListener:
                                json.dumps(vocabulary(used) + ["[unk]"], ensure_ascii=False))
 
     def ear_languages(self):
-        """Other installed languages that have switch phrases (at most SWITCH_EARS)."""
+        """Other installed languages with switch phrases and a small enough model."""
         found = [code for code in MODELS
                  if code != self.active_language and model_path(code).is_dir()
-                 and languages.get(code).switch_phrases]
+                 and languages.get(code).switch_phrases
+                 and model_size_mb(code) <= SWITCH_EAR_MB]
         return found[:SWITCH_EARS]
 
     def _start_ears(self, Model, KaldiRecognizer):

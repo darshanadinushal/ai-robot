@@ -179,6 +179,11 @@ answer is still streaming (so she stays deaf in the gaps between streamed senten
   They load in a background thread and only get audio while someone speaks (level >=
   `VOICE_LEVEL`, plus 1 s), then `FinalResult()`. Measured on the laptop: about 0.1-0.2 s of CPU
   per 5 s of speech, against about 0.8 s for the English free-form main recogniser.
+- **RAM limit:** an ear is only made for a model up to `LUNA_SWITCH_EAR_MB` on disk (default
+  300). The Swedish model (769 MB, a 736 MB `HCLG.fst`) takes about 1.3 GB of RAM, which pushed
+  the Pi into swap and made Luna slow. So while Luna listens in English there is no Swedish ear:
+  say "Luna, switch to Swedish" in English, or use Settings. While listening in Swedish, the
+  English ear (68 MB model, about 0.5 GB RAM) still hears "Luna, can you speak English?".
 - **One answer per sentence:** if an ear is hearing the wake word when the main recogniser
   finishes a sentence, that sentence is held (at most `HOLD_SECONDS`, 1.5 s). If the ear
   recognises a switch, the held or later main result of the same sentence is dropped and
