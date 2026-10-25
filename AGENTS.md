@@ -16,7 +16,8 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 ```
 
 ## Where things go
-- Spoken word -> behaviour: `robot_hud/commands.py` (`KEYWORDS`, `route`, `reply_for`) +
+- Spoken word -> behaviour: `robot_hud/commands.py` (`KEYWORDS` / `SWEDISH_KEYWORDS`, `route`,
+  `reply_for`; everything takes the voice language, tested in `tests/test_swedish.py`) +
   `RobotHUD.handle_speech` / `apply_actions`.
 - AI conversation: `robot_hud/ai.py` (`LunaBrain`, `AIWorker`) + `RobotHUD.ask_ai` / `poll_voice`.
 - Drawing and pages: `robot_hud/app.py`. Settings logic in `robot_hud/settings.py` (tested in

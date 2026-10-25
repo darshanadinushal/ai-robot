@@ -15,6 +15,8 @@ with an online AI. Camera video, motors and home control are future work.
 - **Face mode** (classic, compact, minimal layouts) and **Wave mode** (mic with mesh, bars or
   circle voice-wave) — the wave reacts to your microphone volume
 - **Offline voice commands** with Vosk: expressions, looking around, blinking, colours, modes
+- **English or Swedish**: Luna listens, speaks and answers in the language of the selected
+  voice (Swedish commands such as "titta åt vänster", "var glad", "blinka")
 - **Spoken replies** (Windows built-in voice / `espeak-ng` on the Pi); the mic is muted while
   Luna talks so she does not hear herself
 - **AI conversation** (optional): "Hey Luna, …" questions, spoken + on-screen answers,
@@ -40,7 +42,7 @@ Without a microphone, voice model or API key, Luna still starts and shows her fa
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe scripts\download-voice-model.py   # once, for voice commands
+.\.venv\Scripts\python.exe scripts\download-voice-model.py en sv   # once: English + Swedish listening
 .\.venv\Scripts\python.exe main.py --windowed
 ```
 
@@ -163,6 +165,10 @@ Then talk:
 
 - Only the recognised **text** is sent to OpenAI, never microphone audio. You pay only for AI answers.
 - Mishearings such as "he luna", "lunar" or "loona" are accepted as the wake word.
+- **In Swedish** (Swedish voice selected) say "Hej Luna, …"; Luna answers in Swedish. The Swedish
+  model has no word "Luna", so the words it hears instead (lugn, lugna, lund, lunch, helene…)
+  count as the wake word. If the Swedish model is missing, Luna keeps listening in English and
+  Settings → Voice → Listening says so.
 - With AI on, the microphone understands free speech, so single command words are recognised
   slightly less reliably. Use `--no-ai` for command-only mode.
 - Choose another model with `LUNA_AI_MODEL=<model>` (environment variable or a line in `~/.luna.env`).
@@ -244,7 +250,7 @@ ai-robot/
 | --- | --- |
 | `ModuleNotFoundError: pygame` | Pi: `sudo apt install -y python3-pygame`. Windows: install `requirements.txt` into `.venv`. |
 | `No available video device` | Run from the Pi desktop (or `DISPLAY=:0` over SSH), not a plain SSH session. |
-| Top left says `MIC: VOICE MODEL MISSING` | Run `scripts/download-voice-model.py` with the venv Python. |
+| Top left says `MIC: VOICE MODEL MISSING` | Run `scripts/download-voice-model.py en sv` with the venv Python. |
 | Top left says `MIC: VOICE PACKAGES MISSING` | Install `requirements.txt` (Windows) or run `install-pi.sh` (Pi). |
 | Mic hears nothing | Check the default input device (Windows Sound settings / Pi audio menu). |
 | No spoken replies on the Pi | `sudo apt install -y espeak-ng`; check the speaker/headset output. |

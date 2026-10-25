@@ -1,29 +1,42 @@
-"""Download the small offline English Vosk model used for voice commands."""
+"""Download the small offline Vosk models Luna listens with.
+
+Usage: download-voice-model.py [en] [sv]   (default: en). Swedish is used when the
+selected voice is Swedish; without it Luna keeps listening in English.
+"""
 import sys
 import urllib.request
 import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from robot_hud.voice import MODEL_NAME, model_path  # noqa: E402
+from robot_hud.voice import MODELS, model_path  # noqa: E402
 
-URL = "https://alphacephei.com/vosk/models/%s.zip" % MODEL_NAME
+URL = "https://alphacephei.com/vosk/models/%s.zip"
 
 
-def main():
-    target = model_path()
+def download(language):
+    name = MODELS[language]
+    target = model_path(language)
     if target.is_dir():
         print("Model already installed:", target)
         return
     target.parent.mkdir(parents=True, exist_ok=True)
-    archive = target.parent / (MODEL_NAME + ".zip")
-    print("Downloading", URL)
-    urllib.request.urlretrieve(URL, archive)
+    archive = target.parent / (name + ".zip")
+    print("Downloading", URL % name)
+    urllib.request.urlretrieve(URL % name, archive)
     with zipfile.ZipFile(archive) as z:
         z.extractall(target.parent)
     archive.unlink()
     print("Installed:", target)
 
 
+def main(languages):
+    unknown = [code for code in languages if code not in MODELS]
+    if unknown:
+        sys.exit("Unknown language %s; choose from %s" % (", ".join(unknown), ", ".join(MODELS)))
+    for language in languages or ["en"]:
+        download(language)
+
+
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

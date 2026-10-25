@@ -20,7 +20,7 @@ except ImportError as exc:
     ) from exc
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
-from .commands import parse_command, reply_for, route
+from .commands import parse_command, reply_for, route, spoken
 from . import i18n, speech
 from .i18n import tr
 from .ai import AIWorker, ai_configured
@@ -513,7 +513,33 @@ def mic_status(status):
     return tr(status)
 
 
-def settings_page(surface, fonts, accent, prefs, active, preview):
+LANGUAGE_NAMES = {'en':'English','sv':'Swedish'}
+
+
+def listening_status(listener, language):
+    """(state, translated line) for what Luna listens with; the state picks the dot colour."""
+    name = tr(LANGUAGE_NAMES.get(language,language))
+    if listener is None:
+        return 'basic',tr('Microphone off')
+    if listener.status!='listening':
+        state = 'loading' if listener.status in ('starting','loading') else 'basic'
+        return state,mic_status(listener.status)
+    if listener.active_language!=language:
+        return 'basic',tr('English - the {language} listening model is not installed',
+                          language=name)
+    return 'natural',tr('Listening in {language}',language=name)
+
+
+def status_row(surface, fonts, label, y, status):
+    row_label(surface,fonts,label,y)
+    state,text = status
+    dot = {'natural':(67,235,179),'loading':(255,185,67)}.get(state,(255,110,110))
+    pygame.draw.circle(surface,dot,(CONTROL_X+9,y),7)
+    line = wrap_text(fonts['small'],text,CONTROL_RIGHT-CONTROL_X-30,1)[0]
+    draw_text(surface,line,fonts['small'],TEXT,topleft=(CONTROL_X+26,y-12))
+
+
+def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic','')):
     """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
     hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
     settings_sidebar(surface,fonts,accent,active)
@@ -545,7 +571,7 @@ def settings_page(surface, fonts, accent, prefs, active, preview):
         for (code,label),rect in zip(i18n.LANGUAGES.items(),control_rects(y+107,2,46,220)):
             choice_button(surface,fonts,accent,rect,label,prefs['language']==code,hits,
                           ('language',code))
-        draw_text(surface,tr('Voice commands and spoken replies are in English for now.'),
+        draw_text(surface,tr('Luna listens, speaks and answers in the Voice language.'),
                   fonts['mini'],MUTED,topleft=(CONTROL_X,y+170))
     elif name=='Voice':
         section_header(surface,fonts,name,y,voice.label)
@@ -567,12 +593,8 @@ def settings_page(surface, fonts, accent, prefs, active, preview):
                                           (button.left+44,button.centery)])
         draw_text(surface,tr(label),fonts['small'],TEXT,center=(button.centerx+18,button.centery))
         add_hit(hits,button,('preview',None))
-        row_label(surface,fonts,'Status',y+331)
-        state,status = voice_status(voice)
-        dot = {'natural':(67,235,179),'loading':(255,185,67)}.get(state,(255,110,110))
-        pygame.draw.circle(surface,dot,(CONTROL_X+9,y+331),7)
-        status_line = wrap_text(fonts['small'],status,CONTROL_RIGHT-CONTROL_X-30,1)[0]
-        draw_text(surface,status_line,fonts['small'],TEXT,topleft=(CONTROL_X+26,y+319))
+        status_row(surface,fonts,'Status',y+331,voice_status(voice))
+        status_row(surface,fonts,'Listening',y+391,listening)
     elif name=='Animations':
         section_header(surface,fonts,name,y,'Blinking, looking around and moving effects')
         row_label(surface,fonts,'Animations',y+130)
@@ -645,15 +667,22 @@ class RobotHUD:
         self.preview=''  # '' | 'waiting' (voice still loading) | 'playing'
         speech.enabled=not args.no_speech
         # The voice is a preference; LUNA_VOICE overrides it for testing without saving it.
-        speech.set_voice(os.environ.get('LUNA_VOICE') or self.prefs['voice'])
+        self.voice_key=os.environ.get('LUNA_VOICE') or self.prefs['voice']
+        speech.set_voice(self.voice_key)
         use_ai=not getattr(args,'no_ai',False) and ai_configured()
         self.ai=AIWorker() if use_ai else None
-        self.voice=(VoiceListener(muted=speech.is_speaking,free_form=self.ai is not None)
+        self.voice=(VoiceListener(muted=speech.is_speaking,free_form=self.ai is not None,
+                                  language=self.talk_language)
                     if not args.no_voice else None)
         if self.voice:
             self.voice.start()
         self.last_touch=(-100.0, -10000.0,-10000.0)
         pygame.mouse.set_visible(not self.fullscreen)
+
+    @property
+    def talk_language(self):
+        """Luna listens, speaks and answers in the language of the selected voice."""
+        return get_voice(self.voice_key).language
 
     @property
     def accent(self):
@@ -711,7 +740,10 @@ class RobotHUD:
             elif changed=='language':
                 i18n.set_language(self.prefs['language'])
             elif changed=='voice':
-                speech.set_voice(self.prefs['voice'])
+                self.voice_key=self.prefs['voice']
+                speech.set_voice(self.voice_key)
+                if self.voice:
+                    self.voice.set_language(self.talk_language)
             if changed:
                 self.save()
 
@@ -733,10 +765,10 @@ class RobotHUD:
     def apply_commands(self,text,t):
         self.heard=text
         self.heard_until=t+6
-        self.apply_actions(parse_command(text),t)
+        self.apply_actions(parse_command(text,self.talk_language),t)
 
     def apply_actions(self,actions,t):
-        reply=reply_for(actions)
+        reply=reply_for(actions,self.talk_language)
         if reply:
             speech.speak_async(reply)
         for kind,value in actions:
@@ -765,21 +797,22 @@ class RobotHUD:
         """Route recognised speech to an offline command or the online AI."""
         self.heard=text
         self.heard_until=t+8
-        kind,value=route(text,conversation=self.ai is not None and t<self.conversation_until)
+        kind,value=route(text,conversation=self.ai is not None and t<self.conversation_until,
+                         language=self.talk_language)
         self.heard_kind=kind
         if kind=='command':
             self.apply_actions(value,t)
         elif kind=='wake':
-            speech.speak_async('Yes?')
+            speech.speak_async(spoken('Yes?',self.talk_language))
             self.followup_pending=True
         elif kind=='ai':
             self.ask_ai(value,t)
 
     def ask_ai(self,question,t):
         if self.ai is None:
-            speech.speak_async('My AI brain is not set up yet.')
+            speech.speak_async(spoken('My AI brain is not set up yet.',self.talk_language))
             return
-        if not self.ai.ask(question):
+        if not self.ai.ask(question,self.talk_language):
             return  # still answering the previous question
         self.thinking=True
         self.heard_until=t+3600
@@ -802,6 +835,7 @@ class RobotHUD:
                     kind,text=self.ai.answers.get_nowait()
                 except queue.Empty:
                     break
+                text=spoken(text,self.talk_language)
                 self.thinking=False
                 self.answer=text
                 self.answer_until=t+20
@@ -929,7 +963,8 @@ class RobotHUD:
             camera_page(self.canvas,self.fonts,accent,t)
         elif self.page=='Settings':
             self.settings_hits=settings_page(self.canvas,self.fonts,accent,self.prefs,
-                                             self.settings_section,self.preview)
+                                             self.settings_section,self.preview,
+                                             listening_status(self.voice,self.talk_language))
         nav_bar(self.canvas,self.page,self.fonts,accent)
 
     def draw_footer(self,t,default):

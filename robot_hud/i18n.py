@@ -24,8 +24,8 @@ SWEDISH = {
     # language
     "The language of the texts on the screen": "Språket för texterna på skärmen",
     "App language": "Appens språk",
-    "Voice commands and spoken replies are in English for now.":
-        "Röstkommandon och talade svar är på engelska tills vidare.",
+    "Luna listens, speaks and answers in the Voice language.":
+        "Luna lyssnar, talar och svarar på röstspråket.",
     # voice
     "Voice language": "Röstens språk", "Voice type": "Rösttyp", "FEMALE": "KVINNA",
     "MALE": "MAN", "Test voice": "Testa rösten", "Play sample": "Spela prov",
@@ -65,6 +65,11 @@ SWEDISH = {
     "MIC: ": "MIKROFON: ", "AI: ": "AI: ", "VOICE: ": "RÖST: ",
     "NATURAL": "NATURLIG", "LOADING": "LADDAR", "BASIC": "ENKEL",
     # microphone status (voice.VoiceListener.status)
+    "Listening": "Lyssnar", "Listening in {language}": "Lyssnar på {language}",
+    "Microphone off": "Mikrofonen är av", "English": "engelska", "Swedish": "svenska",
+    "English - the {language} listening model is not installed":
+        "Engelska - lyssningsmodellen för {language} är inte installerad",
+    "loading": "laddar",
     "starting": "startar", "listening": "lyssnar", "voice packages missing": "röstpaket saknas",
     "voice model missing": "röstmodell saknas", "microphone error: ": "mikrofonfel: ",
 }

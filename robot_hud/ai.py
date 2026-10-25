@@ -14,6 +14,8 @@ INSTRUCTIONS = (
     "Your reply is spoken aloud, so answer in one to three short sentences of plain text, "
     "with no lists, markdown, emojis or code."
 )
+# Luna answers in the language she listens and speaks in (the voice language).
+ANSWER_LANGUAGE = {"en": " Always answer in English.", "sv": " Always answer in Swedish."}
 ENV_FILE = Path.home() / ".luna.env"
 _ALLOWED_PREFIXES = ("OPENAI_", "LUNA_")
 
@@ -65,8 +67,9 @@ class LunaBrain:
         self.client = OpenAI(timeout=30.0, max_retries=1)
         self.previous_id = None
 
-    def ask(self, question):
-        args = {"model": self.model, "instructions": INSTRUCTIONS, "input": question}
+    def ask(self, question, language="en"):
+        instructions = INSTRUCTIONS + ANSWER_LANGUAGE.get(language, ANSWER_LANGUAGE["en"])
+        args = {"model": self.model, "instructions": instructions, "input": question}
         if self.previous_id:
             args["previous_response_id"] = self.previous_id
         response = self.client.responses.create(**args)
@@ -95,11 +98,11 @@ class AIWorker:
     def busy(self):
         return self._busy.is_set()
 
-    def ask(self, question):
+    def ask(self, question, language="en"):
         if self.busy:
             return False
         self._busy.set()
-        self._questions.put(question)
+        self._questions.put((question, language))
         return True
 
     def forget(self):
@@ -108,11 +111,11 @@ class AIWorker:
 
     def _run(self):
         while True:
-            question = self._questions.get()
+            question, language = self._questions.get()
             try:
                 if self._brain is None:
                     self._brain = self._factory()
-                answer = self._brain.ask(question)
+                answer = self._brain.ask(question, language)
                 self.answers.put(("answer", answer or "I am not sure what to say."))
             except Exception as error:  # network, key, model or package problems
                 print("Luna AI error:", type(error).__name__, flush=True)

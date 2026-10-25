@@ -27,13 +27,14 @@ robot_hud/
 scripts/
   install-pi.sh             Raspberry Pi OS setup (apt, venv, Vosk, model)
   run-pi.sh                 Start fullscreen on the Pi (uses .venv if present)
-  download-voice-model.py   Downloads the small Vosk English model
+  download-voice-model.py   Downloads the small Vosk models (en, sv)
   setup-windows.ps1, run-windows.ps1   (+ SETUP_WINDOWS.bat / RUN_WINDOWS.bat)
   test_ai.py                Typed chat with LunaBrain (needs OPENAI_API_KEY)
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_speech.py            Speech engine tests with fake voices/player (no audio)
   test_settings.py          Settings choices and taps on a headless screen
+  test_swedish.py           Swedish listening, commands, replies and AI language
   test_visual_smoke.py      Launches the app headless and saves a screenshot
 docs/ARCHITECTURE.md        This file
 .github/workflows/tests.yml GitHub Actions: runs the tests headless
@@ -102,9 +103,12 @@ Up/Down keys change it). The section list and what each tap changes live in `set
 - Language (ENGLISH / SVENSKA) changes only the screen text on every page and saves
   `language`. Each on-screen text goes through `i18n.tr()`, which looks it up in
   `i18n.SWEDISH`; a test fails if a `tr('...')` text in `app.py` has no Swedish entry.
-  Voice commands, spoken replies and AI answers stay English.
+  Listening, spoken replies and AI answers follow the voice language instead.
 - Voice: Voice language (ENGLISH / SVENSKA) and Voice type (FEMALE / MALE) pick one of the four
-  catalogue voices (`voices.voice_for`), call `speech.set_voice` and save `voice`.
+  catalogue voices (`voices.voice_for`), call `speech.set_voice` and save `voice`. The voice's
+  language is also `RobotHUD.talk_language`: the listener switches model
+  (`VoiceListener.set_language`), and commands, replies and AI answers use that language. A
+  "Listening" row shows the model in use (`listening_status`).
 - **Play sample** stops current speech and waits until the voice has loaded
   (`preview` = `waiting` → `playing`), then speaks `voices.sample_text` in that language.
 - Status shows `speech.voice_state()` with a dot: green natural, amber loading, red basic.
@@ -114,29 +118,39 @@ Up/Down keys change it). The section list and what each tap changes live in `set
 ## 3. Voice pipeline
 
 1. `voice.VoiceListener` runs in a daemon thread. It needs the optional packages
-   `vosk` and `sounddevice` and the model folder `~/.ai-robot-models/vosk-model-small-en-us-0.15`
-   (fetched by `scripts/download-voice-model.py`). If anything is missing it sets
-   `status` (shown on screen) and the app keeps working without voice.
-2. Recognition mode: **grammar-restricted** to `commands.VOCABULARY` (+ `[unk]`) when AI is off
-   (most accurate for commands), **free-form** (`VoiceListener(free_form=True)`) when AI is on.
+   `vosk` and `sounddevice` and a model folder in `~/.ai-robot-models` per language
+   (`voice.MODELS`: `vosk-model-small-en-us-0.15`, `vosk-model-small-sv-rhasspy-0.15`, fetched by
+   `scripts/download-voice-model.py en sv`). `set_language` switches the model inside the
+   listening thread (status `loading`), so the screen never waits. If the Swedish model is missing
+   it keeps English (`active_language`). If nothing is installed it sets `status` (shown on
+   screen) and the app keeps working without voice.
+2. Recognition mode: **grammar-restricted** to `commands.vocabulary(language)` (+ `[unk]`) when
+   AI is off (most accurate for commands), **free-form** (`VoiceListener(free_form=True)`) when AI
+   is on. The Swedish model has a fixed graph, so it always recognises free speech.
 3. Finished phrases go to `VoiceListener.texts` (a `queue.Queue`); `level` is the mic volume and
    `partial` the in-progress text.
 4. `commands.route(text, conversation)` decides:
    - `("command", actions)`: the phrase has actions and at most 4 words ("look left", "happy").
    - `("wake", "")`: only the wake word ("luna"; misheard variants lunar/loona/looner accepted).
+     In Swedish the model has no "luna", so `SWEDISH_WAKE_WORDS` lists what it hears instead
+     (lugn, lugna, lund, lunch, helene…; found by feeding it Piper's Swedish voices).
    - `("ai", question)`: wake word plus more words (leading hey/hi/hello/ok are stripped), or any
      longer phrase during the 8 s follow-up window (`conversation=True`).
    - `("ignore", "")`: background talk without the wake word.
-5. `commands.parse_command(text)` maps each word through `KEYWORDS` to `(kind, value)` actions:
+5. `commands.parse_command(text, language)` maps each word through `KEYWORDS` (or
+   `SWEDISH_KEYWORDS`) to `(kind, value)` actions:
    `expression`, `look`, `blink`, `wave`, `mode`, `color`. `RobotHUD.apply_actions` applies them
-   and speaks `reply_for(actions)`. Expressions revert after 10 s; `speaking` wave state lasts 6 s.
+   and speaks `reply_for(actions, language)`. Other fixed sentences ("Yes?", AI errors) go
+   through `commands.spoken`; the AI gets "Always answer in Swedish/English" (`ai.ANSWER_LANGUAGE`). Expressions revert after 10 s; `speaking` wave state lasts 6 s.
 
 **Echo protection:** `VoiceListener(muted=speech.is_speaking)` drops audio and resets the
 recogniser while Luna is talking and for `speech.TAIL_SECONDS` (0.8 s) afterwards.
 
 ### Adding a voice command
-1. Add the word(s) to `KEYWORDS` in `commands.py` (vocabulary updates automatically).
-2. Handle a new `kind` in `RobotHUD.apply_actions` and add a spoken line in `reply_for`.
+1. Add the word(s) to `KEYWORDS` and the Swedish word(s) to `SWEDISH_KEYWORDS` in
+   `commands.py` (vocabulary updates automatically).
+2. Handle a new `kind` in `RobotHUD.apply_actions` and add spoken lines in `reply_for` and
+   `_swedish_reply`.
 3. Add a case to `CommandTests` in `tests/test_core.py`.
 
 ## 4. Speech output (`speech.py`)

@@ -21,9 +21,11 @@ Piper itself is GPL-3.0-or-later; eSpeak NG is GPL as well. Installing them sepa
 remove every obligation. **A commercial licensing review is a required gate before Luna is
 distributed or sold** (see section 9).
 
-Language affects more than the voice: in phase 2 Luna speaks with the voice of the selected
-language and gender. Swedish speech recognition and Swedish AI answers are separate work
-(a Swedish Vosk model and a language hint to the AI) and are not part of these phases.
+Language affects more than the voice: Luna speaks with the voice of the selected language and
+gender, and (added after phase 3) also **listens and answers** in that language: a Swedish Vosk
+model (`vosk-model-small-sv-rhasspy-0.15`, about 290 MB, MIT licence) is installed by robot-setup,
+Swedish command words and replies are used, and the AI is told to answer in Swedish. Without
+the Swedish model Luna keeps listening in English.
 
 ## 3. Phases
 | Phase | Scope | Project | Status |

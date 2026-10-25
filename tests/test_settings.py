@@ -176,7 +176,7 @@ class TranslationTests(unittest.TestCase):
         texts = set(re.findall(r"tr\('((?:[^'\\]|\\.)*)'", source))
         texts |= set(re.findall(r"(?:'|\()'([^']+)' if ", source))  # tr('A' if x else 'B')
         texts |= set(re.findall(r" else '([^']+)'\)", source))
-        names = set(SECTIONS) | {"Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
+        names = set(SECTIONS) | {"English", "Swedish", "Listening", "Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
                                  "FEMALE", "MALE", "Wave layout", "Face layout"}
         from robot_hud.preferences import COLOR_CHOICES, LAYOUT_CHOICES, WAVE_LAYOUTS
         from robot_hud.voices import VOICES
