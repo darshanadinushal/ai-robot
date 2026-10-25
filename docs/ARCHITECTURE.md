@@ -125,7 +125,7 @@ recogniser while Luna is talking and for `speech.TAIL_SECONDS` (0.8 s) afterward
   killed (tap Home or press `S`). `is_talking()` = audio playing; `is_speaking()` also
   covers the 0.8 s tail and is used for mic muting.
 - Windows: PowerShell + `System.Speech` (text passed through stdin, never through the command
-  line). Linux/Pi: `espeak-ng` writes a temp WAV, then `pw-play`, `paplay` or `aplay`.
+  line). Linux/Pi: `espeak-ng` (speed `SPEECH_WPM` = 150) writes a temp WAV, then `pw-play`, `paplay` or `aplay`.
 - `speech.enabled = False` (CLI `--no-speech`) disables all speech.
 
 ## 5. Preferences (`preferences.py`)

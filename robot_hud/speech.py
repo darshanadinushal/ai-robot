@@ -17,6 +17,7 @@ enabled = True
 
 # Keep the microphone muted slightly after playback so Luna does not hear her own echo.
 TAIL_SECONDS = 0.8
+SPEECH_WPM = 150  # espeak-ng speed; 150 sounds clear on the Pi
 MAX_SPOKEN_CHARS = 700
 
 _queue = queue.Queue()
@@ -82,7 +83,7 @@ def _say_linux(message, generation):
     with tempfile.TemporaryDirectory(prefix="luna-tts-") as folder:
         wav = Path(folder) / "reply.wav"
         # Text goes through stdin so it can never be parsed as a command-line option.
-        _run(["espeak-ng", "-w", str(wav), "--stdin"], generation, message)
+        _run(["espeak-ng", "-s", str(SPEECH_WPM), "-w", str(wav), "--stdin"], generation, message)
         if wav.exists():
             _run([player, str(wav)], generation)
 
