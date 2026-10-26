@@ -311,30 +311,30 @@ class StreamingAppTests(unittest.TestCase):
 
     def test_decision_c_text_shows_progressively_and_sentences_are_spoken(self):
         self.hud.ask_ai("tell me about mars", 1.0)
-        self.assertTrue(self.hud.thinking)
+        self.assertTrue(self.hud.conversation.thinking)
         self.assertTrue(self.hud.mic_muted(), "deaf while the answer streams")
         self.ai.send("text", "Mars is red")
         self.hud.poll_voice(1.1)
-        self.assertFalse(self.hud.thinking)
-        self.assertEqual(self.hud.answer, "Mars is red")
+        self.assertFalse(self.hud.conversation.thinking)
+        self.assertEqual(self.hud.conversation.answer, "Mars is red")
         self.hud.frame(1.1)
         self.ai.send("text", ". It has")
         self.ai.send("sentence", "Mars is red.")
         self.hud.poll_voice(1.2)
-        self.assertEqual(self.hud.answer, "Mars is red. It has")
+        self.assertEqual(self.hud.conversation.answer, "Mars is red. It has")
         self.assertEqual(self.speech.spoken, ["Mars is red."])
         self.ai.send("text", " two moons.")
         self.ai.send("sentence", "It has two moons.")
         self.ai.send("done")
         self.speech.talking = True
         self.hud.poll_voice(1.3)
-        self.assertEqual(self.hud.answer, "Mars is red. It has two moons.")
+        self.assertEqual(self.hud.conversation.answer, "Mars is red. It has two moons.")
         self.assertEqual(self.speech.spoken, ["Mars is red.", "It has two moons."])
         self.assertEqual(self.ai.confirmed, [], "not remembered while still talking")
         self.speech.talking = False
         self.hud.poll_voice(1.4)
         self.assertEqual(self.ai.confirmed, [1])
-        self.assertGreater(self.hud.conversation_until, 1.4, "follow-up window opens")
+        self.assertGreater(self.hud.conversation.session.followup_until, 1.4, "follow-up window opens")
         self.assertFalse(self.hud.mic_muted())
         self.hud.frame(1.5)
 
@@ -347,7 +347,7 @@ class StreamingAppTests(unittest.TestCase):
         self.hud.handle_touch(640, 300, 1.2)
         self.assertEqual(self.ai.cancelled, [1])
         self.assertGreater(self.speech.stops, 0)
-        self.assertFalse(self.hud.answer_streaming)
+        self.assertFalse(self.hud.conversation.streaming)
         # Late messages from the interrupted answer are ignored.
         self.speech.talking = False
         self.ai.send("sentence", "There was a robot.", request=1)
@@ -355,7 +355,7 @@ class StreamingAppTests(unittest.TestCase):
         self.hud.poll_voice(1.3)
         self.assertEqual(self.speech.spoken, ["Once upon a time."])
         self.assertEqual(self.ai.confirmed, [])
-        self.assertEqual(self.hud.conversation_until, 0.0)
+        self.assertEqual(self.hud.conversation.session.followup_until, 0.0)
 
     def test_decision_b_apology_after_speaking(self):
         for language, apology in (("en", "Sorry, I lost my connection."),
@@ -368,9 +368,9 @@ class StreamingAppTests(unittest.TestCase):
             self.ai.send("lost")
             self.hud.poll_voice(1.1)
             self.assertEqual(self.speech.spoken, ["First part.", apology])
-            self.assertEqual(self.hud.answer, "First part. " + apology)
+            self.assertEqual(self.hud.conversation.answer, "First part. " + apology)
             self.assertEqual(self.hud.mood, "sad")
-            self.assertFalse(self.hud.followup_pending)
+            self.assertFalse(self.hud.conversation.followup_pending)
             self.assertNotIn(len(self.ai.asked), self.ai.confirmed)
 
     def test_error_before_speaking_uses_the_existing_message(self):
@@ -380,7 +380,7 @@ class StreamingAppTests(unittest.TestCase):
         self.hud.poll_voice(1.1)
         self.assertEqual(self.speech.spoken, ["Jag når inte internet just nu."])
         self.assertEqual(self.ai.asked, [("fråga", "sv")])
-        self.assertFalse(self.hud.followup_pending)
+        self.assertFalse(self.hud.conversation.followup_pending)
 
 
 if __name__ == "__main__":

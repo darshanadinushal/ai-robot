@@ -14,7 +14,12 @@ environment or from `~/.luna.env` outside the repo (see section 5a).
 ```text
 main.py                     Entry point: calls robot_hud.app.main()
 robot_hud/
-  app.py                    UI, rendering, input, main loop (class RobotHUD)
+  app.py                    UI, rendering, input, main loop (class RobotHUD): the adapter
+  assistant_core/           Pure (no pygame): the conversation logic (section 2a)
+    conversation.py         Conversation: routes utterances, AI answer lifecycle, follow-ups
+    session.py              Session (id, follow-up window) and Turn (one question)
+    context.py              Instructions sent with every question
+    events.py               Effects the core returns: Speak, Act, StopSpeech, Accepted, Mood, Log
   commands.py               Pure: spoken words -> actions; actions -> spoken reply (from the packs)
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
   voice.py                  Mic capture + Vosk recognition in a background thread
@@ -34,9 +39,12 @@ scripts/
   download-voice-model.py   Downloads the small Vosk models (en, sv, ...: from the packs)
   setup-windows.ps1, run-windows.ps1   (+ SETUP_WINDOWS.bat / RUN_WINDOWS.bat)
   test_ai.py                Typed chat with LunaBrain (needs OPENAI_API_KEY)
-  measure_listening.py      Real Vosk + Piper timing of the smart listening (laptop or Pi)
+  measure_listening.py      Real Vosk + Piper timing of the smart listening (laptop or Pi);
+                            --cases speaks the baseline sentences through Vosk
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
+  test_assistant_core.py    Phase 5.0A: Conversation without pygame, stale/stalled answers, sessions
+  test_conversation_cases.py  Baseline: 34 English/Swedish sentences (conversation_cases.json)
   test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
   test_listening.py         Phase 4.2: joining pauses, endpoints, limits, mic buffer, cloud interface
   test_speech.py            Speech engine tests with fake voices/player (no audio)
@@ -45,6 +53,7 @@ tests/
   test_languages.py         Every language pack and voice is complete; partial packs fall back
   test_visual_smoke.py      Launches the app headless and saves a screenshot
 docs/ARCHITECTURE.md        This file
+docs/BASELINE.md            Phase 5.0 baseline measurements (simulated and real Pi)
 .github/workflows/tests.yml GitHub Actions: runs the tests headless
 AGENTS.md                   Rules and quick facts for AI coding assistants
 ```
@@ -53,20 +62,42 @@ AGENTS.md                   Rules and quick facts for AI coding assistants
 
 ```text
  microphone ──> VoiceListener (thread) ──texts──> UtteranceAssembler ──> RobotHUD.handle_speech()
-                 │  level, partial      (one question)         │ commands.route()
-                 v                                         ├─ command ─> apply_actions() ─┐
- touch / mouse / keyboard ──> RobotHUD.events()            ├─ wake ────> "Yes?" ──────────┤
-                                      │                    └─ ai ──────> ask_ai()          │
-                                      v                                  │ AIWorker (thread)
-                              RobotHUD.frame(t)                          │ OpenAI Responses API
-                                      │            answers queue <───────┘                 │
-                                      v                    │                               v
-                    canvas 1280x720 ──scaled──>    poll_voice() ──> speech.speak_async() (queue worker)
+                 │  level, partial      (one question)                   │
+                 v                                                       v
+ touch / mouse / keyboard ──> RobotHUD.events()        assistant core: Conversation.hear()
+                                      │                  │ commands.route()
+                                      v                  ├─ command ─> Act ─────────────┐
+                              RobotHUD.frame(t)          ├─ wake ────> Speak "Yes?" ────┤
+                                      │                  └─ ai ──────> AIWorker (thread)│
+                                      v                     answers queue │ OpenAI      │
+                    canvas 1280x720 ──scaled──>    Conversation.poll() <──┘             v
+                                                   effects ──> RobotHUD.run_effects() ──> speech / face
 ```
 
 Main loop (`RobotHUD.run`, 30 FPS): `events(t)` → `frame(t)` → `present()`.
-`frame()` first calls `poll_voice(t)`, which drains recognised text (→ `handle_speech`) and
-AI answers (→ show + speak), and opens the follow-up window when speech ends.
+`frame()` first calls `poll_voice(t)`: it assembles recognised text (→ `handle_speech` →
+`Conversation.hear`) and calls `Conversation.poll`, which handles AI answers and opens the
+follow-up window when speech ends. The core returns effects; `run_effects` carries them out.
+
+## 2a. Assistant core (`robot_hud/assistant_core/`, phase 5.0)
+The conversation logic lives in a pure package so it can grow (context, tools, memory, smart
+home, driving) without growing `app.py`, and is tested without pygame
+(`tests/test_assistant_core.py` checks that it never imports pygame).
+- **Inputs:** `hear(text, t, heard_language, talk_language, conversation)` for one complete
+  utterance; `poll(t, speaking, talking)` every frame; `interrupt()`; `new_session()`.
+- **Outputs:** a list of effects (`events.py`): `Speak(text)`, `Act(actions)`, `StopSpeech()`,
+  `Accepted(question)` (calm face while thinking), `Mood(mood, seconds)`, `Log(message)`.
+  `RobotHUD.run_effects` applies them on the UI thread; the core never calls speech or pygame.
+- **State for drawing:** `thinking`, `heard`, `heard_kind`, `answer`, `answer_until`,
+  `streaming` (mic stays muted), `in_followup(t)`.
+- **Turns and sessions:** each question is a `Turn(session, request, ...)`. AI messages are used
+  only if both the request id and the session id match the current turn, so cancelled, stalled
+  or old answers never reach a new question. `new_session()` stops the answer, renews the session
+  and forgets the AI history (used by later phases: idle reset, "new conversation").
+- **Diagnostics:** `Luna: first spoken reply X s after the question` is logged once per answer
+  (time from the routed utterance to the first audible sentence).
+- `RobotHUD` (the adapter) keeps the microphone (`listen`), the face (`apply_actions`), touch and
+  drawing. `hud.ai` is a property that sets `conversation.ai`.
 
 ### Rendering model
 - Everything is drawn on a fixed **1280×720 logical canvas** (`CANVAS_WIDTH/HEIGHT` in
@@ -282,7 +313,8 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
   `AIWorker` only if it is configured and `--no-ai` is not given.
 - `LunaBrain` lazily imports `openai`, uses the Responses API with `previous_response_id`
   for conversation memory, timeout 30 s, 1 retry. Model: `LUNA_AI_MODEL` or `DEFAULT_MODEL`
-  (unverified default). `INSTRUCTIONS` ask for 1–3 short plain sentences, because answers are spoken.
+  (unverified default). The instructions come from `assistant_core.context.instructions(language)`:
+  1–3 short plain sentences (answers are spoken) in the voice language.
 - **Streaming (phase 4):** `LunaBrain.stream()` calls the Responses API with `stream=True` and
   yields text pieces (`response.output_text.delta`). It sets `completed_id` on
   `response.completed`; `response.failed` / `incomplete` / `error`, or an end without
@@ -297,12 +329,12 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
   before) and `lost` (failed after Luna started speaking: she says "Sorry, I lost my connection.",
   translated by the pack). The time to the first sentence is logged.
 - **History:** `previous_id` is the last *completed and fully spoken* answer. After `done`,
-  `RobotHUD` calls `AIWorker.confirm(id)` once speech has finished, which calls
+  `Conversation.poll` calls `AIWorker.confirm(id)` once speech has finished, which calls
   `LunaBrain.remember()`. Interrupted, failed or incomplete answers are never remembered.
-- **Interrupt:** tapping Home (or `S`, or Preview Voice) calls `RobotHUD.interrupt_answer()`:
-  `speech.stop()` plus `AIWorker.cancel(id)`, which stops the stream silently (no error
-  message), drops it from the history and frees the worker. Late messages for an old request id
-  are ignored by `poll_voice`.
+- **Interrupt:** tapping Home (or `S`, or Preview Voice) calls `RobotHUD.interrupt_answer()` →
+  `Conversation.interrupt()`: `speech.stop()` plus `AIWorker.cancel(id)`, which stops the stream
+  silently (no error message), drops it from the history and frees the worker. Late messages for
+  an old request are ignored by `Conversation.poll`.
 - Errors are logged by class name only; `friendly_error` turns them into a short spoken sentence (no secrets).
 - Privacy: only recognised text is sent, never audio.
 
@@ -326,13 +358,15 @@ Keyboard: `1-4` pages, `Space` blink, `S` stop speaking, `F11` fullscreen, `Esc`
 rendering to PNG (`--screenshot`) or by building `RobotHUD` with a dummy driver and saving
 `canvas` — pass a namespace with `fullscreen, windowed, no_voice, no_speech, no_ai`.
 To preview AI states, assign a fake object with an `answers` queue to `hud.ai` and set
-`thinking`, `question`, `answer`, `answer_until`.
+`hud.conversation.thinking`, `answer`, `answer_until`.
+Baseline sentences: `tests/conversation_cases.json` (route expected today, and the phase meant
+to change a case); `scripts/measure_listening.py --cases` speaks them through the real models.
 
 ## 9. Design decisions worth knowing
 - **Offline first:** recognition, commands, expressions and speech work with no internet.
   Only the AI conversation needs the network, and only recognised *text* is sent.
 - **Optional heavy dependencies:** voice and AI imports are lazy/guarded so the face always starts.
-- **Pure modules** (`commands.py`, `geometry.py`, `preferences.py`) have no pygame import and
+- **Pure modules** (`assistant_core/`, `commands.py`, `geometry.py`, `preferences.py`) have no pygame import and
   are the easiest place to add tested logic.
 - **One window, one canvas:** simple to scale for any screen; no widgets library.
 - Threads never touch pygame; they communicate through a queue, a float (`level`) and a status string.
@@ -341,10 +375,14 @@ To preview AI states, assign a fake object with an `answers` queue to `hud.ai` a
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
 3. Real camera, motors, smart-home control (UI placeholders exist).
-4. Streaming AI answers so Luna starts speaking sooner.
+4. Phase 5.0B–D on the assistant core: context (date, time), idle reset, conversation controls,
+   face tools with a permission policy, expressive answers. Then online listening, memory,
+   smart home and driving, each as its own phase.
 
 ## 11. Known gaps
 - Wi-Fi, audio and battery icons are decorative, not live readings.
 - The small Vosk model may mishear "Luna"; variants are accepted in `commands.route`.
 - Free-form recognition (AI on) is less accurate for one-word commands than grammar mode.
 - The microphone is muted while Luna speaks, so you cannot interrupt her by voice (tap instead).
+- A cancelled answer whose network read is stuck still occupies `AIWorker`'s thread until the
+  read returns or times out (30 s); the next question waits, but never gets the old answer.

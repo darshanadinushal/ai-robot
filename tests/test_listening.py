@@ -332,7 +332,7 @@ class ListeningAppTests(unittest.TestCase):
         self.assertEqual(self.ai.asked, [])
         self.say(3.1)
         self.assertEqual(self.ai.asked, [("what is the biggest planet", "en")])
-        self.assertEqual(self.hud.heard, "luna what is the biggest planet")
+        self.assertEqual(self.hud.conversation.heard, "luna what is the biggest planet")
         self.say(4.0)
         self.assertEqual(len(self.ai.asked), 1, "no repeated processing")
 
@@ -363,7 +363,7 @@ class ListeningAppTests(unittest.TestCase):
         self.assertEqual(self.speech.spoken, [])
         self.say(1.8)
         self.assertEqual(self.speech.spoken, ["Yes?"])
-        self.assertGreater(self.hud.conversation_until, 1.8, "the question may follow")
+        self.assertGreater(self.hud.conversation.session.followup_until, 1.8, "the question may follow")
 
     def test_luna_talking_clears_the_unfinished_question(self):
         self.say(0.0, final="luna tell me about")
@@ -398,7 +398,7 @@ class ListeningAppTests(unittest.TestCase):
         self.assertEqual(self.ai.asked, [("what is the moon", "en")])
 
     def test_follow_up_started_inside_the_window(self):
-        self.hud.conversation_until = 8.0
+        self.hud.conversation.session.followup_until = 8.0
         self.say(7.5, partial="and why")
         self.say(9.0, final="and why is it red")
         self.say(9.6)

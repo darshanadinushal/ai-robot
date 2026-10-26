@@ -20,11 +20,13 @@ except ImportError as exc:
     ) from exc
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
-from .commands import parse_command, reply_for, route, spoken, utterance_end
+from .commands import parse_command, reply_for, utterance_end
 from .listening import UtteranceAssembler, continue_seconds
 from . import i18n, languages, speech
 from .i18n import tr
-from .ai import LOST_CONNECTION, AIWorker, ai_configured
+from .ai import AIWorker, ai_configured
+from .assistant_core.conversation import Conversation
+from .assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 from .settings import SECTIONS, apply_choice
@@ -679,21 +681,10 @@ class RobotHUD:
         self.wave_state='listening'
         self.wave_until=0.0
         self.wave_amp=.35
-        self.heard=''
-        self.heard_until=0.0
-        self.heard_kind=''
-        self.thinking=False
-        self.question=''
-        self.answer=''
-        self.answer_until=0.0
-        self.conversation_until=0.0
-        self.followup_pending=False
-        self.ai_request=0  # id of the answer being shown/spoken (AIWorker.ask)
+        self.conversation=Conversation()  # routing, AI answers, follow-ups (assistant core)
         self.utterance=UtteranceAssembler(self.utterance_end)  # joins Vosk's pieces
         self.mic_overruns=0
         self.decode_mark=0.0
-        self.answer_streaming=False
-        self.answer_language='en'  # set to the voice language for each question
         self.settings_section=0
         self.settings_hits=[]
         self.preview=''  # '' | 'waiting' (voice still loading) | 'playing'
@@ -710,6 +701,14 @@ class RobotHUD:
             self.voice.start()
         self.last_touch=(-100.0, -10000.0,-10000.0)
         pygame.mouse.set_visible(not self.fullscreen)
+
+    @property
+    def ai(self):
+        return self.conversation.ai
+
+    @ai.setter
+    def ai(self,worker):
+        self.conversation.ai=worker
 
     @property
     def talk_language(self):
@@ -752,7 +751,7 @@ class RobotHUD:
                 self.page=name
                 return
         if self.page=='Home':
-            if speech.is_talking() or self.answer_streaming:
+            if speech.is_talking() or self.conversation.streaming:
                 self.interrupt_answer()
             self.target_x=clamp((x-W/2)/(W/2),-1,1)
             self.target_y=clamp((y-292)/290,-1,1)
@@ -801,8 +800,8 @@ class RobotHUD:
             self.preview=''
 
     def apply_commands(self,text,t):
-        self.heard=text
-        self.heard_until=t+6
+        self.conversation.heard=text
+        self.conversation.heard_until=t+6
         self.apply_actions(parse_command(text,self.heard_language),t)
 
     def apply_actions(self,actions,t):
@@ -835,7 +834,7 @@ class RobotHUD:
         return utterance_end(text,self.heard_language,conversation)
 
     def in_conversation(self,t):
-        return self.ai is not None and t<self.conversation_until
+        return self.conversation.in_followup(t)
 
     def forget_utterance(self):
         """Drop the unfinished question and its queued pieces."""
@@ -887,98 +886,43 @@ class RobotHUD:
 
         `conversation`: the follow-up window was open when the user started speaking.
         """
-        self.heard=text
-        self.heard_until=t+8
-        if conversation is None:
-            conversation=self.in_conversation(t)
-        kind,value=route(text,conversation=conversation,language=self.heard_language)
-        self.heard_kind=kind
-        if kind=='command':
-            self.apply_actions(value,t)
-        elif kind=='wake':
-            speech.speak_async(spoken('Yes?',self.talk_language))
-            self.followup_pending=True
-        elif kind=='ai':
-            self.ask_ai(value,t)
+        self.run_effects(self.conversation.hear(text,t,self.heard_language,self.talk_language,
+                                                conversation),t)
 
     def ask_ai(self,question,t):
-        if self.ai is None:
-            speech.speak_async(spoken('My AI brain is not set up yet.',self.talk_language))
-            return
-        request=self.ai.ask(question,self.talk_language)
-        if not request:
-            return  # still answering the previous question
-        self.ai_request=request
-        self.answer_language=self.talk_language
-        self.answer_streaming=True
-        self.followup_pending=False
-        self.thinking=True
-        self.heard_until=t+3600
-        self.question=question
-        self.answer=''
-        self.conversation_until=0.0
-        self.mood='neutral'
-        self.wave_state='listening'
+        self.run_effects(self.conversation.ask(question,t,self.talk_language),t)
 
     def poll_voice(self,t):
         if self.voice:
             self.listen(t)
-        if self.ai:
-            while True:
-                try:
-                    kind,request,value=self.ai.answers.get_nowait()
-                except queue.Empty:
-                    break
-                if request==self.ai_request:
-                    self.answer_event(kind,value,t)
-        if self.followup_pending and not speech.is_speaking():
-            # The whole answer was spoken: keep it in the conversation history, then allow a
-            # follow-up question without saying "Luna" again.
-            self.followup_pending=False
-            if self.ai and self.ai_request:
-                self.ai.confirm(self.ai_request)
-            self.conversation_until=t+8
+        self.run_effects(self.conversation.poll(t,speech.is_speaking(),speech.is_talking()),t)
 
-    def answer_event(self,kind,value,t):
-        """One message about the streamed answer (see AIWorker): show, speak or finish it."""
-        language=self.answer_language
-        self.thinking=False
-        self.answer_until=t+20
-        self.heard_until=t+20
-        if kind=='text':
-            self.answer+=value  # each piece arrives once, in order
-        elif kind=='sentence':
-            speech.speak_async(value)
-        elif kind=='say':
-            text=spoken(value,language)
-            self.answer=self.answer or text
-            speech.speak_async(text)
-        elif kind=='done':
-            self.answer_streaming=False
-            self.followup_pending=True
-        elif kind in ('error','lost'):
-            self.answer_streaming=False
-            text=spoken(value if kind=='error' else LOST_CONNECTION,language)
-            self.answer=text if kind=='error' else (self.answer.rstrip()+' '+text).strip()
-            self.mood='sad'
-            self.mood_until=t+4
-            speech.speak_async(text)
+    def run_effects(self,effects,t):
+        """Carry out what the assistant core decided (UI thread)."""
+        for effect in effects:
+            if isinstance(effect,Speak):
+                speech.speak_async(effect.text)
+            elif isinstance(effect,Act):
+                self.apply_actions(list(effect.actions),t)
+            elif isinstance(effect,StopSpeech):
+                speech.stop()
+            elif isinstance(effect,Accepted):
+                self.mood='neutral'
+                self.wave_state='listening'
+            elif isinstance(effect,Mood):
+                self.mood=effect.mood
+                self.mood_until=t+effect.seconds
+            elif isinstance(effect,Log):
+                print(effect.message,flush=True)
 
     def mic_muted(self):
         # Stay deaf between streamed sentences too, so Luna never hears herself.
-        return speech.is_speaking() or self.answer_streaming
+        return self.conversation.muted(speech.is_speaking())
 
     def interrupt_answer(self):
         """The user stopped Luna: silence her and drop the unfinished answer (not remembered)."""
-        speech.stop()
         self.forget_utterance()
-        self.followup_pending=False
-        if self.answer_streaming or self.ai_request:
-            if self.ai and self.ai_request:
-                self.ai.cancel(self.ai_request)
-            self.ai_request=0
-            self.answer_streaming=False
-            self.thinking=False
+        self.run_effects(self.conversation.interrupt(),0.0)
 
     def events(self,t):
         for event in pygame.event.get():
@@ -1034,7 +978,7 @@ class RobotHUD:
         status_bar(self.canvas,self.fonts,accent)
         talking=speech.is_talking()
         if self.page=='Home':
-            if self.thinking:
+            if self.conversation.thinking:
                 # Look up and to the side while waiting for the AI.
                 self.target_x=.55+.12*math.sin(t*1.3)
                 self.target_y=-.8
@@ -1049,7 +993,7 @@ class RobotHUD:
             openness=blink_openness(t,self.blink_start)
             if self.prefs['mode']=='WAVE':
                 state=self.wave_state
-                if self.thinking:
+                if self.conversation.thinking:
                     state='thinking'
                 elif talking:
                     state='speaking'
@@ -1076,7 +1020,7 @@ class RobotHUD:
             dx,ey,sc,sy=LAYOUT_CHOICES[self.prefs['layout']]
             if self.mood=='surprised':
                 sc*=1.12
-            mood='thinking' if self.thinking else self.mood
+            mood='thinking' if self.conversation.thinking else self.mood
             for ex,side in ((640-dx,-1),(640+dx,1)):
                 draw_eye(self.canvas,ex,ey,motion_t,self.gaze_x,self.gaze_y,openness,accent,self.glow,sc,side,mood)
             if sy is not None:
@@ -1098,10 +1042,10 @@ class RobotHUD:
 
     def draw_footer(self,t,default):
         """Bottom text: Luna's answer while relevant, otherwise the hint."""
-        if self.thinking:
+        if self.conversation.thinking:
             lines=[tr('LUNA IS THINKING...')]
-        elif self.answer and (speech.is_talking() or t<self.answer_until):
-            lines=wrap_text(self.fonts['small'],'LUNA: '+self.answer,1040,2)
+        elif self.conversation.answer and (speech.is_talking() or t<self.conversation.answer_until):
+            lines=wrap_text(self.fonts['small'],'LUNA: '+self.conversation.answer,1040,2)
         else:
             lines=[default]
         color=MUTED if lines==[default] else TEXT
@@ -1114,9 +1058,9 @@ class RobotHUD:
         live=self.utterance.display() if self.voice else ''
         if live:
             text,color,note=tr('YOU: ')+live+' ...',TEXT,''
-        elif t<self.heard_until and self.heard:
-            text,color=tr('YOU: ')+self.heard,TEXT
-            note=(tr('  (say "Hey Luna" first)') if self.heard_kind=='ignore' and self.ai else '')
+        elif t<self.conversation.heard_until and self.conversation.heard:
+            text,color=tr('YOU: ')+self.conversation.heard,TEXT
+            note=(tr('  (say "Hey Luna" first)') if self.conversation.heard_kind=='ignore' and self.ai else '')
             if note:
                 color=MUTED
         else:
@@ -1144,9 +1088,9 @@ class RobotHUD:
     def draw_caption(self,t):
         if self.voice is None and self.ai is None:
             return
-        if self.thinking:
+        if self.conversation.thinking:
             text=tr('THINKING...')
-        elif self.ai and t<self.conversation_until:
+        elif self.conversation.in_followup(t):
             text=tr('LISTENING FOR YOUR FOLLOW-UP...')
         else:
             text=tr('MIC: ')+(mic_status(self.voice.status).upper() if self.voice else tr('OFF'))

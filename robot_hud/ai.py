@@ -9,15 +9,11 @@ import threading
 import time
 from pathlib import Path
 
-from . import languages
+from .assistant_core.context import BASE_INSTRUCTIONS, instructions
 from .speech import SentenceStream
 
 DEFAULT_MODEL = "gpt-6-luna"
-INSTRUCTIONS = (
-    "You are Luna, a friendly AI robot with a touchscreen face. "
-    "Your reply is spoken aloud, so answer in one to three short sentences of plain text, "
-    "with no lists, markdown, emojis or code."
-)
+INSTRUCTIONS = BASE_INSTRUCTIONS  # built by assistant_core.context
 LOST_CONNECTION = "Sorry, I lost my connection."
 ENV_FILE = Path.home() / ".luna.env"
 _ALLOWED_PREFIXES = ("OPENAI_", "LUNA_")
@@ -84,8 +80,7 @@ class LunaBrain:
 
     def _args(self, question, language):
         # Luna answers in the language she listens and speaks in (the voice language).
-        instructions = INSTRUCTIONS + " " + languages.get(language).ai_instruction
-        args = {"model": self.model, "instructions": instructions, "input": question}
+        args = {"model": self.model, "instructions": instructions(language), "input": question}
         if self.previous_id:
             args["previous_response_id"] = self.previous_id
         return args

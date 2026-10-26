@@ -25,9 +25,13 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 - Listening: Vosk final results are pieces; `listening.UtteranceAssembler` (via `RobotHUD.listen`)
   joins them into one utterance (`commands.utterance_end` picks the wait). Route only complete
   utterances; never call `handle_speech` per Vosk result. Tests: `tests/test_listening.py`.
-- AI conversation: `robot_hud/ai.py` (`LunaBrain.stream`, `AIWorker`) + `RobotHUD.ask_ai` / `poll_voice` /
-  `answer_event` / `interrupt_answer`. Answers stream sentence by sentence (`speech.SentenceStream`);
-  only completed, fully spoken answers enter the history (`AIWorker.confirm`).
+- Conversation logic: `robot_hud/assistant_core/` (pure, no pygame): `Conversation.hear` / `poll` /
+  `interrupt` return effects (`events.py`) that `RobotHUD.run_effects` carries out. New
+  conversation behaviour goes here, not in `app.py`; tests in `tests/test_assistant_core.py`.
+  Baseline sentences: `tests/conversation_cases.json` (update a case's `route` when a phase changes it).
+- AI conversation: `robot_hud/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
+  `assistant_core/context.py`. Answers stream sentence by sentence (`speech.SentenceStream`);
+  only completed, fully spoken answers enter the history (`AIWorker.confirm`, via `Conversation.poll`).
 - Drawing and pages: `robot_hud/app.py`. Settings logic in `robot_hud/settings.py` (tested in
   `tests/test_settings.py`), stored by `robot_hud/preferences.py`.
 - Screen text is translated: wrap new on-screen text in `tr()` and add it to `screen` in every
