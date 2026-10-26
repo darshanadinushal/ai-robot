@@ -1,13 +1,99 @@
-"""What Luna is told with every question."""
+"""What Luna is told with every question: her personality, what she can really do, and a few
+current, verified facts (date and time, optional name and location from the configuration).
+
+Later phases extend ABILITIES and shorten NOT_CONNECTED as real skills are connected; never list
+something here before it works.
+"""
+import os
+from dataclasses import dataclass, field
+
 from .. import languages
 
-BASE_INSTRUCTIONS = (
-    "You are Luna, a friendly AI robot with a touchscreen face. "
-    "Your reply is spoken aloud, so answer in one to three short sentences of plain text, "
-    "with no lists, markdown, emojis or code."
+PERSONALITY = (
+    "You are Luna, a friendly robot assistant with a touchscreen face. "
+    "Your replies are spoken aloud, so use plain text with no lists, markdown, emojis or code. "
+    "Sound warm, clear and natural, like a helpful friend, and avoid technical language unless "
+    "the user wants it. Keep simple answers to one to three short sentences. When the user asks "
+    "for more detail or an explanation, use up to five short sentences."
 )
+CONVERSATION = (
+    "Use the conversation so far to understand follow-ups such as 'tell me more', 'what about "
+    "that' or 'explain the second one'. If it is unclear what the user means, ask one short "
+    "question instead of guessing."
+)
+HONESTY = (
+    "Never invent readings, device states or things you saw or heard, and never say you did "
+    "something you cannot do."
+)
+ABILITIES = (
+    "talk with the user",
+    "change your face when the user gives a short command such as 'Luna, happy', "
+    "'Luna, look left' or 'Luna, purple' (handled outside this conversation)",
+)
+NOT_CONNECTED = (
+    "a camera", "motors or wheels", "smart-home control", "a music player", "timers or alarms",
+    "internet search", "memory of earlier conversations",
+)
+# Kept for older imports: the fixed part of the instructions.
+BASE_INSTRUCTIONS = " ".join((PERSONALITY, CONVERSATION, HONESTY))
+
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
+           "September", "October", "November", "December")
 
 
-def instructions(language="en"):
+@dataclass(frozen=True)
+class Profile:
+    """Optional facts the user configured (never guessed)."""
+    user_name: str = ""
+    location: str = ""
+
+
+@dataclass(frozen=True)
+class ConversationSettings:
+    profile: Profile = field(default_factory=Profile)
+    max_turns: int = 20           # answers in one conversation before a fresh one starts
+    idle_seconds: float = 300.0   # quiet time before Luna starts a new conversation; 0 = never
+
+
+def _clean(value, limit):
+    return " ".join(str(value or "").split())[:limit]
+
+
+def _number(env, name, default, kind):
+    try:
+        value = kind(env.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value >= 0 else default
+
+
+def settings_from_env(env=None):
+    """LUNA_USER_NAME, LUNA_LOCATION, LUNA_MAX_TURNS, LUNA_IDLE_RESET_SECONDS (all optional)."""
+    env = os.environ if env is None else env
+    default = ConversationSettings()
+    return ConversationSettings(
+        profile=Profile(_clean(env.get("LUNA_USER_NAME"), 40), _clean(env.get("LUNA_LOCATION"), 60)),
+        max_turns=max(1, _number(env, "LUNA_MAX_TURNS", default.max_turns, int)),
+        idle_seconds=_number(env, "LUNA_IDLE_RESET_SECONDS", default.idle_seconds, float))
+
+
+def date_text(now):
+    return "%s %d %s %d, %02d:%02d" % (_WEEKDAYS[now.weekday()], now.day, _MONTHS[now.month - 1],
+                                        now.year, now.hour, now.minute)
+
+
+def instructions(language="en", now=None, profile=None):
     """Instructions for one question; Luna answers in the voice language."""
-    return BASE_INSTRUCTIONS + " " + languages.get(language).ai_instruction
+    parts = [PERSONALITY, CONVERSATION, HONESTY,
+             "You can: %s." % "; ".join(ABILITIES),
+             "Not connected yet: %s. If the user asks for one of these, say briefly that it is "
+             "not connected yet." % ", ".join(NOT_CONNECTED)]
+    if now is not None:
+        parts.append("Current local date and time: %s." % date_text(now))
+    if profile is not None and profile.user_name:
+        parts.append("The user likes to be called %s." % profile.user_name)
+    if profile is not None and profile.location:
+        parts.append("You are located in: %s." % profile.location)
+    parts.append(languages.get(language).ai_instruction)
+    return " ".join(parts)

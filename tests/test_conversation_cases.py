@@ -18,7 +18,7 @@ class ConversationCaseTests(unittest.TestCase):
         self.assertEqual(len({case["id"] for case in CASES}), len(CASES))
         for language in ("en", "sv"):
             routes = {case["route"] for case in CASES if case["language"] == language}
-            self.assertEqual(routes, {"command", "wake", "ai", "ignore"}, language)
+            self.assertEqual(routes, {"command", "control", "wake", "ai", "ignore"}, language)
 
     def test_routes_and_endings(self):
         for case in CASES:

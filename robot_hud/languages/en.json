@@ -61,6 +61,27 @@
     "green": "color.GREEN",
     "amber": "color.AMBER"
   },
+  "controls": {
+    "cancel": [
+      "never mind",
+      "nevermind",
+      "cancel",
+      "forget it",
+      "no thanks",
+      "no thank you",
+      "nothing",
+      "that's all",
+      "that's it"
+    ],
+    "new_conversation": [
+      "new conversation",
+      "start a new conversation",
+      "start over",
+      "let's start over",
+      "new topic",
+      "start again"
+    ]
+  },
   "filler_words": [
     "look",
     "luna",

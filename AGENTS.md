@@ -29,6 +29,8 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   `interrupt` return effects (`events.py`) that `RobotHUD.run_effects` carries out. New
   conversation behaviour goes here, not in `app.py`; tests in `tests/test_assistant_core.py`.
   Baseline sentences: `tests/conversation_cases.json` (update a case's `route` when a phase changes it).
+  AI context is built in `assistant_core/context.py`; list an ability there (and remove it from
+  `NOT_CONNECTED`) only once it really works. Conversation controls are pack `controls` phrases.
 - AI conversation: `robot_hud/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
   `assistant_core/context.py`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`, via `Conversation.poll`).
@@ -64,5 +66,5 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 ## Status snapshot
 Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expressions,
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
-follow-ups and tap-to-stop, Windows + Pi scripts, tests.
+follow-ups and tap-to-stop, date/time-aware answers, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
 Planned: AI-model setting, autostart, camera/motors/smart home.

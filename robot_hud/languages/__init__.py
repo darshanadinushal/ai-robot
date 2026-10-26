@@ -12,6 +12,8 @@ Fields:
                   listening_model_mb is its download size, shown by robot-setup
   wake_words      how the recogniser hears "Luna";  greetings: "hey", "hej", ...
   commands        spoken word -> action ID (see commands.ACTIONS); filler_words are ignored
+  controls        "cancel" / "new_conversation" -> whole phrases ("never mind", "nytt samtal");
+                  like commands, not taken from English
   continuation_words  words that rarely end a question ("and", "the", "och", "att"): when
                   speech stops on one, Luna waits longer for the rest (not taken from English)
   continue_seconds  pause after an apparently complete question before Luna answers; slower
@@ -23,7 +25,7 @@ Fields:
   windows_culture culture of the built-in Windows voice (local testing), e.g. "sv-SE"
 """
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 FOLDER = Path(__file__).resolve().parent
@@ -49,6 +51,7 @@ class LanguagePack:
     windows_culture: str
     continuation_words: tuple = ()
     continue_seconds: float = 0.0
+    controls: dict = field(default_factory=dict)
 
     def reply(self, action_id):
         return self.replies.get(action_id)
@@ -90,7 +93,9 @@ def _build(data, english):
         sample=field("sample", ""), warm_up=field("warm_up", "Hello."),
         windows_culture=str(data.get("windows_culture") or ""),
         continuation_words=tuple(w.lower() for w in data.get("continuation_words") or ()),
-        continue_seconds=float(data.get("continue_seconds") or 0.0))
+        continue_seconds=float(data.get("continue_seconds") or 0.0),
+        controls={name: tuple(" ".join(p.lower().split()) for p in phrases)
+                  for name, phrases in (data.get("controls") or {}).items()})
 
 
 def load(folder=FOLDER):

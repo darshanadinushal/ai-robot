@@ -1,5 +1,5 @@
 {
-  "about": "Baseline conversation sentences (Phase 5.0 Step 0). 'route' is what Luna does today: command, wake, ai or ignore. 'ending' (optional) is how long she waits for more speech (commands.utterance_end). 'later' notes the phase meant to change a case. Used by tests/test_conversation_cases.py (text) and scripts/measure_listening.py --cases (spoken by Piper, heard by Vosk).",
+  "about": "Baseline conversation sentences (Phase 5.0 Step 0). 'route' is what Luna does today: command, control, wake, ai or ignore. 'ending' (optional) is how long she waits for more speech (commands.utterance_end). 'later' notes the phase meant to change a case. Used by tests/test_conversation_cases.py (text) and scripts/measure_listening.py --cases (spoken by Piper, heard by Vosk).",
   "cases": [
     {"id": "en-command-look", "language": "en", "say": "Luna, look left.", "route": "command", "ending": "command"},
     {"id": "en-command-mood", "language": "en", "say": "Hey Luna, be happy.", "route": "command", "ending": "command"},
@@ -20,8 +20,9 @@
     {"id": "en-smart-home", "language": "en", "say": "Luna, turn on the living room lights.", "route": "ai", "later": "5.3: home control"},
     {"id": "en-natural-face", "language": "en", "say": "Luna, you look tired, cheer up.", "route": "ai", "later": "5.0C: face tool"},
     {"id": "en-move", "language": "en", "say": "Luna, can you move closer?", "route": "ai", "later": "6.x: motion, until then she says she cannot move"},
-    {"id": "en-never-mind", "language": "en", "say": "Never mind.", "conversation": true, "route": "ai", "later": "5.0B: conversation control"},
-    {"id": "en-new-conversation", "language": "en", "say": "Luna, start a new conversation.", "route": "ai", "later": "5.0B: conversation control"},
+    {"id": "en-never-mind", "language": "en", "say": "Never mind.", "conversation": true, "route": "control", "ending": "command"},
+    {"id": "en-background-never-mind", "language": "en", "say": "Never mind.", "route": "ignore"},
+    {"id": "en-new-conversation", "language": "en", "say": "Luna, start a new conversation.", "route": "control", "ending": "command"},
     {"id": "sv-command-look", "language": "sv", "say": "Hej Luna, titta åt vänster.", "route": "command", "ending": "command"},
     {"id": "sv-command-mood", "language": "sv", "say": "Luna, glad.", "route": "command", "ending": "command"},
     {"id": "sv-command-colour", "language": "sv", "say": "Luna, lila.", "route": "command", "ending": "command"},
@@ -34,6 +35,7 @@
     {"id": "sv-background", "language": "sv", "say": "Vi borde köpa mjölk senare idag.", "route": "ignore"},
     {"id": "sv-ambiguous-dark", "language": "sv", "say": "Luna, det börjar bli mörkt här inne.", "route": "ai", "later": "5.0C/5.3: hint, never an action without permission"},
     {"id": "sv-smart-home", "language": "sv", "say": "Hej Luna, tänd lamporna i vardagsrummet.", "route": "ai", "later": "5.3: home control"},
-    {"id": "sv-never-mind", "language": "sv", "say": "Strunt samma.", "conversation": true, "route": "ai", "later": "5.0B: conversation control"}
+    {"id": "sv-never-mind", "language": "sv", "say": "Strunt samma.", "conversation": true, "route": "control", "ending": "command"},
+    {"id": "sv-new-conversation", "language": "sv", "say": "Luna, starta ett nytt samtal.", "route": "control"}
   ]
 }

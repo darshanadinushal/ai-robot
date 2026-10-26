@@ -23,6 +23,9 @@ ACTIONS.update({
 })
 ACTION_IDS = {action: action_id for action_id, action in ACTIONS.items()}
 
+# Conversation controls (phrases in the packs' "controls"): stop the follow-up or start afresh.
+CONTROLS = ("cancel", "new_conversation")
+
 # Without the wake word, only short phrases count as commands (ignores background talk).
 MAX_COMMAND_WORDS = 4
 
@@ -65,8 +68,10 @@ def _words(text):
 def route(text, conversation=False, language="en"):
     """Decide what to do with recognised speech.
 
-    Returns ("command", actions), ("ai", question), ("wake", "") or ("ignore", "").
-    `conversation` is True right after Luna answered, so follow-ups need no wake word.
+    Returns ("command", actions), ("control", name), ("ai", question), ("wake", "") or
+    ("ignore", ""). `conversation` is True right after Luna answered, so follow-ups need no wake
+    word. A control ("never mind", "new conversation") is the whole utterance, said with the
+    wake word or in a conversation; background talk never cancels anything.
     """
     pack = languages.get(language)
     words = _words(text)
@@ -77,6 +82,11 @@ def route(text, conversation=False, language="en"):
             words = words[1:]
     if not words:
         return ("wake", "") if woke else ("ignore", "")
+    if woke or conversation:
+        phrase = " ".join(words)
+        for name, phrases in pack.controls.items():
+            if name in CONTROLS and phrase in phrases:
+                return ("control", name)
     actions = parse_command(" ".join(words), language)
     if actions and len(words) <= MAX_COMMAND_WORDS:
         return ("command", actions)
@@ -102,6 +112,8 @@ def utterance_end(text, language="en", conversation=False):
     kind, _ = route(text, conversation, language)
     if kind == "wake":
         return "wake"
+    if kind == "control":
+        return "command"
     if kind == "command":
         known = set(pack.commands) | set(pack.filler_words) | set(pack.wake_words) | set(pack.greetings)
         if all(w in known for w in words):

@@ -61,6 +61,27 @@
     "bärnsten": "color.AMBER",
     "orange": "color.AMBER"
   },
+  "controls": {
+    "cancel": [
+      "strunt samma",
+      "strunt i det",
+      "glöm det",
+      "avbryt",
+      "nej tack",
+      "ingenting",
+      "inget",
+      "det var allt"
+    ],
+    "new_conversation": [
+      "ny konversation",
+      "nytt samtal",
+      "ett nytt samtal",
+      "starta ett nytt samtal",
+      "starta en ny konversation",
+      "börja om",
+      "vi börjar om"
+    ]
+  },
   "filler_words": [
     "titta",
     "läge",
@@ -120,9 +141,11 @@
     "My AI model is not available. Please check the model name.": "Min AI-modell är inte tillgänglig. Kontrollera modellnamnet.",
     "My AI brain is busy or out of credit. Please try again later.": "Min AI-hjärna är upptagen eller saknar kredit. Försök igen senare.",
     "Sorry, my AI brain had a problem.": "Förlåt, min AI-hjärna fick ett problem.",
-    "Sorry, I lost my connection.": "Förlåt, jag tappade anslutningen."
+    "Sorry, I lost my connection.": "Förlåt, jag tappade anslutningen.",
+    "Okay.": "Okej.",
+    "Okay, let's start a new conversation.": "Okej, vi börjar ett nytt samtal."
   },
-  "ai_instruction": "Always answer in Swedish.",
+  "ai_instruction": "Use natural, everyday Swedish and say du to the user. Always answer in Swedish.",
   "sample": "Hej, jag heter Luna. Så här låter min röst.",
   "warm_up": "Hej.",
   "windows_culture": "sv-SE",

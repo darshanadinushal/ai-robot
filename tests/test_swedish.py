@@ -73,7 +73,7 @@ class SwedishAITests(unittest.TestCase):
         asked = []
 
         class Brain:
-            def ask(self, question, language="en"):
+            def ask(self, question, language="en", instructions=None):
                 asked.append(language)
                 return "Svar."
 

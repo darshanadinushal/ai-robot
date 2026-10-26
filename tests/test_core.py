@@ -89,7 +89,7 @@ class AIWorkerTests(unittest.TestCase):
         from robot_hud.ai import AIWorker
 
         class Brain:
-            def ask(self, q, language="en"):
+            def ask(self, q, language="en", instructions=None):
                 if q == "boom":
                     raise RuntimeError("secret detail")
                 return "Mars is red."

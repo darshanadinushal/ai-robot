@@ -18,7 +18,7 @@ robot_hud/
   assistant_core/           Pure (no pygame): the conversation logic (section 2a)
     conversation.py         Conversation: routes utterances, AI answer lifecycle, follow-ups
     session.py              Session (id, follow-up window) and Turn (one question)
-    context.py              Instructions sent with every question
+    context.py              Instructions (personality, abilities, date/time, profile) + settings
     events.py               Effects the core returns: Speak, Act, StopSpeech, Accepted, Mood, Log
   commands.py               Pure: spoken words -> actions; actions -> spoken reply (from the packs)
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
@@ -84,7 +84,7 @@ The conversation logic lives in a pure package so it can grow (context, tools, m
 home, driving) without growing `app.py`, and is tested without pygame
 (`tests/test_assistant_core.py` checks that it never imports pygame).
 - **Inputs:** `hear(text, t, heard_language, talk_language, conversation)` for one complete
-  utterance; `poll(t, speaking, talking)` every frame; `interrupt()`; `new_session()`.
+  utterance; `poll(t, speaking, talking, listening)` every frame; `interrupt()`; `new_session()`.
 - **Outputs:** a list of effects (`events.py`): `Speak(text)`, `Act(actions)`, `StopSpeech()`,
   `Accepted(question)` (calm face while thinking), `Mood(mood, seconds)`, `Log(message)`.
   `RobotHUD.run_effects` applies them on the UI thread; the core never calls speech or pygame.
@@ -93,7 +93,25 @@ home, driving) without growing `app.py`, and is tested without pygame
 - **Turns and sessions:** each question is a `Turn(session, request, ...)`. AI messages are used
   only if both the request id and the session id match the current turn, so cancelled, stalled
   or old answers never reach a new question. `new_session()` stops the answer, renews the session
-  and forgets the AI history (used by later phases: idle reset, "new conversation").
+  and forgets the AI history.
+- **Context (phase 5.0B, `context.py`):** every question gets fresh instructions: the global
+  personality (warm, brief, more detail when asked, one short clarifying question when unclear,
+  never invent readings or actions), what Luna `ABILITIES` really has and what is
+  `NOT_CONNECTED` yet (camera, motors, smart home, music, timers, search, memory), the local
+  date and time, the optional `LUNA_USER_NAME` / `LUNA_LOCATION`, and the pack's
+  `ai_instruction` (language and its style). Only list an ability once it really works.
+  Follow-ups and references ("tell me more", "the second one") use the AI's conversation history.
+- **Conversation lifecycle (5.0B):** the follow-up window is 8 s, or 15 s when Luna's answer
+  ended with a question. A session ends (fresh AI history, log line `Luna: new conversation ...`):
+  after `LUNA_IDLE_RESET_SECONDS` (300; 0 = never) without talking, listening, answering or
+  speaking; before the question after `LUNA_MAX_TURNS` (20) remembered answers (the
+  `previous_response_id` chain cannot be trimmed, so it starts fresh); or when asked. This is
+  session history only; Luna has no persistent memory yet.
+- **Conversation controls (5.0B):** the packs' `controls` phrases, as the whole utterance with
+  "Luna" or during a follow-up: `cancel` ("never mind", "no thanks", "strunt samma") closes the
+  follow-up and says "Okay."; `new_conversation` ("start a new conversation", "nytt samtal")
+  forgets the history and listens for a new question. `route` returns `("control", name)`.
+  The microphone is off while Luna speaks, so they do not interrupt her; tap the screen for that.
 - **Diagnostics:** `Luna: first spoken reply X s after the question` is logged once per answer
   (time from the routed utterance to the first audible sentence).
 - `RobotHUD` (the adapter) keeps the microphone (`listen`), the face (`apply_actions`), touch and
@@ -254,8 +272,9 @@ name before enabling).
 
 ### Adding a language (no code changes)
 1. Copy `robot_hud/languages/en.json` to `<code>.json` (e.g. `de.json`) and translate it:
-   `name`, `native_name`, `screen` (English text → translation), `commands`, `wake_words`,
-   `greetings`, `replies`, `speech`, `ai_instruction`, `sample`, `warm_up`, `windows_culture`.
+   `name`, `native_name`, `screen` (English text → translation), `commands`, `controls`,
+   `wake_words`, `greetings`, `replies`, `speech`, `ai_instruction` (language and speaking
+   style), `sample`, `warm_up`, `windows_culture`.
 2. Set `listening_model` (and `listening_model_mb`) to a small Vosk model from
    alphacephei.com/vosk/models. Find the wake words by testing what that model hears for "Luna".
 3. Add at least one voice of the language to `voices.json` (below), then run the tests.
@@ -313,15 +332,22 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
   `AIWorker` only if it is configured and `--no-ai` is not given.
 - `LunaBrain` lazily imports `openai`, uses the Responses API with `previous_response_id`
   for conversation memory, timeout 30 s, 1 retry. Model: `LUNA_AI_MODEL` or `DEFAULT_MODEL`
-  (unverified default). The instructions come from `assistant_core.context.instructions(language)`:
-  1–3 short plain sentences (answers are spoken) in the voice language.
+  (unverified default). The instructions are built by the assistant core
+  (`context.instructions`, section 2a) and passed with each question: 1–3 short plain sentences,
+  up to 5 when asked for detail (well under the 700-character spoken limit of `SentenceStream`).
+- **Reasoning effort:** `LUNA_AI_REASONING` (`none`, `minimal`, `low`, `medium`, `high`,
+  `xhigh`) is sent as `reasoning.effort` only when set. Not every model supports every value; the
+  API then fails with `BadRequestError`, which is logged with a hint, never silently changed.
+  Compare speeds with `python scripts/test_ai.py --bench --efforts default,low`.
 - **Streaming (phase 4):** `LunaBrain.stream()` calls the Responses API with `stream=True` and
   yields text pieces (`response.output_text.delta`). It sets `completed_id` on
   `response.completed`; `response.failed` / `incomplete` / `error`, or an end without
   completion, raise `StreamError`. The stream is closed when the generator stops.
   `ask()` (whole answer) is kept for `scripts/test_ai.py`.
-- `AIWorker` handles one question at a time in a daemon thread. `ask()` returns a request id
-  (False if busy). `speech.SentenceStream` turns the pieces into sentences (a sentence ends at
+- `AIWorker` handles one question at a time, each in its own daemon thread. `ask()` returns a
+  request id (False if busy); a cancelled request frees it at once, even when its network read is
+  stuck, and the stuck thread later ends silently. The completed response id is returned per
+  call (`stream(..., result)`), so an overlapping stuck stream can never enter the history. `speech.SentenceStream` turns the pieces into sentences (a sentence ends at
   `.!?…` + space, so "3.5" is never cut; same 20/250/700-character rules as `split_sentences`).
   It puts `(kind, request id, value)` on `answers`:
   `text` (show it, appended once in order), `sentence` (speak now), `say` (fixed sentence, e.g.
@@ -375,14 +401,11 @@ to change a case); `scripts/measure_listening.py --cases` speaks them through th
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
 3. Real camera, motors, smart-home control (UI placeholders exist).
-4. Phase 5.0B–D on the assistant core: context (date, time), idle reset, conversation controls,
-   face tools with a permission policy, expressive answers. Then online listening, memory,
-   smart home and driving, each as its own phase.
+4. Phase 5.0C–D on the assistant core: face tools with a permission policy, expressive
+   answers. Then online listening, memory, smart home and driving, each as its own phase.
 
 ## 11. Known gaps
 - Wi-Fi, audio and battery icons are decorative, not live readings.
 - The small Vosk model may mishear "Luna"; variants are accepted in `commands.route`.
 - Free-form recognition (AI on) is less accurate for one-word commands than grammar mode.
 - The microphone is muted while Luna speaks, so you cannot interrupt her by voice (tap instead).
-- A cancelled answer whose network read is stuck still occupies `AIWorker`'s thread until the
-  read returns or times out (30 s); the next question waits, but never gets the old answer.

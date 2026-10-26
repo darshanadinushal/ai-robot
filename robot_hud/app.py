@@ -26,6 +26,7 @@ from . import i18n, languages, speech
 from .i18n import tr
 from .ai import AIWorker, ai_configured
 from .assistant_core.conversation import Conversation
+from .assistant_core.context import settings_from_env
 from .assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
@@ -694,6 +695,8 @@ class RobotHUD:
         speech.set_voice(self.voice_key)
         use_ai=not getattr(args,'no_ai',False) and ai_configured()
         self.ai=AIWorker() if use_ai else None
+        if use_ai:  # name, location, turn limit, idle reset (from ~/.luna.env or the environment)
+            self.conversation.settings=settings_from_env()
         self.voice=(VoiceListener(muted=self.mic_muted,free_form=self.ai is not None,
                                   language=self.talk_language)
                     if not args.no_voice else None)
@@ -895,7 +898,9 @@ class RobotHUD:
     def poll_voice(self,t):
         if self.voice:
             self.listen(t)
-        self.run_effects(self.conversation.poll(t,speech.is_speaking(),speech.is_talking()),t)
+        listening=bool(self.voice) and self.utterance.pending
+        self.run_effects(self.conversation.poll(t,speech.is_speaking(),speech.is_talking(),
+                                                listening),t)
 
     def run_effects(self,effects,t):
         """Carry out what the assistant core decided (UI thread)."""

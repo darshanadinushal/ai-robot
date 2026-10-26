@@ -162,7 +162,9 @@ Then talk:
 | --- | --- |
 | "Hey Luna, tell me about Mars." | Looks up while thinking, then speaks and shows the answer |
 | "Luna" | Says "Yes?" and waits for your question |
-| A follow-up within ~8 s, e.g. "How far is it?" | Answers without needing "Luna" again |
+| A follow-up within ~8 s, e.g. "How far is it?" | Answers without needing "Luna" again (15 s if she asked you something) |
+| "Never mind" / "No thanks" (or "Luna, cancel") | Stops waiting for a follow-up |
+| "Luna, start a new conversation" | Forgets the conversation so far |
 | "look left", "happy", … | Still handled offline as commands |
 | Tap the screen or press `S` | Stops her talking |
 
@@ -175,6 +177,12 @@ Then talk:
 - With AI on, the microphone understands free speech, so single command words are recognised
   slightly less reliably. Use `--no-ai` for command-only mode.
 - Choose another model with `LUNA_AI_MODEL=<model>` (environment variable or a line in `~/.luna.env`).
+- Optional lines in `~/.luna.env`: `LUNA_USER_NAME=Sam` (what Luna calls you),
+  `LUNA_LOCATION=Living room`, `LUNA_AI_REASONING=low` (only if your model supports it; compare
+  with `python scripts/test_ai.py --bench`), `LUNA_IDLE_RESET_SECONDS=300` (a new conversation
+  after this much quiet), `LUNA_MAX_TURNS=20`.
+- Luna knows today's date and time, and says so when something (camera, motors, smart home,
+  music) is not connected yet instead of pretending.
 - Try typed chat without the face: `python scripts/test_ai.py`.
 
 ## Controls

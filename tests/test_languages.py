@@ -10,7 +10,7 @@ from robot_hud.preferences import read_preferences
 from robot_hud.settings import apply_choice
 
 FIXED_SENTENCES = {"Yes?", "My AI brain is not set up yet.", "I am not sure what to say.",
-                   ai.LOST_CONNECTION}
+                   ai.LOST_CONNECTION, "Okay.", "Okay, let's start a new conversation."}
 
 
 def ai_errors():
@@ -41,6 +41,12 @@ class LanguagePackTests(unittest.TestCase):
                 raw = json.loads((languages.FOLDER / (code + ".json")).read_text("utf-8"))
                 self.assertEqual(set(raw.get("replies", {})), set(commands.ACTIONS),
                                  "a reply for every action")
+                self.assertEqual(set(pack.controls), set(commands.CONTROLS), "controls")
+                for name, phrases in pack.controls.items():
+                    self.assertTrue(phrases, name)
+                    for phrase in phrases:
+                        self.assertEqual(commands.route("luna " + phrase, language=code),
+                                         ("control", name), phrase)
                 if code != languages.DEFAULT:
                     missing = (FIXED_SENTENCES | ai_errors()) - set(pack.speech)
                     self.assertEqual(missing, set(), "speech: Luna's fixed sentences")

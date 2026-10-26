@@ -5,11 +5,13 @@ Only answers for the current Turn of the current Session are used, so cancelled,
 old answers can never reach a new question.
 """
 import queue
+from datetime import datetime
 
 from ..ai import LOST_CONNECTION
 from ..commands import route, spoken
+from .context import ConversationSettings, instructions
 from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
-from .session import Session, Turn
+from .session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS, Session, Turn
 
 HEARD_SECONDS = 8.0    # how long the screen shows what Luna heard
 ANSWER_SECONDS = 20.0  # how long it shows her answer after the last piece arrived
@@ -20,10 +22,15 @@ class Conversation:
 
     `ai` is an AIWorker (or a fake with ask/cancel/confirm/forget and an `answers` queue).
     History: an answer is confirmed (kept by the AI) only after Luna has spoken all of it.
+    A session ends after `settings.idle_seconds` of real quiet, after `settings.max_turns`
+    answers, or when the user asks for a new conversation; the AI history starts fresh then.
+    `clock` gives the local wall-clock time for the instructions.
     """
 
-    def __init__(self, ai=None):
+    def __init__(self, ai=None, settings=None, clock=datetime.now):
         self.ai = ai
+        self.settings = settings or ConversationSettings()
+        self.clock = clock
         self.session = Session()
         self.turn = None               # the question being answered or spoken
         self.streaming = False         # its answer is still arriving
@@ -37,6 +44,7 @@ class Conversation:
         self.answer_until = 0.0
         self._confirmed = False
         self._audible = False
+        self._asked_back = False  # Luna's answer ended with a question to the user
 
     def in_followup(self, t):
         return self.ai is not None and self.session.in_followup(t)
@@ -53,6 +61,10 @@ class Conversation:
             conversation = self.in_followup(t)
         kind, value = route(text, conversation=conversation, language=heard_language)
         self.heard_kind = kind
+        if kind != "ignore":
+            self.session.touch(t)
+        if kind == "control":
+            return self.control(value, talk_language)
         if kind == "command":
             return [Act(tuple(value))]
         if kind == "wake":
@@ -62,14 +74,30 @@ class Conversation:
             return self.ask(value, t, talk_language)
         return []
 
+    def control(self, name, language):
+        """"Never mind" / "cancel": stop listening for a follow-up. "New conversation": forget."""
+        if name == "new_conversation":
+            effects = self.new_session()
+            self.followup_pending = True  # listen for the first question straight away
+            return effects + [Log("Luna: new conversation (asked by the user)"),
+                              Speak(spoken("Okay, let's start a new conversation.", language))]
+        effects = self.interrupt()
+        self.session.close_followup()
+        return effects + [Speak(spoken("Okay.", language))]
+
     def ask(self, question, t, language):
         if self.ai is None:
             return [Speak(spoken("My AI brain is not set up yet.", language))]
-        request = self.ai.ask(question, language)
+        effects = []
+        if not self.streaming and self.session.turns >= self.settings.max_turns:
+            effects = self._fresh("after %d answers" % self.session.turns)
+        request = self.ai.ask(question, language,
+                              instructions(language, self.clock(), self.settings.profile))
         if not request:
             return []  # still answering the previous question
+        self.session.touch(t)
         self.turn = Turn(self.session.id, request, question, language, t)
-        self._confirmed = self._audible = False
+        self._confirmed = self._audible = self._asked_back = False
         self.streaming = True
         self.followup_pending = False
         self.thinking = True
@@ -77,12 +105,13 @@ class Conversation:
         self.question = question
         self.answer = ""
         self.session.close_followup()
-        return [Accepted(question)]
+        return effects + [Accepted(question)]
 
-    def poll(self, t, speaking, talking=False):
+    def poll(self, t, speaking, talking=False, listening=False):
         """Handle the AI's messages; once the answer was spoken, keep it and open the follow-up.
 
-        `speaking`: Luna talks or just stopped (speech.is_speaking); `talking`: audio is playing.
+        `speaking`: Luna talks or just stopped (speech.is_speaking); `talking`: audio is playing;
+        `listening`: the user is in the middle of an utterance.
         """
         effects = []
         if self.ai is not None:
@@ -98,12 +127,19 @@ class Conversation:
             self._audible = True
             effects.append(Log("Luna: first spoken reply %.1f s after the question"
                                % (t - turn.asked_at)))
+        if speaking or listening:
+            self.session.touch(t)
         if self.followup_pending and not speaking:
             self.followup_pending = False
             if self.ai is not None and turn is not None and not self._confirmed:
                 self._confirmed = True
                 self.ai.confirm(turn.request)
-            self.session.open_followup(t)
+                self.session.turns += 1
+            self.session.open_followup(
+                t, QUESTION_FOLLOWUP_SECONDS if self._asked_back else FOLLOWUP_SECONDS)
+            self._asked_back = False
+        elif self._idle(t, speaking, listening):
+            effects += self._fresh("after %.0f s without talking" % self.session.idle_for(t))
         return effects
 
     def interrupt(self):
@@ -125,6 +161,22 @@ class Conversation:
             self.ai.forget()
         return effects
 
+    def _idle(self, t, speaking, listening):
+        """Nothing is going on, and there is a conversation that has been quiet long enough."""
+        seconds = self.settings.idle_seconds
+        busy = speaking or listening or self.streaming or self.followup_pending
+        has_history = self.session.turns or self.turn is not None
+        return (seconds > 0 and has_history and not busy
+                and self.session.idle_for(t) >= seconds)
+
+    def _fresh(self, reason):
+        """Start a new session quietly (nothing is playing or being answered)."""
+        self.turn = None
+        self.session.renew()
+        if self.ai is not None:
+            self.ai.forget()
+        return [Log("Luna: new conversation " + reason)]
+
     def _current(self, request):
         turn = self.turn
         return turn is not None and request == turn.request and turn.session == self.session.id
@@ -133,6 +185,7 @@ class Conversation:
         """One AIWorker message for the current turn (see AIWorker for the kinds)."""
         language = self.turn.language
         self.thinking = False
+        self.session.touch(t)
         self.answer_until = t + ANSWER_SECONDS
         self.heard_until = t + ANSWER_SECONDS
         if kind == "text":
@@ -146,6 +199,7 @@ class Conversation:
         elif kind == "done":
             self.streaming = False
             self.followup_pending = True
+            self._asked_back = self.answer.rstrip().endswith(("?", "\uff1f"))
         elif kind in ("error", "lost"):
             self.streaming = False
             text = spoken(value if kind == "error" else LOST_CONNECTION, language)

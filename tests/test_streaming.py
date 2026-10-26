@@ -103,6 +103,17 @@ class LunaBrainStreamTests(unittest.TestCase):
         self.assertEqual(self.calls[1]["previous_response_id"], "r1")
         self.assertTrue(self.calls[1]["instructions"].endswith("Always answer in English."))
 
+    def test_reasoning_effort_only_when_configured(self):
+        brain = self.brain([event("response.completed", response=types.SimpleNamespace(id="r1"))])
+        brain.reasoning = None
+        list(brain.stream("q"))
+        self.assertNotIn("reasoning", self.calls[0])
+        brain.reasoning = ai.reasoning_effort({"LUNA_AI_REASONING": "Low"})
+        list(brain.stream("q", "en", "Be brief."))
+        self.assertEqual(self.calls[1]["reasoning"], {"effort": "low"})
+        self.assertEqual(self.calls[1]["instructions"], "Be brief.")
+        self.assertIsNone(ai.reasoning_effort({"LUNA_AI_REASONING": "turbo"}))
+
     def test_failed_or_unfinished_stream_raises(self):
         for events in ([event("response.output_text.delta", delta="Hi."), event("response.failed")],
                        [event("error")],
@@ -122,8 +133,9 @@ class StreamBrain:
         self.previous_id, self.completed_id = None, None
         self.languages, self.closed = [], 0
 
-    def stream(self, question, language="en"):
+    def stream(self, question, language="en", instructions=None, result=None):
         self.languages.append(language)
+        self.instructions = instructions
         self.completed_id = None
         try:
             for index, piece in enumerate(self.pieces):
@@ -133,6 +145,8 @@ class StreamBrain:
                     raise ConnectionError("dropped")
                 yield piece
             self.completed_id = "resp-" + question
+            if result is not None:
+                result["id"] = self.completed_id
         finally:
             self.closed += 1
 
@@ -264,7 +278,7 @@ class FakeAI:
         self.answers = queue.Queue()
         self.asked, self.cancelled, self.confirmed = [], [], []
 
-    def ask(self, question, language="en"):
+    def ask(self, question, language="en", instructions=None):
         self.asked.append((question, language))
         return len(self.asked)
 
