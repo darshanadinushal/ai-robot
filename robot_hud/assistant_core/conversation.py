@@ -11,6 +11,7 @@ from ..ai import LOST_CONNECTION
 from ..commands import route, spoken
 from .context import ConversationSettings, instructions
 from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
+from .expression import LINGER_SECONDS
 from .session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS, Session, Turn
 from .tools import ToolExecutor, face_registry
 
@@ -29,6 +30,10 @@ class Conversation:
     Tools: the AI proposes calls, `tools` (a ToolExecutor) validates, permits and runs them
     here on the UI thread; their results go back to the AI on the next poll, after the app
     has applied the effects.
+    Expressions: `expression` is the mood of the current answer (its "[mood]" tag), shown while
+    Luna answers and LINGER_SECONDS after; the user's own face settings are never changed.
+    A mood set by a tool this turn wins. `slow`: no answer after `settings.progress_seconds`,
+    so Luna said "One moment." (once per question).
     """
 
     def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None):
@@ -51,6 +56,10 @@ class Conversation:
         self._confirmed = False
         self._audible = False
         self._asked_back = False  # Luna's answer ended with a question to the user
+        self.expression = None    # the answer's mood, drawn above the user's mood
+        self._expression_until = None
+        self._tool_mood = False   # a tool changed the face this turn: ignore the answer's tag
+        self.slow = False
 
     def in_followup(self, t):
         return self.ai is not None and self.session.in_followup(t)
@@ -100,7 +109,8 @@ class Conversation:
         use_tools = self.settings.tools
         request = self.ai.ask(
             question, language,
-            instructions(language, self.clock(), self.settings.profile, use_tools),
+            instructions(language, self.clock(), self.settings.profile, use_tools,
+                         self.settings.expressions),
             tools=self.tools.registry.schemas() if use_tools else None)
         if not request:
             return []  # still answering the previous question
@@ -109,6 +119,8 @@ class Conversation:
         self.session.touch(t)
         self.turn = Turn(self.session.id, request, question, language, t)
         self._confirmed = self._audible = self._asked_back = False
+        self._tool_mood = self.slow = False
+        self._clear_expression()
         self.streaming = True
         self.followup_pending = False
         self.thinking = True
@@ -143,6 +155,12 @@ class Conversation:
             self._audible = True
             effects.append(Log("Luna: first spoken reply %.1f s after the question"
                                % (t - turn.asked_at)))
+        if (turn is not None and self.thinking and not self.slow and not self._audible
+                and not speaking and self.settings.progress_seconds > 0
+                and t - turn.asked_at >= self.settings.progress_seconds):
+            self.slow = True
+            effects.append(Speak(spoken("One moment.", turn.language)))
+        self._expression_lifecycle(t, speaking)
         if speaking or listening:
             self.session.touch(t)
         if self.followup_pending and not speaking:
@@ -168,6 +186,7 @@ class Conversation:
             self._tool_outputs = None
             self.streaming = False
             self.thinking = False
+        self._clear_expression()
         return [StopSpeech()]
 
     def new_session(self):
@@ -186,6 +205,9 @@ class Conversation:
             outputs.append((call.call_id, result.output()))
             effects.append(Log("Luna tool: %s -> %s" % (call.name, "ok" if result.ok
                                                        else result.message)))
+            if call.name == "set_face_mood" and result.ok:
+                self._tool_mood = True
+                self._clear_expression()
         self._tool_outputs = (self.turn.request, outputs)
         return effects
 
@@ -197,9 +219,24 @@ class Conversation:
         return (seconds > 0 and has_history and not busy
                 and self.session.idle_for(t) >= seconds)
 
+    def _expression_lifecycle(self, t, speaking):
+        if self.expression is None:
+            return
+        if self.streaming or speaking:
+            self._expression_until = None
+        elif self._expression_until is None:
+            self._expression_until = t + LINGER_SECONDS
+        elif t >= self._expression_until:
+            self._clear_expression()
+
+    def _clear_expression(self):
+        self.expression = None
+        self._expression_until = None
+
     def _fresh(self, reason):
         """Start a new session quietly (nothing is playing or being answered)."""
         self.turn = None
+        self._clear_expression()
         self.session.renew()
         if self.ai is not None:
             self.ai.forget()
@@ -212,6 +249,11 @@ class Conversation:
     def _answer(self, kind, value, t):
         """One AIWorker message for the current turn (see AIWorker for the kinds)."""
         language = self.turn.language
+        if kind == "mood":
+            if self.settings.expressions and not self._tool_mood and value != "neutral":
+                self.expression = value
+                self._expression_until = None
+            return []
         self.thinking = False
         self.session.touch(t)
         self.answer_until = t + ANSWER_SECONDS
@@ -236,5 +278,6 @@ class Conversation:
             self.streaming = False
             text = spoken(value if kind == "error" else LOST_CONNECTION, language)
             self.answer = text if kind == "error" else (self.answer.rstrip() + " " + text).strip()
+            self._clear_expression()
             return [Mood("sad", 4.0), Speak(text)]
         return []

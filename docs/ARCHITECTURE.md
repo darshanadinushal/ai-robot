@@ -21,6 +21,7 @@ robot_hud/
     context.py              Instructions (personality, abilities, date/time, profile) + settings
     events.py               Effects the core returns: Speak, Act, StopSpeech, Accepted, Mood, Log
     tools.py                AI tools: ToolRegistry, PermissionPolicy, ToolExecutor, face tools
+    expression.py           MoodTag (strips an answer's "[mood]" tag), face_motion (listen/talk)
   commands.py               Pure: spoken words -> actions; actions -> spoken reply (from the packs)
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
   voice.py                  Mic capture + Vosk recognition in a background thread
@@ -46,6 +47,7 @@ tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_assistant_core.py    Phase 5.0A: Conversation without pygame, stale/stalled answers, sessions
   test_tools.py             Phase 5.0C: tool validation, permissions, no duplicates, tool rounds
+  test_expression.py        Phase 5.0D: mood tags, answer expression lifecycle, "One moment."
   test_conversation_cases.py  Baseline: 34 English/Swedish sentences (conversation_cases.json)
   test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
   test_listening.py         Phase 4.2: joining pauses, endpoints, limits, mic buffer, cloud interface
@@ -136,6 +138,19 @@ home, driving) without growing `app.py`, and is tested without pygame
     permission.
   - `LUNA_AI_TOOLS=off` sends no tools (for a model without function calling; a
     `BadRequestError` logs that hint). Instructions then describe only the offline commands.
+- **Expressions (phase 5.0D, `expression.py`):** the instructions ask the AI to start each
+  answer with one tag (`[happy]`, `[sad]`, `[surprised]`, `[sleepy]`, `[neutral]`); no extra AI
+  request. `AIWorker` runs a `MoodTag` per round *before* `SentenceStream`: it holds back at
+  most a few leading characters, sends `("mood", id, mood)` and removes the tag, so it is never
+  shown or spoken and sentence order/timing are unchanged. `Conversation.expression` is that
+  mood (not `neutral`; ignored if a `set_face_mood` tool ran this turn) while Luna answers and
+  `LINGER_SECONDS` (1.5 s) after; it clears on interrupt, error and new session. The app draws
+  it *above* `self.mood`, so the user's expression, colour and mode are never changed.
+  - Thinking face as soon as a question is accepted (as before). `face_motion`: eyes open a
+    little wider with the mic level while the user speaks; a soft bob while Luna talks.
+  - Slow answers: after `progress_seconds` (6 s, `LUNA_PROGRESS_SECONDS`, 0 = off) with
+    nothing spoken, Luna says "One moment." once per question and the caption reads
+    "STILL THINKING...". Fast answers get no filler. `LUNA_AI_EXPRESSIONS=off` drops the tag rule.
 - **Diagnostics:** `Luna: first spoken reply X s after the question` is logged once per answer
   (time from the routed utterance to the first audible sentence).
 - `RobotHUD` (the adapter) keeps the microphone (`listen`), the face (`apply_actions`), touch and
@@ -425,8 +440,8 @@ to change a case); `scripts/measure_listening.py --cases` speaks them through th
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
 3. Real camera, motors, smart-home control (UI placeholders exist).
-4. Phase 5.0D: expressive answers. Then online listening, memory, smart home and driving,
-   each as its own phase, reusing the tool registry and permission policy.
+4. Phase 5.1 online listening, then memory, smart home and driving, each as its own phase,
+   reusing the tool registry and permission policy.
 
 ## 11. Known gaps
 - Wi-Fi, audio and battery icons are decorative, not live readings.

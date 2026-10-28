@@ -182,7 +182,11 @@ Then talk:
   `LUNA_LOCATION=Living room`, `LUNA_AI_REASONING=low` (only if your model supports it; compare
   with `python scripts/test_ai.py --bench`), `LUNA_IDLE_RESET_SECONDS=300` (a new conversation
   after this much quiet), `LUNA_MAX_TURNS=20`, `LUNA_AI_TOOLS=off` (if your model has no
-  function calling; Luna then only changes her face through the offline commands).
+  function calling; Luna then only changes her face through the offline commands),
+  `LUNA_AI_EXPRESSIONS=off` (no face expression per answer), `LUNA_PROGRESS_SECONDS=6`
+  (a slow answer: Luna says "One moment." after this; 0 = never).
+- Luna's face follows the conversation: attentive while you speak, thinking while she waits,
+  and a short expression that fits her answer (your own face settings stay as they are).
 - Luna knows today's date and time, and says so when something (camera, motors, smart home,
   music) is not connected yet instead of pretending.
 - Try typed chat without the face: `python scripts/test_ai.py`.

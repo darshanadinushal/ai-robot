@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .assistant_core.context import BASE_INSTRUCTIONS, instructions
 from .assistant_core.tools import ToolCall
+from .assistant_core.expression import MoodTag
 from .speech import SentenceStream
 
 DEFAULT_MODEL = "gpt-6-luna"
@@ -174,6 +175,7 @@ class AIWorker:
     once, even if its network read is stuck: the next question starts in a new thread and the
     stuck one ends silently later. The UI polls `answers` for
     (kind, request_id, value):
+      ("mood", id, mood)         the answer's leading "[mood]" tag (removed from the text)
       ("text", id, piece)        more answer text to show (in order, never repeated)
       ("sentence", id, text)     a complete sentence to speak now
       ("say", id, sentence)      one of Luna's fixed English sentences (translate, then speak)
@@ -291,7 +293,7 @@ class AIWorker:
         started = time.monotonic()
         if not hasattr(brain, "stream"):  # a brain that answers in one piece (no tools)
             self._finish(request, [brain.ask(question, language, instructions_text)], {},
-                         SentenceStream(), spoke, started)
+                         SentenceStream(), spoke, started, MoodTag())
             return
         given, previous = question, None
         for round_ in range(MAX_TOOL_ROUNDS + 1):
@@ -302,12 +304,12 @@ class AIWorker:
                            "tool_choice": "none" if round_ == MAX_TOOL_ROUNDS else "auto"}
             if previous:
                 options["previous"] = previous
-            sentences = SentenceStream()
+            sentences, tag = SentenceStream(), MoodTag()
             pieces = brain.stream(given, language, instructions_text, result, **options)
-            if not self._read(request, pieces, result, sentences, spoke, started):
+            if not self._read(request, pieces, result, sentences, spoke, started, tag):
                 return
             if not result.get("calls"):
-                self._finish(request, (), result, sentences, spoke, started)
+                self._finish(request, (), result, sentences, spoke, started, tag)
                 return
             outputs = self._wait_for_tools(request, result["calls"])
             if outputs is None:
@@ -316,7 +318,7 @@ class AIWorker:
                      for call_id, output in outputs]
             previous = result.get("id")
 
-    def _read(self, request, pieces, result, sentences, spoke, started):
+    def _read(self, request, pieces, result, sentences, spoke, started, tag):
         """Stream one response; False if the request was cancelled meanwhile."""
         try:
             for piece in pieces:
@@ -324,8 +326,7 @@ class AIWorker:
                     return False
                 if result.get("calling"):
                     continue  # text next to a tool call is not spoken
-                if piece and self._send(request, "text", piece):
-                    self._speak(request, sentences.feed(piece), spoke, started)
+                self._piece(request, piece, sentences, spoke, started, tag)
         finally:
             close = getattr(pieces, "close", None)
             if close:
@@ -346,12 +347,21 @@ class AIWorker:
             with self._lock:
                 self._tool_waits.pop(request, None)
 
-    def _finish(self, request, pieces, result, sentences, spoke, started):
+    def _piece(self, request, piece, sentences, spoke, started, tag):
+        mood, text = tag.feed(piece)
+        if mood:
+            self._send(request, "mood", mood)
+        if text and self._send(request, "text", text):
+            self._speak(request, sentences.feed(text), spoke, started)
+
+    def _finish(self, request, pieces, result, sentences, spoke, started, tag):
         for piece in pieces:
-            if piece and self._send(request, "text", piece):
-                self._speak(request, sentences.feed(piece), spoke, started)
+            self._piece(request, piece, sentences, spoke, started, tag)
         if self._stopped(request):
             return
+        held = tag.flush()
+        if held and self._send(request, "text", held):
+            self._speak(request, sentences.feed(held), spoke, started)
         self._speak(request, sentences.flush(), spoke, started)
         if not spoke:
             self._send(request, "say", "I am not sure what to say.")

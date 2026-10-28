@@ -28,6 +28,7 @@ from .ai import AIWorker, ai_configured
 from .assistant_core.conversation import Conversation
 from .assistant_core.context import settings_from_env
 from .assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
+from .assistant_core.expression import face_motion
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 from .settings import SECTIONS, apply_choice
@@ -1023,9 +1024,16 @@ class RobotHUD:
                 nav_bar(self.canvas,self.page,self.fonts,accent)
                 return
             dx,ey,sc,sy=LAYOUT_CHOICES[self.prefs['layout']]
-            if self.mood=='surprised':
+            # The answer's expression is drawn above the user's mood, which stays as it was.
+            mood='thinking' if self.conversation.thinking else (self.conversation.expression or self.mood)
+            if mood=='surprised':
                 sc*=1.12
-            mood='thinking' if self.conversation.thinking else self.mood
+            listening=bool(self.voice) and self.utterance.pending
+            grow,bob=face_motion(motion_t,listening,talking,self.voice.level if self.voice else 0.0)
+            sc*=grow
+            ey+=bob
+            if sy is not None:
+                sy+=bob
             for ex,side in ((640-dx,-1),(640+dx,1)):
                 draw_eye(self.canvas,ex,ey,motion_t,self.gaze_x,self.gaze_y,openness,accent,self.glow,sc,side,mood)
             if sy is not None:
@@ -1048,7 +1056,7 @@ class RobotHUD:
     def draw_footer(self,t,default):
         """Bottom text: Luna's answer while relevant, otherwise the hint."""
         if self.conversation.thinking:
-            lines=[tr('LUNA IS THINKING...')]
+            lines=[tr('LUNA IS STILL THINKING...' if self.conversation.slow else 'LUNA IS THINKING...')]
         elif self.conversation.answer and (speech.is_talking() or t<self.conversation.answer_until):
             lines=wrap_text(self.fonts['small'],'LUNA: '+self.conversation.answer,1040,2)
         else:
@@ -1094,7 +1102,7 @@ class RobotHUD:
         if self.voice is None and self.ai is None:
             return
         if self.conversation.thinking:
-            text=tr('THINKING...')
+            text=tr('STILL THINKING...' if self.conversation.slow else 'THINKING...')
         elif self.conversation.in_followup(t):
             text=tr('LISTENING FOR YOUR FOLLOW-UP...')
         else:

@@ -35,6 +35,9 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   risk class, pure `run` returning effects + `ToolResult`) in a `ToolRegistry`; validation and
   `PermissionPolicy` are code, never the model. `motion`/`sensitive` are never allowed here.
   Tests: `tests/test_tools.py` (fake brains, never the real API).
+- Answer expressions: `assistant_core/expression.py` (`MoodTag` strips the AI's leading "[mood]"
+  tag in `AIWorker` before sentences; `Conversation.expression` is drawn above the user's mood,
+  never saved). Tests: `tests/test_expression.py`.
 - AI conversation: `robot_hud/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
   `assistant_core/context.py`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`, via `Conversation.poll`).
@@ -70,5 +73,5 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 ## Status snapshot
 Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expressions,
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
-follow-ups and tap-to-stop, date/time-aware answers, AI face tools, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
+follow-ups and tap-to-stop, date/time-aware answers, AI face tools, answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
 Planned: AI-model setting, autostart, camera/motors/smart home.

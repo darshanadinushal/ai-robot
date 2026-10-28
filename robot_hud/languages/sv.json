@@ -143,6 +143,7 @@
     "Sorry, my AI brain had a problem.": "Förlåt, min AI-hjärna fick ett problem.",
     "Sorry, I lost my connection.": "Förlåt, jag tappade anslutningen.",
     "Okay.": "Okej.",
+    "One moment.": "Ett ögonblick.",
     "Okay, let's start a new conversation.": "Okej, vi börjar ett nytt samtal."
   },
   "ai_instruction": "Use natural, everyday Swedish and say du to the user. Always answer in Swedish.",
@@ -218,6 +219,8 @@
     "QUIET...": "TYST...",
     "THINKING...": "TÄNKER...",
     "LUNA IS THINKING...": "LUNA TÄNKER...",
+    "STILL THINKING...": "TÄNKER FORTFARANDE...",
+    "LUNA IS STILL THINKING...": "LUNA TÄNKER FORTFARANDE...",
     "YOU: ": "DU: ",
     "  (say \"Hey Luna\" first)": "  (säg \"Hey Luna\" först)",
     "LISTENING FOR YOUR FOLLOW-UP...": "LYSSNAR EFTER DIN FÖLJDFRÅGA...",

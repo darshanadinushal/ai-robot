@@ -41,6 +41,11 @@ TOOL_RULES = (
     "other text in that response; you will get the result. Say a change happened only if its "
     "result is ok; if it failed or is not available, say so briefly. Never mention tool names."
 )
+EXPRESSION_RULE = (
+    "Start each answer with one tag for the feeling of your answer: [happy], [sad], "
+    "[surprised], [sleepy] or [neutral]. It sets your face and is never spoken. Use [neutral] "
+    "when unsure."
+)
 NOT_CONNECTED = (
     "a camera", "motors or wheels", "smart-home control", "a music player", "timers or alarms",
     "internet search", "memory of earlier conversations",
@@ -66,6 +71,8 @@ class ConversationSettings:
     max_turns: int = 20           # answers in one conversation before a fresh one starts
     idle_seconds: float = 300.0   # quiet time before Luna starts a new conversation; 0 = never
     tools: bool = True            # the AI may use Luna's tools (LUNA_AI_TOOLS=off: never)
+    expressions: bool = True      # answers set a short face expression (LUNA_AI_EXPRESSIONS)
+    progress_seconds: float = 6.0  # a slow answer: "One moment." once after this; 0 = never
 
 
 def _clean(value, limit):
@@ -80,16 +87,22 @@ def _number(env, name, default, kind):
     return value if value >= 0 else default
 
 
+def _switch(env, name):
+    return env.get(name, "on").strip().lower() not in ("off", "0", "no", "false")
+
+
 def settings_from_env(env=None):
-    """LUNA_USER_NAME, LUNA_LOCATION, LUNA_MAX_TURNS, LUNA_IDLE_RESET_SECONDS, LUNA_AI_TOOLS
-    (all optional)."""
+    """LUNA_USER_NAME, LUNA_LOCATION, LUNA_MAX_TURNS, LUNA_IDLE_RESET_SECONDS, LUNA_AI_TOOLS,
+    LUNA_AI_EXPRESSIONS, LUNA_PROGRESS_SECONDS (all optional)."""
     env = os.environ if env is None else env
     default = ConversationSettings()
     return ConversationSettings(
         profile=Profile(_clean(env.get("LUNA_USER_NAME"), 40), _clean(env.get("LUNA_LOCATION"), 60)),
         max_turns=max(1, _number(env, "LUNA_MAX_TURNS", default.max_turns, int)),
         idle_seconds=_number(env, "LUNA_IDLE_RESET_SECONDS", default.idle_seconds, float),
-        tools=env.get("LUNA_AI_TOOLS", "on").strip().lower() not in ("off", "0", "no", "false"))
+        tools=_switch(env, "LUNA_AI_TOOLS"),
+        expressions=_switch(env, "LUNA_AI_EXPRESSIONS"),
+        progress_seconds=_number(env, "LUNA_PROGRESS_SECONDS", default.progress_seconds, float))
 
 
 def date_text(now):
@@ -97,7 +110,7 @@ def date_text(now):
                                         now.year, now.hour, now.minute)
 
 
-def instructions(language="en", now=None, profile=None, tools=False):
+def instructions(language="en", now=None, profile=None, tools=False, expressions=False):
     """Instructions for one question; Luna answers in the voice language."""
     parts = [PERSONALITY, CONVERSATION, HONESTY,
              "You can: %s." % "; ".join(TOOL_ABILITIES if tools else ABILITIES),
@@ -105,6 +118,8 @@ def instructions(language="en", now=None, profile=None, tools=False):
              "not connected yet." % ", ".join(NOT_CONNECTED)]
     if tools:
         parts.append(TOOL_RULES)
+    if expressions:
+        parts.append(EXPRESSION_RULE)
     if now is not None:
         parts.append("Current local date and time: %s." % date_text(now))
     if profile is not None and profile.user_name:
