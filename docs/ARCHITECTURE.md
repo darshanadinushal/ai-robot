@@ -22,6 +22,7 @@ robot_hud/
     events.py               Effects the core returns: Speak, Act, StopSpeech, Accepted, Mood, Log
     tools.py                AI tools: ToolRegistry, PermissionPolicy, ToolExecutor, face tools
     memory.py               Phase 5.2: MemoryStore (SQLite, ~/.luna-memory.db) + memory tools
+    turn_taking.py          Phase 5.3: interruption() - "Luna, stop" / "Hey Luna" while she talks
     expression.py           MoodTag (strips an answer's "[mood]" tag), face_motion (listen/talk)
   commands.py               Pure: spoken words -> actions; actions -> spoken reply (from the packs)
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
@@ -49,6 +50,7 @@ tests/
   test_assistant_core.py    Phase 5.0A: Conversation without pygame, stale/stalled answers, sessions
   test_tools.py             Phase 5.0C: tool validation, permissions, no duplicates, tool rounds
   test_memory.py            Phase 5.2: memory store, "remember"/"forget" permission, instructions
+  test_turn_taking.py       Phase 5.3: voice barge-in (stop, new question, echo ignored)
   test_expression.py        Phase 5.0D: mood tags, answer expression lifecycle, "One moment."
   test_conversation_cases.py  Baseline: 34 English/Swedish sentences (conversation_cases.json)
   test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
@@ -116,8 +118,22 @@ home, driving) without growing `app.py`, and is tested without pygame
 - **Conversation controls (5.0B):** the packs' `controls` phrases, as the whole utterance with
   "Luna" or during a follow-up: `cancel` ("never mind", "no thanks", "strunt samma") closes the
   follow-up and says "Okay."; `new_conversation` ("start a new conversation", "nytt samtal")
-  forgets the history and listens for a new question. `route` returns `("control", name)`.
-  The microphone is off while Luna speaks, so they do not interrupt her; tap the screen for that.
+  forgets the history and listens for a new question; `stop` ("stop", "be quiet", "sluta")
+  silences her answer without a word. `route` returns `("control", name)`.
+  The microphone is off while Luna speaks unless *Interrupt by voice* is on (below); a tap
+  always stops her.
+- **Interrupting by voice (phase 5.3, `turn_taking.py`, OFF by default):** Settings → Listening →
+  Interrupt by voice (preference `voice_interrupt`) keeps the microphone on while Luna speaks.
+  Only for a headset or an echo-cancelling microphone: otherwise she hears herself.
+  While she is talking (`speech.is_talking()` or an answer streaming), `RobotHUD.listen` sends
+  every Vosk final and partial to `Conversation.barge_in` instead of the normal routing;
+  `interruption(text, language, saying)` returns:
+  - `"stop"`: the words (minus the wake word) are a `controls.stop` phrase: she stops, the
+    follow-up closes, the answer is cancelled and not remembered;
+  - `"wake"`: a wake word that is not in her own answer: she stops at once (already on the
+    partial) and the full "Hey Luna, ..." question is then routed normally;
+  - `None`: anything else (background talk, or her own words: if every heard word is in the
+    answer she is saying, it is echo). It is never a motion safety stop.
 - **Tools (phase 5.0C, `tools.py`):** natural requests ("you look tired, cheer up", "make your
   eyes purple") reach the AI, which may *propose* function calls (Responses API, `strict`
   schemas). Exact offline commands keep their fast path. Flow:
@@ -361,7 +377,7 @@ Model `LUNA_TRANSCRIBE_MODEL` (default `gpt-transcribe`). Each question costs AP
 1. Copy `robot_hud/languages/en.json` to `<code>.json` (e.g. `de.json`) and translate it:
    `name`, `native_name`, `screen` (English text → translation), `commands`, `controls`,
    `wake_words`, `greetings`, `replies`, `speech`, `memory_words` (`remember`, `forget`,
-   `private`, `ignore` phrases for Persistent memory), `ai_instruction` (language and speaking
+   `private`, `ignore`, `about`, `yes` phrases for Persistent memory; `controls.stop` for interrupting), `ai_instruction` (language and speaking
    style), `transcription_prompt` and `transcription_keywords` (online listening hints),
    `sample`, `warm_up`, `windows_culture`.
 2. Set `listening_model` (and `listening_model_mb`) to a small Vosk model from
@@ -412,6 +428,7 @@ File: `~/.ai-robot-hud.json` (outside the repo; its name is gitignored).
 | `language` | a language pack code: `en, sv` — screen text (`i18n.LANGUAGES`) | `en` |
 | `online_listening` | boolean — questions transcribed online (Phase 5.1) | `false` |
 | `memory` | boolean — use and save remembered facts (Phase 5.2) | `true` |
+| `voice_interrupt` | boolean — interrupt Luna by voice while she talks (Phase 5.3) | `false` |
 
 `read_preferences` validates every field and silently falls back to defaults on any error;
 unknown keys are ignored. Adding a setting means: default in `read_preferences`, validation,

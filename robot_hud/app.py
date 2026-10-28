@@ -728,6 +728,12 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
         for i,text in enumerate(notes):
             draw_text(surface,wrap_text(fonts['mini'],text,860,1)[0],fonts['mini'],MUTED,
                       topleft=(LABEL_X,y+262+i*28))
+        row_label(surface,fonts,'Interrupt by voice',y+375)
+        toggle(surface,fonts,accent,prefs['voice_interrupt'],y+356,hits,('voice_interrupt',None))
+        draw_text(surface,wrap_text(fonts['mini'],
+                                    tr('Say "Luna, stop" while she talks. Needs a headset or an echo-cancelling mic.'),
+                                    CONTROL_RIGHT-CONTROL_X-170,1)[0],
+                  fonts['mini'],MUTED,topleft=(CONTROL_X+170,y+364))
     elif name=='Memory':
         section_header(surface,fonts,name,y,'What Luna remembers about you')
         memory_section(surface,fonts,accent,prefs,y,memory,hits)
@@ -1036,6 +1042,9 @@ class RobotHUD:
             self.forget_utterance()
             self.utterance.invalidate(t)  # never answer a question with missing words
             return
+        if self.luna_talking():
+            self.hear_interruption(t)  # interrupt by voice is on: only "stop" or "Hey Luna"
+            return
         conversation=self.in_conversation(t)
         self.utterance.continue_seconds=continue_seconds(self.heard_language)
         while True:
@@ -1058,6 +1067,36 @@ class RobotHUD:
                     self.route_heard(heard,t)
                 return
             self.handle_speech(done.text,t,conversation=done.conversation)
+
+    @property
+    def voice_interrupt_on(self):
+        return bool(self.prefs['voice_interrupt']) and self.voice is not None
+
+    def luna_talking(self):
+        """Sound is playing or an answer is still arriving (not the quiet tail after it)."""
+        return speech.is_talking() or self.conversation.streaming
+
+    def hear_interruption(self,t):
+        """Luna talks and interrupt by voice is on: only "stop" or the wake word count.
+
+        Partial words are checked too, so she goes quiet as soon as "Luna" is heard; the rest of
+        the question is then heard as usual. Anything else said meanwhile is dropped.
+        """
+        self.utterance.clear()
+        texts=[]
+        while True:
+            try:
+                texts.append(self.voice.texts.get_nowait())
+            except queue.Empty:
+                break
+        for text,final in [(text,True) for text in texts]+[(self.voice.partial,False)]:
+            kind,effects=self.conversation.barge_in(text,self.heard_language)
+            if kind:
+                self.online.cancel()
+                self.run_effects(effects,t)
+                if final and kind=='wake':
+                    self.utterance.add_final(text,t,False)
+                return
 
     def route_heard(self,heard,t):
         print('Luna online listening: %s; using the %s text (%d chars)'
@@ -1111,7 +1150,10 @@ class RobotHUD:
                 print(effect.message,flush=True)
 
     def mic_muted(self):
-        # Stay deaf between streamed sentences too, so Luna never hears herself.
+        # Stay deaf between streamed sentences too, so Luna never hears herself; with interrupt
+        # by voice on, listen while she talks (hear_interruption decides what counts).
+        if self.voice_interrupt_on:
+            return self.online.busy
         return self.conversation.muted(speech.is_speaking()) or self.online.busy
 
     def interrupt_answer(self):

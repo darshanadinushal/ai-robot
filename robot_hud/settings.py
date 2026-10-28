@@ -27,6 +27,8 @@ def apply_choice(prefs, kind, value=None):
         key, new = "online_listening", not prefs.get("online_listening", False)
     elif kind == "memory":
         key, new = "memory", not prefs.get("memory", True)
+    elif kind == "voice_interrupt":
+        key, new = "voice_interrupt", not prefs.get("voice_interrupt", False)
     elif kind == "language" and value in LANGUAGES:
         key, new = "language", value  # screen texts only, not the voice
     elif kind == "voice" and value in VOICES:

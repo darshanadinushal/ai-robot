@@ -23,8 +23,9 @@ ACTIONS.update({
 })
 ACTION_IDS = {action: action_id for action_id, action in ACTIONS.items()}
 
-# Conversation controls (phrases in the packs' "controls"): stop the follow-up or start afresh.
-CONTROLS = ("cancel", "new_conversation")
+# Conversation controls (phrases in the packs' "controls"): stop the follow-up, start afresh,
+# or stop Luna talking ("stop" also works while she talks, see assistant_core/turn_taking.py).
+CONTROLS = ("cancel", "new_conversation", "stop")
 
 # Without the wake word, only short phrases count as commands (ignores background talk).
 MAX_COMMAND_WORDS = 4
@@ -43,7 +44,8 @@ KEYWORDS = command_words("en")
 def vocabulary(language="en"):
     """Words the command-only recogniser listens for in `language`."""
     pack = languages.get(language)
-    return sorted(set(pack.commands) | set(pack.filler_words) | set(pack.wake_words))
+    stop = {word for phrase in pack.controls.get("stop", ()) for word in phrase.lower().split()}
+    return sorted(set(pack.commands) | set(pack.filler_words) | set(pack.wake_words) | stop)
 
 
 VOCABULARY = vocabulary("en")

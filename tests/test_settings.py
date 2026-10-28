@@ -148,7 +148,7 @@ class SettingsTouchTests(unittest.TestCase):
             return {a[0] for _, a in self.hud.settings_hits} - {"section"}
         self.assertEqual(actions(), {"mode", "color", "layout"})
         expected = {1: {"language"}, 2: {"voice_language", "voice", "preview"},
-                    3: {"animations"}, 4: {"online_listening"}, 5: {"memory"}, 6: set()}
+                    3: {"animations"}, 4: {"online_listening", "voice_interrupt"}, 5: {"memory"}, 6: set()}
         for index, kinds in expected.items():
             self.tap(("section", index))
             self.assertEqual(actions(), kinds, SECTIONS[index])

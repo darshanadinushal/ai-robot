@@ -80,6 +80,18 @@
       "let's start over",
       "new topic",
       "start again"
+    ],
+    "stop": [
+      "stop",
+      "stop talking",
+      "stop it",
+      "be quiet",
+      "enough",
+      "that's enough",
+      "okay stop",
+      "ok stop",
+      "please stop",
+      "wait"
     ]
   },
   "filler_words": [

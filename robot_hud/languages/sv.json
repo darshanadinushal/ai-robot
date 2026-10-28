@@ -80,6 +80,17 @@
       "starta en ny konversation",
       "börja om",
       "vi börjar om"
+    ],
+    "stop": [
+      "stopp",
+      "stoppa",
+      "sluta",
+      "sluta prata",
+      "var tyst",
+      "det räcker",
+      "nu räcker det",
+      "vänta",
+      "snälla sluta"
     ]
   },
   "filler_words": [
@@ -239,6 +250,8 @@
     "On - Luna saves only what you ask her to remember": "På - Luna sparar bara det du ber henne komma ihåg",
     "Off - Luna does not use or save memories": "Av - Luna använder och sparar inget minne",
     "Nothing saved yet.": "Inget sparat än.",
+    "Interrupt by voice": "Avbryt med rösten",
+    "Say \"Luna, stop\" while she talks. Needs a headset or an echo-cancelling mic.": "Säg \"Luna, sluta\" när hon pratar. Kräver headset med ekosläckning.",
     "Your name": "Ditt namn",
     "You live in": "Du bor i",
     "Your birthday": "Din födelsedag",

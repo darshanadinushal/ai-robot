@@ -15,6 +15,7 @@ from .expression import LINGER_SECONDS
 from .memory import ERRORS as MEMORY_ERRORS, is_birthday, memory_tools
 from .session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS, Session, Turn
 from .tools import FACE_TOOLS, ToolExecutor, ToolRegistry
+from .turn_taking import interruption
 
 HEARD_SECONDS = 8.0    # how long the screen shows what Luna heard
 ANSWER_SECONDS = 20.0  # how long it shows her answer after the last piece arrived
@@ -104,7 +105,8 @@ class Conversation:
         return []
 
     def control(self, name, language):
-        """"Never mind" / "cancel": stop listening for a follow-up. "New conversation": forget."""
+        """"Never mind" / "cancel": stop listening for a follow-up. "New conversation": forget.
+        "Stop": silence Luna without a word."""
         if name == "new_conversation":
             effects = self.new_session()
             self.followup_pending = True  # listen for the first question straight away
@@ -112,7 +114,20 @@ class Conversation:
                               Speak(spoken("Okay, let's start a new conversation.", language))]
         effects = self.interrupt()
         self.session.close_followup()
+        if name == "stop":
+            return effects + [Log("Luna: stopped by voice")]
         return effects + [Speak(spoken("Okay.", language))]
+
+    def barge_in(self, text, language):
+        """Heard while Luna talks (voice interruption on): ("stop" | "wake" | None, effects).
+
+        Either one silences her and drops the unfinished answer; after "wake" the question that
+        follows is heard as usual.
+        """
+        kind = interruption(text, language, self.answer)
+        if kind is None:
+            return None, []
+        return kind, self.interrupt() + [Log("Luna: interrupted by voice (%s)" % kind)]
 
     def ask(self, question, t, language):
         if self.ai is None:

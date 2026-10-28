@@ -168,6 +168,7 @@ Then talk:
 | "Luna, you look tired, cheer up" / "make your eyes purple" | The AI changes her face (expression, colour, mode, gaze, blink), then confirms |
 | "look left", "happy", … | Still handled offline as commands |
 | Tap the screen or press `S` | Stops her talking |
+| "Luna, stop" / "Hey Luna, …" while she talks | Stops her / asks the new question (only with *Interrupt by voice* on) |
 
 - Only the recognised **text** is sent to OpenAI, never microphone audio. You pay only for AI answers.
 - Mishearings such as "he luna", "lunar" or "loona" are accepted as the wake word.
@@ -190,6 +191,10 @@ Then talk:
   accurate long questions. Commands and the wake word stay offline; audio is kept in memory only.
   It uses your API key (costs money) and falls back to the offline text on any error.
   Options: `LUNA_TRANSCRIBE_MODEL=gpt-transcribe`, `LUNA_TRANSCRIBE_TIMEOUT=8`.
+- **Interrupt by voice (optional, off):** Settings → Listening → Interrupt by voice keeps the
+  microphone on while Luna speaks, so "Luna, stop" ("Luna, sluta") or a new "Hey Luna, …"
+  question cuts her off. Use it only with a headset or an echo-cancelling microphone; her own
+  words and other talk are ignored.
 - **Memory:** "Hey Luna, remember that I like jazz." / "What do you remember about me?" /
   "Forget that I like jazz." (Swedish: "kom ihåg att ...", "glöm ..."). Luna saves only what you
   ask her to remember, refuses things that look private (numbers, passwords), and never takes a

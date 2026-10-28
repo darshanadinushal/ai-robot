@@ -30,7 +30,8 @@ def default_path():
 def read_preferences(path=None):
     result = {"color": "CYAN", "mode": "FACE", "layout": "CLASSIC",
               "wave_layout": "MESH", "animations": True, "voice": DEFAULT_VOICE,
-              "language": DEFAULT_LANGUAGE, "online_listening": False, "memory": True}
+              "language": DEFAULT_LANGUAGE, "online_listening": False, "memory": True,
+              "voice_interrupt": False}
     try:
         data = json.loads(Path(path or default_path()).read_text(encoding="utf-8"))
         if isinstance(data, dict):
@@ -52,6 +53,8 @@ def read_preferences(path=None):
                 result["online_listening"] = data["online_listening"]
             if isinstance(data.get("memory"), bool):
                 result["memory"] = data["memory"]
+            if isinstance(data.get("voice_interrupt"), bool):
+                result["voice_interrupt"] = data["voice_interrupt"]
     except (OSError, ValueError, TypeError):
         pass
     return result
@@ -65,5 +68,6 @@ def write_preferences(prefs, path=None):
                "voice": prefs.get("voice") if prefs.get("voice") in VOICES else DEFAULT_VOICE,
                "language": prefs.get("language") if prefs.get("language") in LANGUAGES else DEFAULT_LANGUAGE,
                "online_listening": prefs.get("online_listening") is True,
-               "memory": prefs.get("memory") is not False}
+               "memory": prefs.get("memory") is not False,
+               "voice_interrupt": prefs.get("voice_interrupt") is True}
     path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")

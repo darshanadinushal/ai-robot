@@ -28,6 +28,9 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 - Online listening (`transcription.py`, setting `online_listening`, off by default): only
   utterances that Vosk routes to `'ai'` may be uploaded; audio stays in memory; always fall back
   to the Vosk text. Never upload commands, background speech or anything before the wake word.
+- Voice barge-in (`assistant_core/turn_taking.py`, setting `voice_interrupt`, off by default):
+  while Luna talks, heard text goes only to `Conversation.barge_in` (stop phrase or wake word;
+  her own words are echo). A spoken "stop" is never a motion safety stop. Tests: `tests/test_turn_taking.py`.
 - Conversation logic: `robot_hud/assistant_core/` (pure, no pygame): `Conversation.hear` / `poll` /
   `interrupt` return effects (`events.py`) that `RobotHUD.run_effects` carries out. New
   conversation behaviour goes here, not in `app.py`; tests in `tests/test_assistant_core.py`.
@@ -81,5 +84,5 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 ## Status snapshot
 Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expressions,
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
-follow-ups and tap-to-stop, date/time-aware answers, optional online listening, AI face tools, persistent memory (explicit facts), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
+follow-ups and tap-to-stop, date/time-aware answers, optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
 Planned: AI-model setting, autostart, camera/motors/smart home.
