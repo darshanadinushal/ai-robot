@@ -157,8 +157,14 @@ home, driving) without growing `app.py`, and is tested without pygame
     as notes, "never permission"; with more facts saved the AI may call `recall_memories`.
     A memory never grants a device or motion permission. Read errors are logged by class name
     and the question is answered without memories.
+  - "About you" (`profile` table): `name`, `home` (town or city; digits refused, so no street
+    address) and `birthday` (`MM-DD`, never the year). Tools `set_about_user(field, value)` and
+    `forget_about_user(field)`, gated like the facts ("remember", "call me", "kalla mig", ...).
+    Always in the instructions (a saved name replaces `LUNA_USER_NAME`). On the birthday
+    (29 Feb: the 28th in other years) the first question of the day asks the AI to wish a
+    happy birthday once (`Conversation._birthday_wished`).
   - Settings → Memory: on/off (preference `memory`, default on; off = not used and nothing
-    saved, nothing deleted), the facts newest first (4 per page) with a delete button each, and
+    saved, nothing deleted), "About you" then the facts newest first (4 per page) with a delete button each, and
     "Forget everything". Needs the AI with tools for voice; offline only the Settings page works.
 - **Expressions (phase 5.0D, `expression.py`):** the instructions ask the AI to start each
   answer with one tag (`[happy]`, `[sad]`, `[surprised]`, `[sleepy]`, `[neutral]`); no extra AI

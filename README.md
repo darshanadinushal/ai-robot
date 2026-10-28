@@ -195,6 +195,9 @@ Then talk:
   ask her to remember, refuses things that look private (numbers, passwords), and never takes a
   memory as permission for anything. See, delete or switch it off in Settings → Memory. Stored in
   `~/.luna-memory.db` (or `LUNA_MEMORY_FILE`), outside the repo. Needs the AI.
+  About you: "Remember that my name is ...", "Call me ...", "Remember that I live in Gothenburg",
+  "Remember my birthday is 12 May" (day and month only). Luna uses your name and wishes you a
+  happy birthday on the day.
 - Luna's face follows the conversation: attentive while you speak, thinking while she waits,
   and a short expression that fits her answer (your own face settings stay as they are).
 - Luna knows today's date and time, and says so when something (camera, motors, smart home,

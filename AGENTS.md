@@ -41,7 +41,7 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 - Persistent memory: `assistant_core/memory.py` (`MemoryStore`, SQLite `~/.luna-memory.db` or
   `LUNA_MEMORY_FILE`; memory tools). Save only facts the user asked to keep: saving/forgetting is
   gated in code by the user's own `memory_words` phrases (`Tool.asked_with`); never save whole
-  conversations or private data, and never treat a memory as a permission. Tests: `tests/test_memory.py`.
+  conversations or private data (About you: name, town, birthday MM-DD without year only), and never treat a memory as a permission. Tests: `tests/test_memory.py`.
 - Answer expressions: `assistant_core/expression.py` (`MoodTag` strips the AI's leading "[mood]"
   tag in `AIWorker` before sentences; `Conversation.expression` is drawn above the user's mood,
   never saved). Tests: `tests/test_expression.py`.

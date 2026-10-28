@@ -52,7 +52,10 @@ MEMORY_RULES = (
     "cannot keep those. When asked what you remember, call recall_memories. When asked to "
     "forget something, call forget_memory with its id (recall first if needed); if it is "
     "unclear which, ask. Forgetting everything is only possible in Settings, Memory. Say "
-    "something was remembered or forgotten only if the result is ok."
+    "something was remembered or forgotten only if the result is ok. For the user's name, "
+    "home town or birthday use set_about_user / forget_about_user instead: home is a town or "
+    "city, never a street address; birthday is month and day as MM-DD, never the year (if the "
+    "user gives a year, save only month and day)."
 )
 EXPRESSION_RULE = (
     "Start each answer with one tag for the feeling of your answer: [happy], [sad], "
@@ -137,12 +140,32 @@ def memory_text(memories, tools):
     return " ".join(parts)
 
 
+def about_text(about, birthday_today=False):
+    """The "About you" fields the user asked Luna to remember (name, home, birthday MM-DD)."""
+    parts = []
+    if about.get("name"):
+        parts.append("The user's name is %s." % about["name"])
+    if about.get("home"):
+        parts.append("The user lives in %s." % about["home"])
+    born = about.get("birthday", "")
+    if len(born) == 5:
+        month, day = int(born[:2]), int(born[3:])
+        if 1 <= month <= 12:
+            parts.append("The user's birthday is %d %s." % (day, _MONTHS[month - 1]))
+    if birthday_today:
+        parts.append("Today is the user's birthday: start this answer by warmly wishing them a "
+                     "happy birthday, once.")
+    return " ".join(parts)
+
+
 def instructions(language="en", now=None, profile=None, tools=False, expressions=False,
-                 memories=None):
+                 memories=None, about=None, birthday_today=False):
     """Instructions for one question; Luna answers in the voice language.
 
-    `memories`: a memory.Recall when memory is on (None: off).
+    `memories`: a memory.Recall when memory is on (None: off). `about`: the saved "About you"
+    fields; a saved name replaces LUNA_USER_NAME.
     """
+    about = about or {}
     abilities = list(TOOL_ABILITIES if tools else ABILITIES)
     if tools and memories is not None:
         abilities.append(MEMORY_ABILITY)
@@ -158,11 +181,14 @@ def instructions(language="en", now=None, profile=None, tools=False, expressions
         text = memory_text(memories, tools)
         if text:
             parts.append(text)
+        text = about_text(about, birthday_today)
+        if text:
+            parts.append(text)
     if expressions:
         parts.append(EXPRESSION_RULE)
     if now is not None:
         parts.append("Current local date and time: %s." % date_text(now))
-    if profile is not None and profile.user_name:
+    if profile is not None and profile.user_name and not about.get("name"):
         parts.append("The user likes to be called %s." % profile.user_name)
     if profile is not None and profile.location:
         parts.append("You are located in: %s." % profile.location)

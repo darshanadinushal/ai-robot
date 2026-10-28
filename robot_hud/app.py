@@ -599,7 +599,10 @@ def memory_pages(count):
 
 
 def memory_section(surface, fonts, accent, prefs, y, memory, hits):
-    """Settings > Memory: the switch, the saved facts (newest first) and delete buttons."""
+    """Settings > Memory: the switch, "About you", the saved facts (newest first), delete buttons.
+
+    `memory`: (items, page, confirm, error); an item is (text, delete action).
+    """
     facts,page,confirm,error = memory
     row_label(surface,fonts,'Memory',y+130)
     toggle(surface,fonts,accent,prefs['memory'],y+111,hits,('memory',None))
@@ -618,18 +621,18 @@ def memory_section(surface, fonts, accent, prefs, y, memory, hits):
         return
     pages = memory_pages(len(facts))
     page = min(page,pages-1)
-    for i,fact in enumerate(facts[page*MEMORY_ROWS:(page+1)*MEMORY_ROWS]):
+    for i,(text,action) in enumerate(facts[page*MEMORY_ROWS:(page+1)*MEMORY_ROWS]):
         row = pygame.Rect(LABEL_X,y+186+i*50,CONTROL_RIGHT-LABEL_X-58,42)
         pygame.draw.rect(surface,(8,32,62),row,border_radius=10)
         pygame.draw.rect(surface,(33,73,109),row,1,border_radius=10)
-        draw_text(surface,wrap_text(fonts['small'],fact.text,row.width-28,1)[0],fonts['small'],
+        draw_text(surface,wrap_text(fonts['small'],text,row.width-28,1)[0],fonts['small'],
                   TEXT,topleft=(row.left+14,row.centery-12))
         delete = pygame.Rect(row.right+12,row.top,46,42)
         pygame.draw.rect(surface,(8,32,62),delete,border_radius=10)
         pygame.draw.rect(surface,(255,110,110),delete,1,border_radius=10)
         line(surface,(255,110,110),(delete.centerx-8,delete.centery-8),(delete.centerx+8,delete.centery+8),2)
         line(surface,(255,110,110),(delete.centerx-8,delete.centery+8),(delete.centerx+8,delete.centery-8),2)
-        add_hit(hits,delete,('forget_memory',fact.id))
+        add_hit(hits,delete,action)
     bottom = y+398
     if pages>1:
         for rect,(text,step) in zip(control_rects(bottom,2,44,60),(('<',-1),('>',1))):
@@ -886,6 +889,8 @@ class RobotHUD:
             self.preview_voice()
         elif kind=='forget_memory':
             self.change_memory(self.memory.forget,value)
+        elif kind=='forget_profile':
+            self.change_memory(self.memory.forget_profile,value)
         elif kind=='forget_all':
             now=time.monotonic()
             if now<self.forget_all_until:
@@ -925,12 +930,23 @@ class RobotHUD:
             print('Luna memory: could not be changed (%s)' % type(error).__name__,flush=True)
 
     def memory_view(self):
-        """(facts newest first, page, waiting for the second "forget everything" tap, error)."""
+        """(items, page, waiting for the second "forget everything" tap, error).
+
+        Items are (text, delete action): "About you" first, then the facts newest first.
+        """
         try:
-            facts,error=list(reversed(self.memory.facts())),False
+            about=self.memory.profile()
+            items=[(tr(label)+': '+(value if field!='birthday' else
+                                    '%d/%d' % (int(value[3:]),int(value[:2]))),
+                    ('forget_profile',field))
+                   for field,label in (('name','Your name'),('home','You live in'),
+                                       ('birthday','Your birthday'))
+                   for value in [about.get(field)] if value]
+            items+=[(fact.text,('forget_memory',fact.id)) for fact in reversed(self.memory.facts())]
+            error=False
         except MEMORY_ERRORS:
-            facts,error=[],True
-        return facts,self.memory_page,time.monotonic()<self.forget_all_until,error
+            items,error=[],True
+        return items,self.memory_page,time.monotonic()<self.forget_all_until,error
 
     def preview_voice(self):
         """Play a sample with the selected voice, once it has finished loading."""

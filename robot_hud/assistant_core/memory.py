@@ -6,6 +6,9 @@ PermissionPolicy runs it only when the user's own words asked for it (the pack's
 `memory_words`). Private details (long numbers, passwords, ...) are refused here in code.
 Memories are notes for answers; they never grant permission for any action. The user can see
 and delete them in Settings > Memory.
+
+"About you" (`profile`): the user's name, home town and birthday (day and month only, never
+the year), saved the same way and always given to the AI.
 """
 import os
 import re
@@ -24,6 +27,50 @@ MAX_CHARS = 120
 RELEVANT = 5           # at most this many memories go into one question's instructions
 ERRORS = (sqlite3.Error, OSError)
 _DIGITS = re.compile(r"\d(?:[\s-]?\d){3,}")  # phone, card, PIN and other numbers
+PROFILE_FIELDS = ("name", "home", "birthday")
+_BIRTHDAY = re.compile(r"(\d{1,2})-(\d{1,2})")  # MM-DD
+
+
+def birthday(value):
+    """(month, day) of a saved "MM-DD" birthday, or None."""
+    match = _BIRTHDAY.fullmatch(value or "")
+    if not match:
+        return None
+    month, day = int(match.group(1)), int(match.group(2))
+    try:
+        date(2000, month, day)  # a leap year: 29 February is a real birthday
+    except ValueError:
+        return None
+    return month, day
+
+
+def is_birthday(value, today):
+    born = birthday(value)
+    if born is None:
+        return False
+    if born == (2, 29) and today.month == 2 and today.day == 28:
+        try:
+            date(today.year, 2, 29)
+        except ValueError:
+            return True  # no 29th this year: celebrate on the 28th
+    return born == (today.month, today.day)
+
+
+def _profile_value(field, value):
+    """(clean value, None) or (None, why not)."""
+    value = " ".join(str(value).split())
+    if field == "birthday":
+        born = birthday(value)
+        if born is None:
+            return None, "birthday must be month and day as MM-DD (never the year)"
+        return "%02d-%02d" % born, None
+    limit = 40 if field == "name" else 60
+    if not value or len(value) > limit:
+        return None, "%s must be 1 to %d characters" % (field, limit)
+    if re.search(r"\d", value) or private(value):
+        return None, ("no numbers: only a name" if field == "name" else
+                      "only a town or city, never a street address")
+    return value, None
 
 
 @dataclass(frozen=True)
@@ -69,6 +116,7 @@ class MemoryStore:
     def __init__(self, path=None):
         self.path = Path(path) if path else default_path()
         self._facts = None
+        self._profile = None
 
     def _connect(self):
         new = not self.path.exists()
@@ -76,6 +124,8 @@ class MemoryStore:
         db.execute("PRAGMA secure_delete = ON")
         db.execute("CREATE TABLE IF NOT EXISTS facts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
                    "text TEXT NOT NULL, saved TEXT NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS profile (field TEXT PRIMARY KEY, "
+                   "value TEXT NOT NULL)")
         if new:
             try:
                 os.chmod(self.path, 0o600)
@@ -92,6 +142,39 @@ class MemoryStore:
                 rows = db.execute("SELECT id, text, saved FROM facts ORDER BY id").fetchall()
             self._facts = [Fact(*row) for row in rows]
         return list(self._facts)
+
+    def profile(self):
+        """{field: value} for the saved "About you" fields (name, home, birthday "MM-DD")."""
+        if self._profile is None:
+            if not self.path.exists():
+                return {}
+            with closing(self._connect()) as db:
+                rows = db.execute("SELECT field, value FROM profile").fetchall()
+            self._profile = {field: value for field, value in rows if field in PROFILE_FIELDS}
+        return dict(self._profile)
+
+    def set_profile(self, field, value):
+        """(value, status) when saved, else (None, why not)."""
+        if field not in PROFILE_FIELDS:
+            return None, "unknown field"
+        value, problem = _profile_value(field, value)
+        if problem:
+            return None, problem
+        if self.profile().get(field) == value:
+            return value, "already remembered"
+        with closing(self._connect()) as db, db:
+            db.execute("INSERT OR REPLACE INTO profile (field, value) VALUES (?, ?)",
+                       (field, value))
+        self._profile = None
+        return value, "saved"
+
+    def forget_profile(self, field):
+        if field not in self.profile():
+            return False
+        with closing(self._connect()) as db, db:
+            db.execute("DELETE FROM profile WHERE field = ?", (field,))
+        self._profile = None
+        return True
 
     def remember(self, text, replaces=0, today=None):
         """(Fact, status) when saved or already known, else (None, why not)."""
@@ -133,11 +216,13 @@ class MemoryStore:
         return True
 
     def forget_all(self):
-        count = len(self.facts())
+        """Delete every fact and the "About you" fields; returns how many there were."""
+        count = len(self.facts()) + len(self.profile())
         if count:
             with closing(self._connect()) as db, db:
                 db.execute("DELETE FROM facts")
-        self._facts = None
+                db.execute("DELETE FROM profile")
+        self._facts = self._profile = None
         return count
 
     def relevant(self, question, language, limit=RELEVANT):
@@ -167,11 +252,12 @@ def memory_tools(store):
 
     def recall(arguments):
         try:
-            facts = store.facts()
+            facts, about = store.facts(), store.profile()
         except ERRORS as error:
             return [], ToolResult(False, "memory could not be read (%s)" % type(error).__name__)
         return [], ToolResult(True, "%d memories" % len(facts),
-                              {"memories": [{"id": fact.id, "fact": fact.text} for fact in facts]})
+                              {"about_user": about,
+                               "memories": [{"id": fact.id, "fact": fact.text} for fact in facts]})
 
     def forget(arguments):
         try:
@@ -181,6 +267,28 @@ def memory_tools(store):
         if not done:
             return [], ToolResult(False, "no memory with that id")
         return [Log("Luna memory: forgot memory %d" % arguments["id"])], ToolResult(True, "forgotten")
+
+    def set_about(arguments):
+        try:
+            value, status = store.set_profile(arguments["field"], arguments["value"])
+        except ERRORS as error:
+            return [], ToolResult(False, "memory could not be saved (%s)" % type(error).__name__)
+        if value is None:
+            return [], ToolResult(False, status)
+        changed = [] if status == "already remembered" else [
+            Log("Luna memory: saved %s" % arguments["field"])]
+        return changed, ToolResult(True, status, {arguments["field"]: value})
+
+    def forget_about(arguments):
+        try:
+            done = store.forget_profile(arguments["field"])
+        except ERRORS as error:
+            return [], ToolResult(False, "memory could not be deleted (%s)" % type(error).__name__)
+        if not done:
+            return [], ToolResult(False, "nothing saved for that")
+        return [Log("Luna memory: forgot %s" % arguments["field"])], ToolResult(True, "forgotten")
+
+    field = {"type": "string", "enum": list(PROFILE_FIELDS)}
 
     return (
         Tool("remember_fact",
@@ -198,4 +306,15 @@ def memory_tools(store):
              "Delete one memory by its id. Only when the user asked you to forget it.",
              _object({"id": {"type": "integer", "description": "the memory's id"}}),
              "memory", forget, asked_with="forget"),
+        Tool("set_about_user",
+             "Save the user's name, home town or birthday. Only when the user explicitly asked "
+             "you to remember it or to call them something.",
+             _object({"field": field,
+                      "value": {"type": "string",
+                                "description": "name: what to call the user; home: town or "
+                                               "city only; birthday: MM-DD, never the year"}}),
+             "memory", set_about, asked_with="remember"),
+        Tool("forget_about_user",
+             "Delete the user's saved name, home town or birthday. Only when asked to forget it.",
+             _object({"field": field}), "memory", forget_about, asked_with="forget"),
     )

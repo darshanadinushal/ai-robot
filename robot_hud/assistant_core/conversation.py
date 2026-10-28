@@ -12,7 +12,7 @@ from ..commands import route, spoken
 from .context import ConversationSettings, instructions
 from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .expression import LINGER_SECONDS
-from .memory import ERRORS as MEMORY_ERRORS, memory_tools
+from .memory import ERRORS as MEMORY_ERRORS, is_birthday, memory_tools
 from .session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS, Session, Turn
 from .tools import FACE_TOOLS, ToolExecutor, ToolRegistry
 
@@ -66,6 +66,7 @@ class Conversation:
         self._expression_until = None
         self._tool_mood = False   # a tool changed the face this turn: ignore the answer's tag
         self.slow = False
+        self._birthday_wished = None  # the date Luna last wished happy birthday
 
     def set_memory(self, memory):
         """Switch memory on (a MemoryStore) or off (None); saved facts are kept either way."""
@@ -120,19 +121,26 @@ class Conversation:
         if not self.streaming and self.session.turns >= self.settings.max_turns:
             effects = self._fresh("after %d answers" % self.session.turns)
         use_tools = self.settings.tools
-        memories = None
+        memories, about = None, {}
         if self.memory is not None:
             try:
                 memories = self.memory.relevant(question, language)
+                about = self.memory.profile()
             except MEMORY_ERRORS as error:
+                memories = None
                 effects.append(Log("Luna memory: could not be read (%s)" % type(error).__name__))
+        now = self.clock()
+        wish = (is_birthday(about.get("birthday"), now.date())
+                and self._birthday_wished != now.date())
         request = self.ai.ask(
             question, language,
-            instructions(language, self.clock(), self.settings.profile, use_tools,
-                         self.settings.expressions, memories),
+            instructions(language, now, self.settings.profile, use_tools,
+                         self.settings.expressions, memories, about, wish),
             tools=self.tools.registry.schemas() if use_tools else None)
         if not request:
             return []  # still answering the previous question
+        if wish:
+            self._birthday_wished = now.date()
         self.tools.new_turn(question, language)
         self._tool_outputs = None
         self.session.touch(t)
