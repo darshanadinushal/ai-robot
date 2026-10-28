@@ -159,7 +159,9 @@ home, driving) without growing `app.py`, and is tested without pygame
     and the question is answered without memories.
   - "About you" (`profile` table): `name`, `home` (town or city; digits refused, so no street
     address) and `birthday` (`MM-DD`, never the year). Tools `set_about_user(field, value)` and
-    `forget_about_user(field)`, gated like the facts ("remember", "call me", "kalla mig", ...).
+    `forget_about_user(field)`, gated like the facts ("remember", "call me", ...) or by the pack's `memory_words.about`
+    phrases ("my name is", "I live in", "my birthday is", "jag heter", ...). The birthday is
+    parsed from the usual forms ("October 28", "28/10", "1990-10-28") and the year dropped.
     Always in the instructions (a saved name replaces `LUNA_USER_NAME`). On the birthday
     (29 Feb: the 28th in other years) the first question of the day asks the AI to wish a
     happy birthday once (`Conversation._birthday_wished`).

@@ -161,13 +161,20 @@ class AboutYouTests(unittest.TestCase):
         self.assertEqual(MemoryStore(self.path).profile(), {})
 
     def test_private_or_wrong_values_are_refused(self):
-        for field, value in (("birthday", "1990-05-12"), ("birthday", "13-01"),
-                             ("birthday", "02-30"), ("birthday", "12 May"),
+        for field, value in (("birthday", "13-13"), ("birthday", "02-30"),
+                             ("birthday", "May"), ("birthday", "1990"),
                              ("home", "Storgatan 12, Gothenburg"), ("name", "R2D2"),
                              ("name", "my password"), ("name", ""), ("age", "40")):
             with self.subTest(value):
                 self.assertIsNone(self.store.set_profile(field, value)[0])
         self.assertEqual(self.store.set_profile("birthday", "02-29")[0], "02-29")
+
+    def test_birthday_in_any_usual_form_without_the_year(self):
+        for text in ("10-28", "28-10", "1990-10-28", "28-10-1990", "28/10", "28.10",
+                     "October 28", "28 October 1990", "the 28th of Oct", "28 oktober"):
+            with self.subTest(text):
+                self.assertEqual(self.store.set_profile("birthday", text)[0], "10-28")
+        self.assertEqual(self.store.set_profile("birthday", "5-12")[0], "05-12", "month first")
 
     def test_birthday_day(self):
         self.assertTrue(is_birthday("05-12", date(2026, 5, 12)))
@@ -179,14 +186,23 @@ class AboutYouTests(unittest.TestCase):
     def test_saving_needs_the_users_own_words(self):
         tools = ToolExecutor(ToolRegistry(memory_tools(self.store)))
         name = call("set_about_user", field="name", value="Dash")
-        tools.new_turn("my name is Dash", "en")
+        tools.new_turn("Dash is a nice name", "en")
         self.assertFalse(tools.execute(name)[1].ok)
+        tools.new_turn("my birthday is the 28th of October", "en")
+        birthday = call("set_about_user", "c3", field="birthday", value="October 28")
+        self.assertTrue(tools.execute(birthday)[1].ok)
+        tools.new_turn("jag heter Dash", "sv")
+        self.assertTrue(tools.execute(call("set_about_user", "c4", field="name", value="Dash"))[1].ok)
+        tools.new_turn("my birthday is today", "en")
+        fact = call("remember_fact", "c5", fact="You like jazz.", replaces=0)
+        self.assertFalse(tools.execute(fact)[1].ok, "telling about yourself saves no facts")
+        self.store.forget_profile("name")
         tools.new_turn("call me Dash", "en")
         effects, result = tools.execute(name)
         self.assertEqual((result.ok, effects), (True, [Log("Luna memory: saved name")]))
         tools.new_turn("glöm mitt namn", "sv")
         self.assertTrue(tools.execute(call("forget_about_user", "c2", field="name"))[1].ok)
-        self.assertEqual(self.store.profile(), {})
+        self.assertEqual(self.store.profile(), {"birthday": "10-28"})
 
     def test_luna_knows_it_and_wishes_happy_birthday_once_a_day(self):
         self.store.set_profile("name", "Darshana")

@@ -26,7 +26,8 @@ Fields:
   transcription_prompt, transcription_keywords  context and literal words ("Luna", colour
                   names) for online listening; not taken from English
   memory_words    phrases for memory: "remember" / "forget" (the user's own words must contain
-                  one before Luna saves or deletes a memory), "private" (never saved, checked in
+                  one before Luna saves or deletes a memory), "about" ("my name is", ...: also
+                  enough to save the About-you fields), "private" (never saved, checked in
                   every language), "ignore" (common words not used to find related memories);
                   not taken from English
 """

@@ -54,8 +54,8 @@ MEMORY_RULES = (
     "unclear which, ask. Forgetting everything is only possible in Settings, Memory. Say "
     "something was remembered or forgotten only if the result is ok. For the user's name, "
     "home town or birthday use set_about_user / forget_about_user instead: home is a town or "
-    "city, never a street address; birthday is month and day as MM-DD, never the year (if the "
-    "user gives a year, save only month and day)."
+    "city, never a street address; birthday is the English month name and day such as "
+    "'October 28', never the year (if the user gives a year, save only month and day)."
 )
 EXPRESSION_RULE = (
     "Start each answer with one tag for the feeling of your answer: [happy], [sad], "

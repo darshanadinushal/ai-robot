@@ -44,6 +44,41 @@ def birthday(value):
     return month, day
 
 
+_MONTH_NAMES = {name: i + 1 for names in (
+    ("january", "february", "march", "april", "may", "june", "july", "august", "september",
+     "october", "november", "december"),
+    ("januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september",
+     "oktober", "november", "december"))
+    for i, name in enumerate(names)}
+_MONTH_NAMES.update({name[:3]: month for name, month in list(_MONTH_NAMES.items())})
+
+
+def parse_birthday(text):
+    """(month, day) from how the AI may write a birthday, the year always dropped:
+    "10-28", "28-10" (day first when clear), "1990-10-28", "28/10", "October 28", "28 oktober",
+    "28th of October". None when it is not a real day."""
+    text = str(text).strip().lower()
+    numbers = [int(n) for n in re.findall(r"\d+", text)]
+    month = next((_MONTH_NAMES[word] for word in re.findall(r"[^\W\d_]+", text)
+                  if word in _MONTH_NAMES), None)
+    small = [n for n in numbers if n <= 31]  # a year is never the day or month
+    if month is not None:
+        pair = (month, small[0]) if len(small) == 1 else None
+    elif len(small) == 2:
+        first, second = small
+        if len(numbers) == 3 and numbers[0] > 31:
+            pair = (first, second)       # 1990-10-28
+        elif len(numbers) == 3:
+            pair = (second, first)       # 28-10-1990
+        elif "/" in text or "." in text or first > 12:
+            pair = (second, first)       # 28/10, 28.10, 28-10: day first
+        else:
+            pair = (first, second)       # 10-28: month first, as asked
+    else:
+        pair = None
+    return birthday("%d-%d" % pair) if pair else None
+
+
 def is_birthday(value, today):
     born = birthday(value)
     if born is None:
@@ -60,9 +95,9 @@ def _profile_value(field, value):
     """(clean value, None) or (None, why not)."""
     value = " ".join(str(value).split())
     if field == "birthday":
-        born = birthday(value)
+        born = parse_birthday(value)
         if born is None:
-            return None, "birthday must be month and day as MM-DD (never the year)"
+            return None, "birthday not understood; write it like 'October 28' (no year)"
         return "%02d-%02d" % born, None
     limit = 40 if field == "name" else 60
     if not value or len(value) > limit:
@@ -307,13 +342,14 @@ def memory_tools(store):
              _object({"id": {"type": "integer", "description": "the memory's id"}}),
              "memory", forget, asked_with="forget"),
         Tool("set_about_user",
-             "Save the user's name, home town or birthday. Only when the user explicitly asked "
-             "you to remember it or to call them something.",
+             "Save the user's name, home town or birthday when the user tells you it (\"my "
+             "name is\", \"I live in\", \"my birthday is\") or asks you to remember it.",
              _object({"field": field,
                       "value": {"type": "string",
                                 "description": "name: what to call the user; home: town or "
-                                               "city only; birthday: MM-DD, never the year"}}),
-             "memory", set_about, asked_with="remember"),
+                                               "city only; birthday: English month name and "
+                                               "day, e.g. 'October 28', never the year"}}),
+             "memory", set_about, asked_with=("remember", "about")),
         Tool("forget_about_user",
              "Delete the user's saved name, home town or birthday. Only when asked to forget it.",
              _object({"field": field}), "memory", forget_about, asked_with="forget"),

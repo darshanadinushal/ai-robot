@@ -122,7 +122,8 @@ class PermissionPolicy:
         self.allowed = frozenset(allowed) - {"motion", "sensitive"}
 
     def decide(self, tool, arguments, heard="", language="en"):
-        if tool.asked_with and not said(heard, language, tool.asked_with):
+        kinds = (tool.asked_with,) if isinstance(tool.asked_with, str) else tool.asked_with
+        if tool.asked_with and not any(said(heard, language, kind) for kind in kinds):
             return Decision(False, "the user did not ask for this in their own words")
         if tool.risk == "motion":
             return Decision(False, "movement is only possible through the motion system")
