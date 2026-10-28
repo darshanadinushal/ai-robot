@@ -23,6 +23,8 @@ Fields:
   ai_instruction  added to the AI instructions so answers come in this language
   sample          voice preview sentence;  warm_up: short word used to test a natural voice
   windows_culture culture of the built-in Windows voice (local testing), e.g. "sv-SE"
+  transcription_prompt, transcription_keywords  context and literal words ("Luna", colour
+                  names) for online listening; not taken from English
 """
 import json
 from dataclasses import dataclass, field
@@ -52,6 +54,8 @@ class LanguagePack:
     continuation_words: tuple = ()
     continue_seconds: float = 0.0
     controls: dict = field(default_factory=dict)
+    transcription_prompt: str = ""
+    transcription_keywords: tuple = ()
 
     def reply(self, action_id):
         return self.replies.get(action_id)
@@ -95,7 +99,9 @@ def _build(data, english):
         continuation_words=tuple(w.lower() for w in data.get("continuation_words") or ()),
         continue_seconds=float(data.get("continue_seconds") or 0.0),
         controls={name: tuple(" ".join(p.lower().split()) for p in phrases)
-                  for name, phrases in (data.get("controls") or {}).items()})
+                  for name, phrases in (data.get("controls") or {}).items()},
+        transcription_prompt=str(data.get("transcription_prompt") or ""),
+        transcription_keywords=tuple(str(k) for k in data.get("transcription_keywords") or ()))
 
 
 def load(folder=FOLDER):

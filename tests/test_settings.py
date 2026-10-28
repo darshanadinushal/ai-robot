@@ -147,7 +147,7 @@ class SettingsTouchTests(unittest.TestCase):
             return {a[0] for _, a in self.hud.settings_hits} - {"section"}
         self.assertEqual(actions(), {"mode", "color", "layout"})
         expected = {1: {"language"}, 2: {"voice_language", "voice", "preview"},
-                    3: {"animations"}, 4: set()}
+                    3: {"animations"}, 4: {"online_listening"}, 5: set()}
         for index, kinds in expected.items():
             self.tap(("section", index))
             self.assertEqual(actions(), kinds, SECTIONS[index])
@@ -179,7 +179,8 @@ class TranslationTests(unittest.TestCase):
         from robot_hud import languages
         names = set(SECTIONS) | {pack.name for pack in languages.PACKS.values()}
         names |= {"Listening", "Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
-                                 "FEMALE", "MALE", "Wave layout", "Face layout"}
+                                 "FEMALE", "MALE", "Wave layout", "Face layout", "Online listening",
+                                 "Hear long questions more accurately"}
         from robot_hud.preferences import COLOR_CHOICES, LAYOUT_CHOICES, WAVE_LAYOUTS
         from robot_hud.voices import VOICES
         names |= set(COLOR_CHOICES) | set(LAYOUT_CHOICES) | set(WAVE_LAYOUTS)

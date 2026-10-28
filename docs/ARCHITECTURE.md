@@ -26,7 +26,7 @@ robot_hud/
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
   voice.py                  Mic capture + Vosk recognition in a background thread
   listening.py              Pure: UtteranceAssembler joins Vosk's pieces into one question
-  transcription.py          Optional cloud transcription interface (OFF, not used yet)
+  transcription.py          Phase 5.1 optional online listening (gpt-transcribe, OFF by default)
   speech.py                 Offline TTS: sentence pipeline, Piper natural voice, basic fallback
   voices.py                 Loads voices.json (the voice catalogue) and model paths
   voices.json               Voice catalogue: Piper model, eSpeak voice, files with SHA-256
@@ -50,7 +50,7 @@ tests/
   test_expression.py        Phase 5.0D: mood tags, answer expression lifecycle, "One moment."
   test_conversation_cases.py  Baseline: 34 English/Swedish sentences (conversation_cases.json)
   test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
-  test_listening.py         Phase 4.2: joining pauses, endpoints, limits, mic buffer, cloud interface
+  test_listening.py         Phase 4.2/5.1: joining pauses, endpoints, mic buffer, online listening
   test_speech.py            Speech engine tests with fake voices/player (no audio)
   test_settings.py          Settings choices and taps on a headless screen
   test_swedish.py           Swedish listening, commands, replies and AI language
@@ -189,7 +189,7 @@ home, driving) without growing `app.py`, and is tested without pygame
   `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
-A section menu on the left (Display & Theme, Language, Voice, Animations, About) works like
+A section menu on the left (Display & Theme, Language, Voice, Animations, Listening, About) works like
 tabs: the panel on the right shows **only the selected section** (`self.settings_section`;
 Up/Down keys change it). The section list and what each tap changes live in `settings.py`
 (no pygame, unit-tested).
@@ -294,14 +294,28 @@ longer pauses or pauses after a word ending with a continuation word up to about
 recogniser used about 0.1x real time (en) and 0.02x (sv) of one laptop core.
 Simulated tests (`tests/test_listening.py`) are separate from these measurements.
 
-### Cloud transcription (prepared, OFF)
-`transcription.py` is an interface only; nothing calls it yet. It stays off unless
-`LUNA_CLOUD_TRANSCRIPTION=on` and an API key are set, uploads only for an utterance that the
-offline wake word authorised, keeps at most a 3 s in-memory pre-roll (never uploaded without
-the wake word) and at most 45 s, never writes audio to disk, drops the audio after the upload,
-on cancel and on errors, and returns `None` (keep the Vosk text) on any failure or timeout
-(15 s). Model `LUNA_TRANSCRIBE_MODEL` (default `gpt-4o-mini-transcribe`; check the current
-name before enabling).
+### Online listening (Phase 5.1, optional, OFF by default)
+Vosk always does the wake word, commands and controls offline. With Settings → Listening →
+Online listening on (preference `online_listening`; also needs the AI and the microphone), a
+**question for the AI** is transcribed online with `gpt-transcribe` for better accuracy:
+1. `VoiceListener.capture` is an `AudioRing` (`transcription.py`): the last mic blocks, in
+   memory only, stamped with `time.monotonic()`. `RobotHUD.listen` trims it to a 2 s pre-roll
+   while nobody talks, clears it when online listening is off, and the listener clears it while
+   muted or after lost audio.
+2. When an utterance is finished, it is routed on its **Vosk** text first. Only `'ai'` (wake word
+   or open follow-up window) is uploaded; commands, controls, "Hey Luna" alone and background
+   speech never leave the robot. The audio since the utterance start (minus the pre-roll) is
+   taken out of the ring, which is then cleared.
+3. `OnlineListening.start` runs `CloudTranscriber` on a thread (WAV in memory, `prompt` and
+   `extra_body` `languages` + `keywords` from the pack's `transcription_prompt` /
+   `transcription_keywords`; `language` only for older models). Meanwhile the mic is muted and
+   Luna shows her thinking face.
+4. `RobotHUD.listen` polls it; `route_heard` sends the online text to `handle_speech` (as a
+   conversation turn, Vosk already authorised it). On an error, empty text, a timeout
+   (`LUNA_TRANSCRIBE_TIMEOUT`, 8 s) or audio under 0.3 s the Vosk text is used instead. A tap
+   cancels it and a late result is ignored. Logs give only the reason and lengths, never the
+   text or the exception message.
+Model `LUNA_TRANSCRIBE_MODEL` (default `gpt-transcribe`). Each question costs API usage.
 
 ### Adding a voice command
 1. New word for an existing action: add it to `commands` in each pack (`languages/<code>.json`).
@@ -313,7 +327,8 @@ name before enabling).
 1. Copy `robot_hud/languages/en.json` to `<code>.json` (e.g. `de.json`) and translate it:
    `name`, `native_name`, `screen` (English text → translation), `commands`, `controls`,
    `wake_words`, `greetings`, `replies`, `speech`, `ai_instruction` (language and speaking
-   style), `sample`, `warm_up`, `windows_culture`.
+   style), `transcription_prompt` and `transcription_keywords` (online listening hints),
+   `sample`, `warm_up`, `windows_culture`.
 2. Set `listening_model` (and `listening_model_mb`) to a small Vosk model from
    alphacephei.com/vosk/models. Find the wake words by testing what that model hears for "Luna".
 3. Add at least one voice of the language to `voices.json` (below), then run the tests.
@@ -360,6 +375,7 @@ File: `~/.ai-robot-hud.json` (outside the repo; its name is gitignored).
 | `animations` | boolean | `true` |
 | `voice` | a key in `voices.json`: `EN_FEMALE, EN_MALE, SV_FEMALE, SV_MALE` | `EN_FEMALE` |
 | `language` | a language pack code: `en, sv` — screen text (`i18n.LANGUAGES`) | `en` |
+| `online_listening` | boolean — questions transcribed online (Phase 5.1) | `false` |
 
 `read_preferences` validates every field and silently falls back to defaults on any error;
 unknown keys are ignored. Adding a setting means: default in `read_preferences`, validation,
@@ -440,7 +456,7 @@ to change a case); `scripts/measure_listening.py --cases` speaks them through th
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
 3. Real camera, motors, smart-home control (UI placeholders exist).
-4. Phase 5.1 online listening, then memory, smart home and driving, each as its own phase,
+4. Phase 5.2 memory, then natural turn-taking, smart home and driving, each as its own phase,
    reusing the tool registry and permission policy.
 
 ## 11. Known gaps

@@ -7,7 +7,7 @@ from .i18n import LANGUAGES
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS
 from .voices import VOICES, get_voice, voice_for, voices_for
 
-SECTIONS = ("Display & Theme", "Language", "Voice", "Animations", "About")
+SECTIONS = ("Display & Theme", "Language", "Voice", "Animations", "Listening", "About")
 
 
 def apply_choice(prefs, kind, value=None):
@@ -23,6 +23,8 @@ def apply_choice(prefs, kind, value=None):
         new = value
     elif kind == "animations":
         key, new = "animations", not prefs.get("animations", True)
+    elif kind == "online_listening":
+        key, new = "online_listening", not prefs.get("online_listening", False)
     elif kind == "language" and value in LANGUAGES:
         key, new = "language", value  # screen texts only, not the voice
     elif kind == "voice" and value in VOICES:

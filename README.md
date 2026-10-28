@@ -185,6 +185,11 @@ Then talk:
   function calling; Luna then only changes her face through the offline commands),
   `LUNA_AI_EXPRESSIONS=off` (no face expression per answer), `LUNA_PROGRESS_SECONDS=6`
   (a slow answer: Luna says "One moment." after this; 0 = never).
+- **Online listening (optional, off):** Settings → Listening → Online listening sends only
+  questions to Luna (after "Hey Luna" or in a follow-up) to OpenAI `gpt-transcribe` for more
+  accurate long questions. Commands and the wake word stay offline; audio is kept in memory only.
+  It uses your API key (costs money) and falls back to the offline text on any error.
+  Options: `LUNA_TRANSCRIBE_MODEL=gpt-transcribe`, `LUNA_TRANSCRIBE_TIMEOUT=8`.
 - Luna's face follows the conversation: attentive while you speak, thinking while she waits,
   and a short expression that fits her answer (your own face settings stay as they are).
 - Luna knows today's date and time, and says so when something (camera, motors, smart home,
@@ -246,7 +251,7 @@ ai-robot/
 │   ├── languages/              # Language packs (en.json, sv.json): add a language here
 │   ├── voice.py                # Microphone + Vosk recognition (background thread)
 │   ├── listening.py            # Joins pauses into one complete question
-│   ├── transcription.py        # Optional cloud transcription (off, not used yet)
+│   ├── transcription.py        # Optional online listening (gpt-transcribe, off by default)
 │   ├── speech.py               # Text-to-speech: sentence pipeline, Piper + basic voice
 │   ├── voices.json             # Voice catalogue (also used by robot-setup): add voices here
 │   ├── voices.py               # Loads the voice catalogue

@@ -437,61 +437,182 @@ class FakeTranscriptions:
         return types.SimpleNamespace(text=self.text)
 
 
-class CloudTranscriptionTests(unittest.TestCase):
-    def client(self, **kw):
-        self.api = FakeTranscriptions(**kw)
-        return types.SimpleNamespace(audio=types.SimpleNamespace(transcriptions=self.api))
+class FakeTranscriber:
+    timeout = 8.0
+
+    def __init__(self, text="", error=None, gate=None):
+        self.text, self.error, self.gate, self.calls = text, error, gate, []
+
+    def transcribe(self, pcm, language):
+        self.calls.append((len(pcm), language))
+        if self.gate is not None:
+            self.gate.wait(5)
+        if self.error:
+            raise self.error
+        return self.text
+
+
+def wait_for(online, t):
+    for _ in range(500):
+        heard = online.poll(t)
+        if heard:
+            return heard
+        threading.Event().wait(0.005)
+    raise AssertionError("no result")
+
+
+SECOND = b"\1\0" * 16000
+
+
+class OnlineListeningTests(unittest.TestCase):
+    def test_ring_is_memory_only_bounded_and_trimmed(self):
+        ring = transcription.AudioRing(limit_seconds=3)
+        for second in range(5):
+            ring.add(SECOND, 100.0 + second)
+        self.assertEqual(ring.seconds, 3.0, "oldest audio dropped")
+        self.assertEqual(len(ring.since(103.0)), 2 * len(SECOND))
+        ring.trim(104.0)
+        self.assertEqual(ring.seconds, 1.0)
+        ring.clear()
+        self.assertEqual(ring.since(0), b"")
+
+    def test_request_options(self):
+        options = transcription.request_options("gpt-transcribe", "sv")
+        self.assertNotIn("language", options, "gpt-transcribe uses `languages` only")
+        self.assertEqual(options["extra_body"]["languages"], ["sv"])
+        self.assertIn("Luna", options["extra_body"]["keywords"])
+        self.assertIn("Luna", options["prompt"])
+        older = transcription.request_options("gpt-4o-mini-transcribe", "en")
+        self.assertEqual(older["language"], "en")
+        self.assertNotIn("extra_body", older)
+        self.assertEqual(transcription._hint(" a <b>\r\n c "), "a b c")
+
+    def test_cloud_transcriber_sends_a_wav_in_memory(self):
+        api = FakeTranscriptions(text="  Hej   Luna  ")
+        client = types.SimpleNamespace(audio=types.SimpleNamespace(transcriptions=api))
+        with mock.patch.dict(os.environ, {"LUNA_TRANSCRIBE_MODEL": ""}):
+            cloud = transcription.CloudTranscriber(client)
+        self.assertEqual(cloud.transcribe(SECOND, "sv"), "Hej Luna")
+        call = api.calls[0]
+        self.assertEqual((call["model"], call["file"].name), ("gpt-transcribe", "speech.wav"))
+        self.assertTrue(call["file"].closed, "audio dropped after the upload")
+
+    def utterance(self, text="luna what is up"):
+        return types.SimpleNamespace(text=text, conversation=False)
+
+    def test_online_text_and_fallbacks(self):
+        online = transcription.OnlineListening(FakeTranscriber("What is up?"))
+        self.assertIsNone(online.start(self.utterance(), SECOND, "en", 1.0))
+        self.assertTrue(online.busy)
+        heard = wait_for(online, 2.0)
+        self.assertEqual((heard.text, heard.online, online.busy), ("What is up?", True, False))
+        self.assertNotIn("What", heard.note, "the log never contains the text")
+
+        for transcriber, note in ((FakeTranscriber(error=TimeoutError("secret")), "TimeoutError"),
+                                  (FakeTranscriber(""), "no words")):
+            online = transcription.OnlineListening(transcriber)
+            online.start(self.utterance(), SECOND, "en", 1.0)
+            heard = wait_for(online, 2.0)
+            self.assertEqual((heard.text, heard.online), ("luna what is up", False))
+            self.assertIn(note, heard.note)
+            self.assertNotIn("secret", heard.note)
+
+        transcriber = FakeTranscriber("late")
+        heard = transcription.OnlineListening(transcriber).start(self.utterance(), b"\0\0", "en", 1)
+        self.assertEqual((heard.text, heard.online, transcriber.calls), ("luna what is up", False, []))
+
+    def test_timeout_and_cancel(self):
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        online = transcription.OnlineListening(FakeTranscriber("late", gate=gate), timeout=2.0)
+        online.start(self.utterance(), SECOND, "en", 1.0)
+        self.assertIsNone(online.poll(3.9))
+        heard = online.poll(4.0)
+        self.assertEqual((heard.text, heard.online), ("luna what is up", False))
+        online.start(self.utterance(), SECOND, "en", 5.0)
+        online.cancel()
+        gate.set()
+        self.assertIsNone(online.poll(6.0), "a cancelled question is forgotten")
+
+    def test_listener_fills_the_ring_only_when_asked_and_never_while_muted(self):
+        muted = []
+        listener = voice.VoiceListener(muted=lambda: bool(muted))
+        recognizer = FakeRecognizer()
+        listener._step(recognizer, SECOND)
+        listener.capture = ring = transcription.AudioRing()
+        listener._step(recognizer, SECOND)
+        self.assertEqual(ring.seconds, 1.0)
+        muted.append(True)
+        listener._step(recognizer, SECOND)
+        self.assertEqual(ring.seconds, 0.0, "cleared while Luna speaks")
+
+
+class OnlineAppTests(unittest.TestCase):
+    setUp = ListeningAppTests.setUp
+    say = ListeningAppTests.say
+
+    def turn_on(self, transcriber):
+        self.transcriber = transcriber
+        self.hud.online = transcription.OnlineListening(transcriber)
+        self.hud.prefs["online_listening"] = True
+
+    def speak(self, final, start=0.0):
+        self.hud.ring.add(SECOND, self.hud.start_time + start)
+        self.say(start, final=final)
+        self.say(start + 2.0)
+
+    def settle(self, t=3.0):
+        for _ in range(500):
+            self.say(t)
+            if not self.hud.online.busy:
+                return
+            threading.Event().wait(0.005)
+
+    def test_question_uses_the_online_text(self):
+        gate = threading.Event()
+        self.turn_on(FakeTranscriber("Luna, what is the biggest planet in the solar system?",
+                                     gate=gate))
+        self.speak("luna what is the biggest planet in the soul or system")
+        self.assertEqual(self.transcriber.calls, [(len(SECOND), "en")])
+        self.assertTrue(self.hud.online.busy and self.hud.thinking and self.hud.mic_muted())
+        self.assertEqual(self.ai.asked, [], "waits for the transcript")
+        self.assertEqual(self.hud.ring.seconds, 0.0, "the audio left the ring")
+        self.hud.frame(2.5)
+        gate.set()
+        self.settle()
+        self.assertEqual(len(self.ai.asked), 1)
+        self.assertIn("solar system", self.ai.asked[0][0])
+
+    def test_commands_and_background_never_leave(self):
+        self.turn_on(FakeTranscriber("x"))
+        self.speak("luna look left")
+        self.speak("we should buy milk later today", start=10.0)
+        self.assertEqual(self.transcriber.calls, [])
+        self.assertLess(self.hud.target_x, 0, "the command still works offline")
 
     def test_off_by_default(self):
-        with mock.patch.dict(os.environ, {"LUNA_CLOUD_TRANSCRIPTION": ""}):
-            cloud = transcription.CloudTranscriber(self.client())
-            self.assertFalse(cloud.enabled)
-            preroll = transcription.PreRoll()
-            preroll.add(b"\1\0" * 100)
-            self.assertIsNone(cloud.begin(preroll, wake_word_confirmed=True))
-            self.assertEqual(preroll.take(), b"", "pre-wake audio is forgotten")
-            self.assertIsNone(cloud.transcribe(b"\0\0" * 10, "en"))
-            self.assertEqual(self.api.calls, [])
+        transcriber = FakeTranscriber("x")
+        self.hud.online = transcription.OnlineListening(transcriber)
+        self.speak("luna what is the moon")
+        self.assertEqual(self.ai.asked, [("what is the moon", "en")], "offline text, at once")
+        self.assertEqual((transcriber.calls, self.mic.capture), ([], None))
 
-    def test_needs_the_wake_word_and_keeps_only_a_short_preroll(self):
-        with mock.patch.dict(os.environ, {"LUNA_CLOUD_TRANSCRIPTION": "on"}):
-            cloud = transcription.CloudTranscriber(self.client(), model="m")
-            preroll = transcription.PreRoll(seconds=1.0)
-            for _ in range(10):
-                preroll.add(b"\1\0" * 4000)
-            self.assertIsNone(cloud.begin(preroll, wake_word_confirmed=False))
-            self.assertEqual(self.api.calls, [])
-            for _ in range(10):
-                preroll.add(b"\1\0" * 4000)
-            self.assertLessEqual(preroll._size, 2 * 16000)
-            utterance = cloud.begin(preroll, wake_word_confirmed=True)
-            utterance.add(b"\2\0" * 4000)
-            self.assertEqual(utterance.finish("sv"), "What is the biggest planet?")
-            call = self.api.calls[0]
-            self.assertEqual((call["model"], call["language"]), ("m", "sv"))
-            self.assertIsNone(utterance.finish("sv"), "audio is not kept after upload")
+    def test_failure_falls_back_to_the_offline_text(self):
+        self.turn_on(FakeTranscriber(error=ConnectionError()))
+        self.speak("luna what is the moon")
+        self.settle()
+        self.assertEqual(self.ai.asked, [("what is the moon", "en")])
 
-    def test_cancel_and_errors_fall_back_to_offline(self):
-        with mock.patch.dict(os.environ, {"LUNA_CLOUD_TRANSCRIPTION": "on"}), \
-                mock.patch("builtins.print"):
-            cloud = transcription.CloudTranscriber(self.client(error=TimeoutError()))
-            utterance = cloud.begin(transcription.PreRoll(), wake_word_confirmed=True)
-            utterance.add(b"\0\0" * 100)
-            self.assertIsNone(utterance.finish("en"))
-            utterance = cloud.begin(transcription.PreRoll(), wake_word_confirmed=True)
-            utterance.add(b"\0\0" * 100)
-            utterance.cancel()
-            self.assertIsNone(utterance.finish("en"))
-            self.assertEqual(len(self.api.calls), 1)
-
-    def test_length_limit(self):
-        with mock.patch.dict(os.environ, {"LUNA_CLOUD_TRANSCRIPTION": "on"}):
-            cloud = transcription.CloudTranscriber(self.client())
-            utterance = cloud.begin(transcription.PreRoll(), wake_word_confirmed=True)
-            for _ in range(int(transcription.MAX_SECONDS) + 2):
-                utterance.add(b"\0\0" * 16000)
-            self.assertTrue(utterance.too_long)
-            self.assertLessEqual(len(utterance._audio), transcription.MAX_SECONDS * 32000)
+    def test_tap_cancels_the_transcription(self):
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        self.turn_on(FakeTranscriber("tell me a joke", gate=gate))
+        self.speak("luna tell me a joke")
+        self.assertTrue(self.hud.online.busy)
+        self.hud.interrupt_answer()
+        gate.set()
+        self.settle()
+        self.assertEqual(self.ai.asked, [], "a cancelled question is not asked")
 
 
 if __name__ == "__main__":

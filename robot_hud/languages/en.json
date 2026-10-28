@@ -131,6 +131,8 @@
     "wave.speaking": "I am speaking."
   },
   "speech": {},
+  "transcription_prompt": "Someone talks to Luna, a friendly home robot, and asks her a question.",
+  "transcription_keywords": ["Luna", "cyan", "amber", "purple"],
   "ai_instruction": "Always answer in English.",
   "sample": "Hello, I am Luna. This is how my voice sounds.",
   "warm_up": "Hello.",

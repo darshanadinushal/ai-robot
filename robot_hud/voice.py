@@ -42,6 +42,8 @@ class VoiceListener:
     Audio is thrown away while muted or loading; if audio is lost while listening, the
     recogniser is reset and `overruns` goes up, so the app drops the unfinished question.
     Diagnostics: `dropped_blocks`, `overruns`, `decode_seconds` (recogniser CPU time).
+    `capture`: an AudioRing set by the app only while online listening is on; heard blocks are
+    added with their time, and it is cleared while muted (Luna never records herself).
     """
 
     def __init__(self, muted=None, free_form=False, language="en"):
@@ -60,6 +62,7 @@ class VoiceListener:
         self.partial = ""
         self.level = 0.0
         self.status = "starting"
+        self.capture = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -136,6 +139,9 @@ class VoiceListener:
             lost = self._overflow.is_set()
             self._overflow.clear()
             recognizer.Reset()
+            capture = self.capture
+            if capture is not None:
+                capture.clear()
             self._drain()  # stale: heard while Luna talked, or behind after lost audio
             self.partial = ""
             self.level = 0.0
@@ -147,6 +153,9 @@ class VoiceListener:
         samples = struct.unpack("<%dh" % (len(data) // 2), data)
         rms = math.sqrt(sum(s * s for s in samples) / max(len(samples), 1))
         self.level = min(1.0, rms / 6000.0)
+        capture = self.capture
+        if capture is not None:
+            capture.add(data, time.monotonic())
         started = time.perf_counter()
         if recognizer.AcceptWaveform(data):
             self.partial = ""

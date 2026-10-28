@@ -1,141 +1,221 @@
-"""Optional cloud transcription (OpenAI) for long questions. OFF by default.
+"""Optional online listening: OpenAI speech-to-text for questions to Luna. OFF by default.
 
-This is an interface for a later phase: nothing in Luna calls it yet, and the offline Vosk
-recogniser stays the only listener. Privacy rules built in:
+Vosk stays Luna's listener: it hears the wake word and the commands and decides when an
+utterance has ended. Only when the user turned "Online listening" on in Settings (and the AI
+is set up) is an utterance that Vosk routed to the AI -- so it began with the wake word or
+came in the follow-up window -- sent once more, as audio, for a more accurate transcript.
+Privacy rules:
 
-- Off unless LUNA_CLOUD_TRANSCRIPTION=on is set explicitly (plus an OpenAI API key).
-- Audio is only uploaded for an utterance authorised by the offline wake word ("Luna"),
-  confirmed locally by Vosk. Background audio before the wake word is never uploaded.
-- PreRoll keeps only the last PREROLL_SECONDS in memory, so the start of an authorised
-  question ("Luna, what...") is not lost; it is cleared when it is not used.
-- Audio stays in memory (no files), is limited to MAX_SECONDS and is discarded after the
-  upload, on cancellation and on any error.
-- Every failure returns None, so the caller keeps the offline Vosk text (fallback).
+- AudioRing keeps recent microphone audio in memory only (never in files): at most
+  RING_SECONDS, cut back to PREROLL_SECONDS while nobody is speaking, and cleared while Luna
+  speaks. The VoiceListener only fills it while online listening is on.
+- Commands, the wake word alone and background talk never leave the robot.
+- One upload per question, in its own thread with a timeout; the audio is dropped after it.
+  On any error, timeout or cancel the offline Vosk text is used (fallback).
 
-Model: LUNA_TRANSCRIBE_MODEL (default below); check OpenAI's current speech-to-text model
-names before enabling.
+Model: LUNA_TRANSCRIBE_MODEL (default gpt-transcribe); LUNA_TRANSCRIBE_TIMEOUT (seconds).
 """
 import io
 import os
 import threading
 import wave
 from collections import deque
+from dataclasses import dataclass
 
-DEFAULT_MODEL = "gpt-4o-mini-transcribe"
+from . import languages
+
+DEFAULT_MODEL = "gpt-transcribe"
 SAMPLE_RATE = 16000
-PREROLL_SECONDS = 3.0
-MAX_SECONDS = 45.0
-TIMEOUT_SECONDS = 15.0
-_ON = ("1", "on", "true", "yes")
+PREROLL_SECONDS = 2.0  # audio kept from before Vosk showed the first words
+RING_SECONDS = 50.0    # longer than the longest utterance (listening.MAX_UTTERANCE_SECONDS)
+MIN_SECONDS = 0.3      # less audio than this is not uploaded
 
 
-def cloud_requested():
-    """True only when the user explicitly turned cloud transcription on."""
-    return os.environ.get("LUNA_CLOUD_TRANSCRIPTION", "").strip().lower() in _ON
+def _env_seconds(name, default):
+    try:
+        value = float(os.environ.get(name, default))
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
-def _seconds(pcm):
+TIMEOUT_SECONDS = _env_seconds("LUNA_TRANSCRIBE_TIMEOUT", 8.0)
+_NOT_ALLOWED = str.maketrans("", "", "<>\r\n")  # the API rejects these in hints
+
+
+def seconds(pcm):
     return len(pcm) / 2 / SAMPLE_RATE
 
 
-class PreRoll:
-    """The last few seconds of microphone audio, in memory only (16 kHz mono int16)."""
+class AudioRing:
+    """Recent microphone blocks (16 kHz mono int16) with the time each was heard.
 
-    def __init__(self, seconds=PREROLL_SECONDS):
-        self.limit = int(seconds * SAMPLE_RATE * 2)
-        self._blocks = deque()
+    Filled by the listening thread, read by the UI thread; memory only.
+    """
+
+    def __init__(self, limit_seconds=RING_SECONDS):
+        self.limit = int(limit_seconds * SAMPLE_RATE * 2)
+        self._blocks = deque()  # (monotonic time, bytes)
         self._size = 0
+        self._lock = threading.Lock()
 
-    def add(self, block):
+    def add(self, block, stamp):
         block = bytes(block)
-        self._blocks.append(block)
-        self._size += len(block)
-        while self._size > self.limit and self._blocks:
-            self._size -= len(self._blocks.popleft())
+        with self._lock:
+            self._blocks.append((stamp, block))
+            self._size += len(block)
+            while self._size > self.limit and self._blocks:
+                self._size -= len(self._blocks.popleft()[1])
 
-    def take(self):
-        """The buffered audio, then forget it."""
-        data = b"".join(self._blocks)
-        self.clear()
-        return data
+    def since(self, start):
+        """The audio heard at or after `start` (monotonic seconds)."""
+        with self._lock:
+            return b"".join(block for stamp, block in self._blocks if stamp >= start)
+
+    def trim(self, before):
+        """Forget audio heard before `before`."""
+        with self._lock:
+            while self._blocks and self._blocks[0][0] < before:
+                self._size -= len(self._blocks.popleft()[1])
 
     def clear(self):
-        self._blocks.clear()
-        self._size = 0
+        with self._lock:
+            self._blocks.clear()
+            self._size = 0
+
+    @property
+    def seconds(self):
+        return self._size / 2 / SAMPLE_RATE
 
 
-class CloudUtterance:
-    """Audio of one wake-word-authorised utterance, kept in memory until transcribed."""
+def _hint(text):
+    return " ".join(str(text).translate(_NOT_ALLOWED).split())
 
-    def __init__(self, transcriber, preroll_audio=b""):
-        self._transcriber = transcriber
-        self._audio = bytearray(preroll_audio[-int(MAX_SECONDS * SAMPLE_RATE * 2):])
-        self.cancelled = threading.Event()
-        self.too_long = False
 
-    def add(self, block):
-        if self.cancelled.is_set() or self.too_long:
-            return
-        if _seconds(self._audio) + _seconds(block) > MAX_SECONDS:
-            self.too_long = True
-            return
-        self._audio.extend(block)
+def request_options(model, language):
+    """Arguments for audio.transcriptions.create: model, language and the pack's hints."""
+    pack = languages.get(language)
+    options = {"model": model}
+    prompt = _hint(pack.transcription_prompt)
+    if prompt:
+        options["prompt"] = prompt
+    if model.startswith("gpt-transcribe"):
+        # gpt-transcribe: `languages` replaces `language`; keywords are literal terms.
+        extra = {"languages": [language]}
+        keywords = [k for k in (_hint(k) for k in pack.transcription_keywords) if k]
+        if keywords:
+            extra["keywords"] = keywords
+        options["extra_body"] = extra
+    else:
+        options["language"] = language  # older models
+    return options
 
-    def cancel(self):
-        self.cancelled.set()
-        self._audio = bytearray()
 
-    def finish(self, language):
-        """Transcribed text, or None (use the offline Vosk text). Always drops the audio."""
-        audio, self._audio = bytes(self._audio), bytearray()
-        if self.cancelled.is_set() or not audio:
-            return None
-        return self._transcriber.transcribe(audio, language, self.cancelled)
+def wav_file(pcm):
+    data = io.BytesIO()
+    with wave.open(data, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(SAMPLE_RATE)
+        out.writeframes(pcm)
+    data.name = "speech.wav"
+    data.seek(0)
+    return data
 
 
 class CloudTranscriber:
-    def __init__(self, client=None, model=None, timeout=TIMEOUT_SECONDS):
+    def __init__(self, client=None, model=None, timeout=None):
         self._client = client
-        self.model = model or os.environ.get("LUNA_TRANSCRIBE_MODEL", DEFAULT_MODEL)
-        self.timeout = timeout
+        self.model = model or os.environ.get("LUNA_TRANSCRIBE_MODEL", "").strip() or DEFAULT_MODEL
+        self.timeout = TIMEOUT_SECONDS if timeout is None else timeout
 
-    @property
-    def enabled(self):
-        return cloud_requested() and (self._client is not None
-                                      or bool(os.environ.get("OPENAI_API_KEY")))
-
-    def begin(self, preroll, wake_word_confirmed):
-        """Start collecting an utterance; None unless enabled and authorised by the wake word."""
-        if not (self.enabled and wake_word_confirmed):
-            preroll.clear()
-            return None
-        return CloudUtterance(self, preroll.take())
-
-    def transcribe(self, pcm, language, cancelled=None):
-        if not self.enabled or not pcm or (cancelled and cancelled.is_set()):
-            return None
-        wav = io.BytesIO()
-        with wave.open(wav, "wb") as out:
-            out.setnchannels(1)
-            out.setsampwidth(2)
-            out.setframerate(SAMPLE_RATE)
-            out.writeframes(pcm)
-        wav.name = "speech.wav"
-        wav.seek(0)
+    def transcribe(self, pcm, language):
+        """The transcript (may be ""); raises on any problem, so the caller falls back."""
+        wav = wav_file(pcm)
         try:
             client = self._client
             if client is None:
                 from openai import OpenAI  # optional package
                 client = self._client = OpenAI(timeout=self.timeout, max_retries=0)
-            result = client.audio.transcriptions.create(model=self.model, file=wav,
-                                                        language=language)
-        except Exception as error:  # offline, timeout, bad key...: keep the Vosk text
-            print("Luna cloud transcription failed (%s); using offline text"
-                  % type(error).__name__, flush=True)
-            return None
+            result = client.audio.transcriptions.create(file=wav,
+                                                        **request_options(self.model, language))
         finally:
             wav.close()
-        if cancelled and cancelled.is_set():
+        return " ".join(str(getattr(result, "text", "") or "").split())
+
+
+class _Job:
+    """One upload in its own thread; the UI thread only reads `done`, `text` and `error`."""
+
+    def __init__(self, transcriber, pcm, language):
+        self.done = threading.Event()
+        self.text, self.error = "", ""
+        threading.Thread(target=self._run, args=(transcriber, pcm, language),
+                         daemon=True).start()
+
+    def _run(self, transcriber, pcm, language):
+        try:
+            self.text = transcriber.transcribe(pcm, language)
+        except Exception as error:  # offline, timeout, bad key, unknown model...
+            self.error = type(error).__name__  # never the message (it may contain details)
+        finally:
+            self.done.set()
+
+
+@dataclass(frozen=True)
+class Heard:
+    """What to route for an utterance: the online text, or Vosk's text as the fallback."""
+    utterance: object  # listening.Utterance (Vosk's text and timing)
+    text: str
+    online: bool
+    note: str          # for the log (never contains the text)
+
+
+class OnlineListening:
+    """UI-thread side: one transcription at a time. Not thread-safe except `busy`.
+
+    start() returns a Heard at once when nothing is uploaded; otherwise poll() returns it when
+    the transcript arrives, fails or times out. cancel() forgets the question (a late result
+    is ignored; the thread ends on its own).
+    """
+
+    def __init__(self, transcriber=None, timeout=None):
+        self.transcriber = transcriber or CloudTranscriber()
+        self.timeout = self.transcriber.timeout if timeout is None else timeout
+        self._job = None
+        self._waiting = None  # (utterance, started at, audio seconds)
+
+    @property
+    def busy(self):
+        return self._waiting is not None
+
+    def start(self, utterance, audio, language, t):
+        self.cancel()
+        length = seconds(audio)
+        if length < MIN_SECONDS:
+            return Heard(utterance, utterance.text, False, "no audio to send")
+        self._job = _Job(self.transcriber, audio, language)
+        self._waiting = (utterance, t, length)
+        return None
+
+    def poll(self, t):
+        if self._waiting is None:
             return None
-        text = " ".join(str(getattr(result, "text", "") or "").split())
-        return text or None
+        utterance, started, length = self._waiting
+        job = self._job
+        if job.done.is_set():
+            self.cancel()
+            if job.error:
+                return Heard(utterance, utterance.text, False, "failed (%s)" % job.error)
+            if not job.text:
+                return Heard(utterance, utterance.text, False, "no words found")
+            return Heard(utterance, job.text, True, "%.1f s of audio, text after %.1f s"
+                         % (length, t - started))
+        if t - started >= self.timeout + 1.0:
+            self.cancel()
+            return Heard(utterance, utterance.text, False, "no answer in %.0f s" % self.timeout)
+        return None
+
+    def cancel(self):
+        self._job = None
+        self._waiting = None

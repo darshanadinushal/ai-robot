@@ -1,4 +1,4 @@
-"""Persist only user-selected preferences (look and voice) in the home directory."""
+"""Persist only user-selected preferences (look, voice, listening) in the home directory."""
 import json
 from pathlib import Path
 
@@ -30,7 +30,7 @@ def default_path():
 def read_preferences(path=None):
     result = {"color": "CYAN", "mode": "FACE", "layout": "CLASSIC",
               "wave_layout": "MESH", "animations": True, "voice": DEFAULT_VOICE,
-              "language": DEFAULT_LANGUAGE}
+              "language": DEFAULT_LANGUAGE, "online_listening": False}
     try:
         data = json.loads(Path(path or default_path()).read_text(encoding="utf-8"))
         if isinstance(data, dict):
@@ -48,6 +48,8 @@ def read_preferences(path=None):
                 result["voice"] = data["voice"]
             if data.get("language") in LANGUAGES:
                 result["language"] = data["language"]
+            if isinstance(data.get("online_listening"), bool):
+                result["online_listening"] = data["online_listening"]
     except (OSError, ValueError, TypeError):
         pass
     return result
@@ -59,5 +61,6 @@ def write_preferences(prefs, path=None):
                "layout": prefs.get("layout", "CLASSIC"),
                "wave_layout": prefs.get("wave_layout", "MESH"), "animations": bool(prefs["animations"]),
                "voice": prefs.get("voice") if prefs.get("voice") in VOICES else DEFAULT_VOICE,
-               "language": prefs.get("language") if prefs.get("language") in LANGUAGES else DEFAULT_LANGUAGE}
+               "language": prefs.get("language") if prefs.get("language") in LANGUAGES else DEFAULT_LANGUAGE,
+               "online_listening": prefs.get("online_listening") is True}
     path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")

@@ -20,7 +20,7 @@ except ImportError as exc:
     ) from exc
 
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
-from .commands import parse_command, reply_for, utterance_end
+from .commands import parse_command, reply_for, route, utterance_end
 from .listening import UtteranceAssembler, continue_seconds
 from . import i18n, languages, speech
 from .i18n import tr
@@ -29,6 +29,7 @@ from .assistant_core.conversation import Conversation
 from .assistant_core.context import settings_from_env
 from .assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .assistant_core.expression import face_motion
+from .transcription import PREROLL_SECONDS, AudioRing, OnlineListening
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
 from .settings import SECTIONS, apply_choice
@@ -430,6 +431,10 @@ def section_icon(surface, name, x, y, color):
         draw_arc(surface,color,x,y-3,12,math.pi,2*math.pi,2)
         line(surface,color,(x,y+9),(x,y+16),2)
         line(surface,color,(x-7,y+16),(x+7,y+16),2)
+    elif name == 'Listening':
+        pygame.draw.circle(surface,color,(x-6,y),4)
+        for radius in (9,15):
+            draw_arc(surface,color,x-6,y,radius,-math.pi/3,math.pi/3,2)
     elif name == 'Animations':
         pygame.draw.ellipse(surface,color,(x-16,y-9,32,18),2)
         pygame.draw.circle(surface,color,(x,y),5)
@@ -561,7 +566,28 @@ def status_row(surface, fonts, label, y, status):
     draw_text(surface,line,fonts['small'],TEXT,topleft=(CONTROL_X+26,y-12))
 
 
-def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic','')):
+def online_status(prefs, ai_on, mic_on):
+    """(state, translated line) for online listening in Settings."""
+    if not prefs.get('online_listening'):
+        return 'basic',tr('Off - Luna hears everything offline')
+    if not ai_on:
+        return 'basic',tr('Needs the AI (an OpenAI API key)')
+    if not mic_on:
+        return 'basic',tr('Microphone off')
+    return 'natural',tr('On - questions to Luna are transcribed online')
+
+
+def toggle(surface, fonts, accent, on, y, hits, action):
+    track = pygame.Rect(CONTROL_X,y,76,38)
+    pygame.draw.rect(surface,accent if on else (24,52,84),track,border_radius=19)
+    pygame.draw.circle(surface,TEXT,(track.right-19 if on else track.left+19,track.centery),15)
+    draw_text(surface,tr('ON' if on else 'OFF'),fonts['small'],TEXT,
+              topleft=(track.right+16,track.centery-12))
+    add_hit(hits,pygame.Rect(track.left-10,track.top-10,150,58),action)
+
+
+def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic',''),
+                  online=('basic','')):
     """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
     hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
     settings_sidebar(surface,fonts,accent,active)
@@ -628,13 +654,18 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
     elif name=='Animations':
         section_header(surface,fonts,name,y,'Blinking, looking around and moving effects')
         row_label(surface,fonts,'Animations',y+130)
-        on = prefs['animations']
-        track = pygame.Rect(CONTROL_X,y+111,76,38)
-        pygame.draw.rect(surface,accent if on else (24,52,84),track,border_radius=19)
-        pygame.draw.circle(surface,TEXT,(track.right-19 if on else track.left+19,track.centery),15)
-        draw_text(surface,tr('ON' if on else 'OFF'),fonts['small'],TEXT,
-                  topleft=(track.right+16,track.centery-12))
-        add_hit(hits,pygame.Rect(track.left-10,track.top-10,150,58),('animations',None))
+        toggle(surface,fonts,accent,prefs['animations'],y+111,hits,('animations',None))
+    elif name=='Listening':
+        section_header(surface,fonts,name,y,'Hear long questions more accurately')
+        row_label(surface,fonts,'Online listening',y+130)
+        toggle(surface,fonts,accent,prefs['online_listening'],y+111,hits,('online_listening',None))
+        status_row(surface,fonts,'Status',y+200,online)
+        notes = (tr('Commands and "Hey Luna" are always heard offline on the robot.'),
+                 tr('When on, only questions to Luna are sent to OpenAI for transcription.'),
+                 tr('Audio stays in memory and is never saved. Uses your API key (costs money).'))
+        for i,text in enumerate(notes):
+            draw_text(surface,wrap_text(fonts['mini'],text,860,1)[0],fonts['mini'],MUTED,
+                      topleft=(LABEL_X,y+262+i*28))
     else:
         section_header(surface,fonts,name,y)
         about = (tr('Luna 1.0 - personal robot for Raspberry Pi 5.'),
@@ -686,6 +717,8 @@ class RobotHUD:
         self.wave_amp=.35
         self.conversation=Conversation()  # routing, AI answers, follow-ups (assistant core)
         self.utterance=UtteranceAssembler(self.utterance_end)  # joins Vosk's pieces
+        self.online=OnlineListening()  # optional online transcription of questions
+        self.ring=AudioRing()          # recent mic audio in memory, only while online listening is on
         self.mic_overruns=0
         self.decode_mark=0.0
         self.settings_section=0
@@ -714,6 +747,16 @@ class RobotHUD:
     @ai.setter
     def ai(self,worker):
         self.conversation.ai=worker
+
+    @property
+    def online_active(self):
+        """Online listening is switched on and can work (AI set up, microphone on)."""
+        return bool(self.prefs['online_listening']) and self.ai is not None and self.voice is not None
+
+    @property
+    def thinking(self):
+        """Luna works on a question: transcribing it online or waiting for the AI."""
+        return self.conversation.thinking or self.online.busy
 
     @property
     def talk_language(self):
@@ -756,7 +799,7 @@ class RobotHUD:
                 self.page=name
                 return
         if self.page=='Home':
-            if speech.is_talking() or self.conversation.streaming:
+            if speech.is_talking() or self.conversation.streaming or self.online.busy:
                 self.interrupt_answer()
             self.target_x=clamp((x-W/2)/(W/2),-1,1)
             self.target_y=clamp((y-292)/290,-1,1)
@@ -784,9 +827,13 @@ class RobotHUD:
             elif changed=='voice':
                 self.voice_key=self.prefs['voice']
                 speech.set_voice(self.voice_key)
+                self.online.cancel()
                 if self.voice:
                     self.forget_utterance()
                     self.voice.set_language(self.talk_language)
+            elif changed=='online_listening' and not self.prefs['online_listening']:
+                self.online.cancel()
+                self.ring.clear()
             if changed:
                 self.save()
 
@@ -853,8 +900,21 @@ class RobotHUD:
                     break
 
     def listen(self,t):
-        """Join Vosk's pieces into one complete utterance (UtteranceAssembler) and route it once."""
+        """Join Vosk's pieces into one complete utterance (UtteranceAssembler) and route it once.
+
+        With online listening on, a question for the AI is transcribed online first (the mic is
+        muted meanwhile) and routed when that text, or Vosk's as the fallback, is ready.
+        """
         voice=self.voice
+        heard=self.online.poll(t)
+        if heard:
+            self.route_heard(heard,t)
+        online=self.online_active
+        voice.capture=self.ring if online else None
+        if not online:
+            self.ring.clear()
+        elif not self.utterance.pending:
+            self.ring.trim(self.start_time+t-PREROLL_SECONDS)  # keep only a short pre-roll
         overruns=getattr(voice,'overruns',0)
         lost=overruns!=self.mic_overruns
         self.mic_overruns=overruns
@@ -876,7 +936,23 @@ class RobotHUD:
         done=self.utterance.poll(t)
         if done:
             self.log_utterance(done)
+            kind=route(done.text,conversation=done.conversation,language=self.heard_language)[0]
+            if online and kind=='ai':  # wake word or follow-up: authorised to send
+                audio=self.ring.since(self.start_time+done.started-PREROLL_SECONDS)
+                self.ring.clear()
+                self.conversation.heard,self.conversation.heard_kind=done.text,kind
+                self.conversation.heard_until=t+3600
+                heard=self.online.start(done,audio,self.heard_language,t)
+                if heard:
+                    self.route_heard(heard,t)
+                return
             self.handle_speech(done.text,t,conversation=done.conversation)
+
+    def route_heard(self,heard,t):
+        print('Luna online listening: %s; using the %s text (%d chars)'
+              % (heard.note,'online' if heard.online else 'offline',len(heard.text)),flush=True)
+        # Vosk already authorised this question, so the online text needs no wake word.
+        self.handle_speech(heard.text,t,conversation=True if heard.online else heard.utterance.conversation)
 
     def log_utterance(self,done):
         decode=getattr(self.voice,'decode_seconds',0.0)
@@ -901,7 +977,7 @@ class RobotHUD:
     def poll_voice(self,t):
         if self.voice:
             self.listen(t)
-        listening=bool(self.voice) and self.utterance.pending
+        listening=bool(self.voice) and (self.utterance.pending or self.online.busy)
         self.run_effects(self.conversation.poll(t,speech.is_speaking(),speech.is_talking(),
                                                 listening),t)
 
@@ -925,11 +1001,12 @@ class RobotHUD:
 
     def mic_muted(self):
         # Stay deaf between streamed sentences too, so Luna never hears herself.
-        return self.conversation.muted(speech.is_speaking())
+        return self.conversation.muted(speech.is_speaking()) or self.online.busy
 
     def interrupt_answer(self):
         """The user stopped Luna: silence her and drop the unfinished answer (not remembered)."""
         self.forget_utterance()
+        self.online.cancel()
         self.run_effects(self.conversation.interrupt(),0.0)
 
     def events(self,t):
@@ -986,9 +1063,9 @@ class RobotHUD:
         status_bar(self.canvas,self.fonts,accent)
         talking=speech.is_talking()
         if self.page=='Home':
-            if self.look_held and (self.conversation.thinking or self.conversation.streaming or talking):
+            if self.look_held and (self.thinking or self.conversation.streaming or talking):
                 self.touch_time=t  # e.g. "look left" by a tool: keep it until Luna has answered
-            if self.conversation.thinking and not self.look_held:
+            if self.thinking and not self.look_held:
                 # Look up and to the side while waiting for the AI.
                 self.target_x=.55+.12*math.sin(t*1.3)
                 self.target_y=-.8
@@ -1004,7 +1081,7 @@ class RobotHUD:
             openness=blink_openness(t,self.blink_start)
             if self.prefs['mode']=='WAVE':
                 state=self.wave_state
-                if self.conversation.thinking:
+                if self.thinking:
                     state='thinking'
                 elif talking:
                     state='speaking'
@@ -1030,7 +1107,7 @@ class RobotHUD:
                 return
             dx,ey,sc,sy=LAYOUT_CHOICES[self.prefs['layout']]
             # The answer's expression is drawn above the user's mood, which stays as it was.
-            mood='thinking' if self.conversation.thinking else (self.conversation.expression or self.mood)
+            mood='thinking' if self.thinking else (self.conversation.expression or self.mood)
             if mood=='surprised':
                 sc*=1.12
             listening=bool(self.voice) and self.utterance.pending
@@ -1055,12 +1132,14 @@ class RobotHUD:
         elif self.page=='Settings':
             self.settings_hits=settings_page(self.canvas,self.fonts,accent,self.prefs,
                                              self.settings_section,self.preview,
-                                             listening_status(self.voice,self.talk_language))
+                                             listening_status(self.voice,self.talk_language),
+                                             online_status(self.prefs,self.ai is not None,
+                                                           self.voice is not None))
         nav_bar(self.canvas,self.page,self.fonts,accent)
 
     def draw_footer(self,t,default):
         """Bottom text: Luna's answer while relevant, otherwise the hint."""
-        if self.conversation.thinking:
+        if self.thinking:
             lines=[tr('LUNA IS STILL THINKING...' if self.conversation.slow else 'LUNA IS THINKING...')]
         elif self.conversation.answer and (speech.is_talking() or t<self.conversation.answer_until):
             lines=wrap_text(self.fonts['small'],'LUNA: '+self.conversation.answer,1040,2)
@@ -1106,13 +1185,15 @@ class RobotHUD:
     def draw_caption(self,t):
         if self.voice is None and self.ai is None:
             return
-        if self.conversation.thinking:
+        if self.thinking:
             text=tr('STILL THINKING...' if self.conversation.slow else 'THINKING...')
         elif self.conversation.in_followup(t):
             text=tr('LISTENING FOR YOUR FOLLOW-UP...')
         else:
             text=tr('MIC: ')+(mic_status(self.voice.status).upper() if self.voice else tr('OFF'))
         text+='   •   '+tr('AI: ')+tr('ON' if self.ai else 'OFF')
+        if self.online_active:
+            text+='   •   '+tr('ONLINE LISTENING')
         if speech.enabled:
             text+='   •   '+tr('VOICE: ')+tr(speech.voice_state()[0].upper())
         draw_text(self.canvas,wrap_text(self.fonts['mini'],text,1100,1)[0],self.fonts['mini'],MUTED,
