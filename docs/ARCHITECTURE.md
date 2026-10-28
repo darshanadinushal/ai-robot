@@ -21,6 +21,7 @@ robot_hud/
     context.py              Instructions (personality, abilities, date/time, profile) + settings
     events.py               Effects the core returns: Speak, Act, StopSpeech, Accepted, Mood, Log
     tools.py                AI tools: ToolRegistry, PermissionPolicy, ToolExecutor, face tools
+    memory.py               Phase 5.2: MemoryStore (SQLite, ~/.luna-memory.db) + memory tools
     expression.py           MoodTag (strips an answer's "[mood]" tag), face_motion (listen/talk)
   commands.py               Pure: spoken words -> actions; actions -> spoken reply (from the packs)
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
@@ -47,6 +48,7 @@ tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_assistant_core.py    Phase 5.0A: Conversation without pygame, stale/stalled answers, sessions
   test_tools.py             Phase 5.0C: tool validation, permissions, no duplicates, tool rounds
+  test_memory.py            Phase 5.2: memory store, "remember"/"forget" permission, instructions
   test_expression.py        Phase 5.0D: mood tags, answer expression lifecycle, "One moment."
   test_conversation_cases.py  Baseline: 34 English/Swedish sentences (conversation_cases.json)
   test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
@@ -110,7 +112,7 @@ home, driving) without growing `app.py`, and is tested without pygame
   after `LUNA_IDLE_RESET_SECONDS` (300; 0 = never) without talking, listening, answering or
   speaking; before the question after `LUNA_MAX_TURNS` (20) remembered answers (the
   `previous_response_id` chain cannot be trimmed, so it starts fresh); or when asked. This is
-  session history only; Luna has no persistent memory yet.
+  session history only, separate from the saved facts of Persistent memory (below).
 - **Conversation controls (5.0B):** the packs' `controls` phrases, as the whole utterance with
   "Luna" or during a follow-up: `cancel` ("never mind", "no thanks", "strunt samma") closes the
   follow-up and says "Okay."; `new_conversation` ("start a new conversation", "nytt samtal")
@@ -138,6 +140,26 @@ home, driving) without growing `app.py`, and is tested without pygame
     permission.
   - `LUNA_AI_TOOLS=off` sends no tools (for a model without function calling; a
     `BadRequestError` logs that hint). Instructions then describe only the offline commands.
+- **Persistent memory (phase 5.2, `memory.py`):** facts the user *asked* Luna to keep
+  ("remember that I like jazz", "kom ihåg att ..."), never whole conversations.
+  - `MemoryStore`: SQLite file `LUNA_MEMORY_FILE` or `~/.luna-memory.db` (outside the repo,
+    created on the first save, mode 600, `secure_delete`). At most `MAX_FACTS` (50) facts of
+    `MAX_CHARS` (120); duplicates are not saved twice; `replaces` corrects a fact. Facts that look
+    private (4+ digit runs, the pack's `memory_words.private` words such as "password",
+    "personnummer") are refused.
+  - Tools (risk `memory`): `remember_fact(fact, replaces)`, `recall_memories()`,
+    `forget_memory(id)`. `Tool.asked_with` makes `PermissionPolicy` refuse saving/forgetting
+    unless the user's **own words** this turn contain a pack `memory_words.remember` /
+    `forget` phrase (checked in code, whole words). Recall is always allowed. "Forget
+    everything" exists only in Settings (two taps), never by voice.
+  - Each question: `MemoryStore.relevant` picks up to `RELEVANT` (5) facts sharing a word stem
+    with it (minus the pack's `memory_words.ignore` words) and `context.instructions` lists them
+    as notes, "never permission"; with more facts saved the AI may call `recall_memories`.
+    A memory never grants a device or motion permission. Read errors are logged by class name
+    and the question is answered without memories.
+  - Settings → Memory: on/off (preference `memory`, default on; off = not used and nothing
+    saved, nothing deleted), the facts newest first (4 per page) with a delete button each, and
+    "Forget everything". Needs the AI with tools for voice; offline only the Settings page works.
 - **Expressions (phase 5.0D, `expression.py`):** the instructions ask the AI to start each
   answer with one tag (`[happy]`, `[sad]`, `[surprised]`, `[sleepy]`, `[neutral]`); no extra AI
   request. `AIWorker` runs a `MoodTag` per round *before* `SentenceStream`: it holds back at
@@ -189,7 +211,7 @@ home, driving) without growing `app.py`, and is tested without pygame
   `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
-A section menu on the left (Display & Theme, Language, Voice, Animations, Listening, About) works like
+A section menu on the left (Display & Theme, Language, Voice, Animations, Listening, Memory, About) works like
 tabs: the panel on the right shows **only the selected section** (`self.settings_section`;
 Up/Down keys change it). The section list and what each tap changes live in `settings.py`
 (no pygame, unit-tested).
@@ -326,7 +348,8 @@ Model `LUNA_TRANSCRIBE_MODEL` (default `gpt-transcribe`). Each question costs AP
 ### Adding a language (no code changes)
 1. Copy `robot_hud/languages/en.json` to `<code>.json` (e.g. `de.json`) and translate it:
    `name`, `native_name`, `screen` (English text → translation), `commands`, `controls`,
-   `wake_words`, `greetings`, `replies`, `speech`, `ai_instruction` (language and speaking
+   `wake_words`, `greetings`, `replies`, `speech`, `memory_words` (`remember`, `forget`,
+   `private`, `ignore` phrases for Persistent memory), `ai_instruction` (language and speaking
    style), `transcription_prompt` and `transcription_keywords` (online listening hints),
    `sample`, `warm_up`, `windows_culture`.
 2. Set `listening_model` (and `listening_model_mb`) to a small Vosk model from
@@ -376,6 +399,7 @@ File: `~/.ai-robot-hud.json` (outside the repo; its name is gitignored).
 | `voice` | a key in `voices.json`: `EN_FEMALE, EN_MALE, SV_FEMALE, SV_MALE` | `EN_FEMALE` |
 | `language` | a language pack code: `en, sv` — screen text (`i18n.LANGUAGES`) | `en` |
 | `online_listening` | boolean — questions transcribed online (Phase 5.1) | `false` |
+| `memory` | boolean — use and save remembered facts (Phase 5.2) | `true` |
 
 `read_preferences` validates every field and silently falls back to defaults on any error;
 unknown keys are ignored. Adding a setting means: default in `read_preferences`, validation,
@@ -456,7 +480,7 @@ to change a case); `scripts/measure_listening.py --cases` speaks them through th
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
 3. Real camera, motors, smart-home control (UI placeholders exist).
-4. Phase 5.2 memory, then natural turn-taking, smart home and driving, each as its own phase,
+4. Natural turn-taking (Phase 5.3), smart home and driving, each as its own phase,
    reusing the tool registry and permission policy.
 
 ## 11. Known gaps

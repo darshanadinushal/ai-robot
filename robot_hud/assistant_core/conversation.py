@@ -12,8 +12,9 @@ from ..commands import route, spoken
 from .context import ConversationSettings, instructions
 from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .expression import LINGER_SECONDS
+from .memory import ERRORS as MEMORY_ERRORS, memory_tools
 from .session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS, Session, Turn
-from .tools import ToolExecutor, face_registry
+from .tools import FACE_TOOLS, ToolExecutor, ToolRegistry
 
 HEARD_SECONDS = 8.0    # how long the screen shows what Luna heard
 ANSWER_SECONDS = 20.0  # how long it shows her answer after the last piece arrived
@@ -34,13 +35,18 @@ class Conversation:
     Luna answers and LINGER_SECONDS after; the user's own face settings are never changed.
     A mood set by a tool this turn wins. `slow`: no answer after `settings.progress_seconds`,
     so Luna said "One moment." (once per question).
+    Memory: `memory` is a MemoryStore (None: off). Its relevant facts go into the instructions
+    and its tools join the face tools (see set_memory).
     """
 
-    def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None):
+    def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None, memory=None):
         self.ai = ai
         self.settings = settings or ConversationSettings()
         self.clock = clock
-        self.tools = tools or ToolExecutor(face_registry())
+        self._own_tools = tools is None
+        self.tools = tools or ToolExecutor(ToolRegistry(FACE_TOOLS))
+        self.memory = None
+        self.set_memory(memory)
         self._tool_outputs = None  # (request, [(call_id, output)]) to send on the next poll
         self.session = Session()
         self.turn = None               # the question being answered or spoken
@@ -60,6 +66,13 @@ class Conversation:
         self._expression_until = None
         self._tool_mood = False   # a tool changed the face this turn: ignore the answer's tag
         self.slow = False
+
+    def set_memory(self, memory):
+        """Switch memory on (a MemoryStore) or off (None); saved facts are kept either way."""
+        self.memory = memory
+        if self._own_tools:
+            extra = memory_tools(memory) if memory is not None else ()
+            self.tools = ToolExecutor(ToolRegistry(FACE_TOOLS + tuple(extra)))
 
     def in_followup(self, t):
         return self.ai is not None and self.session.in_followup(t)
@@ -107,14 +120,20 @@ class Conversation:
         if not self.streaming and self.session.turns >= self.settings.max_turns:
             effects = self._fresh("after %d answers" % self.session.turns)
         use_tools = self.settings.tools
+        memories = None
+        if self.memory is not None:
+            try:
+                memories = self.memory.relevant(question, language)
+            except MEMORY_ERRORS as error:
+                effects.append(Log("Luna memory: could not be read (%s)" % type(error).__name__))
         request = self.ai.ask(
             question, language,
             instructions(language, self.clock(), self.settings.profile, use_tools,
-                         self.settings.expressions),
+                         self.settings.expressions, memories),
             tools=self.tools.registry.schemas() if use_tools else None)
         if not request:
             return []  # still answering the previous question
-        self.tools.new_turn()
+        self.tools.new_turn(question, language)
         self._tool_outputs = None
         self.session.touch(t)
         self.turn = Turn(self.session.id, request, question, language, t)

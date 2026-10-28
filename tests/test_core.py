@@ -38,14 +38,14 @@ class PreferenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'preferences.json'
             self.assertEqual(read_preferences(p)['color'],'CYAN')
-            write_preferences({'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False},p)
-            self.assertEqual(read_preferences(p),{'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'voice':'EN_FEMALE','language':'en','online_listening':False})
+            write_preferences({'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'memory':False},p)
+            self.assertEqual(read_preferences(p),{'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':False})
 
     def test_invalid_values_are_ignored(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'prefs.json'
             p.write_text('{"color":"NOT_A_COLOR","animations":"no"}')
-            self.assertEqual(read_preferences(p),{'color':'CYAN','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':True,'voice':'EN_FEMALE','language':'en','online_listening':False})
+            self.assertEqual(read_preferences(p),{'color':'CYAN','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':True,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':True})
             self.assertIn('CYAN',COLOR_CHOICES)
 
 

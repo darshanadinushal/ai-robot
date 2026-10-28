@@ -25,8 +25,13 @@ Fields:
   windows_culture culture of the built-in Windows voice (local testing), e.g. "sv-SE"
   transcription_prompt, transcription_keywords  context and literal words ("Luna", colour
                   names) for online listening; not taken from English
+  memory_words    phrases for memory: "remember" / "forget" (the user's own words must contain
+                  one before Luna saves or deletes a memory), "private" (never saved, checked in
+                  every language), "ignore" (common words not used to find related memories);
+                  not taken from English
 """
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -56,6 +61,7 @@ class LanguagePack:
     controls: dict = field(default_factory=dict)
     transcription_prompt: str = ""
     transcription_keywords: tuple = ()
+    memory_words: dict = field(default_factory=dict)
 
     def reply(self, action_id):
         return self.replies.get(action_id)
@@ -101,7 +107,9 @@ def _build(data, english):
         controls={name: tuple(" ".join(p.lower().split()) for p in phrases)
                   for name, phrases in (data.get("controls") or {}).items()},
         transcription_prompt=str(data.get("transcription_prompt") or ""),
-        transcription_keywords=tuple(str(k) for k in data.get("transcription_keywords") or ()))
+        transcription_keywords=tuple(str(k) for k in data.get("transcription_keywords") or ()),
+        memory_words={kind: tuple(" ".join(re.findall(r"\w+", p.lower())) for p in phrases)
+                      for kind, phrases in (data.get("memory_words") or {}).items()})
 
 
 def load(folder=FOLDER):

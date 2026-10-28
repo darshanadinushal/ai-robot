@@ -29,6 +29,7 @@ from .assistant_core.conversation import Conversation
 from .assistant_core.context import settings_from_env
 from .assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .assistant_core.expression import face_motion
+from .assistant_core.memory import ERRORS as MEMORY_ERRORS, MemoryStore
 from .transcription import PREROLL_SECONDS, AudioRing, OnlineListening
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
@@ -45,7 +46,7 @@ NAV_RECTS = [pygame.Rect(216 + i * 216, 597, 199, 93) for i in range(4)]
 QUIT_RECT = pygame.Rect(1214, 23, 43, 43)
 # Settings page: section menu on the left, the selected section on the right.
 SIDEBAR_RECT = pygame.Rect(22, 86, 280, 498)
-SECTION_RECTS = [pygame.Rect(36, 100 + i * 72, 252, 62) for i in range(len(SECTIONS))]
+SECTION_RECTS = [pygame.Rect(36, 98 + i * 68, 252, 58) for i in range(len(SECTIONS))]
 CONTENT_RECT = pygame.Rect(316, 86, 942, 498)
 CONTENT_CLIP = pygame.Rect(330, 98, 900, 474)
 LABEL_X = 362
@@ -435,6 +436,10 @@ def section_icon(surface, name, x, y, color):
         pygame.draw.circle(surface,color,(x-6,y),4)
         for radius in (9,15):
             draw_arc(surface,color,x-6,y,radius,-math.pi/3,math.pi/3,2)
+    elif name == 'Memory':
+        pygame.draw.rect(surface,color,(x-12,y-15,24,30),2,border_radius=4)
+        for dy in (-7,0,7):
+            line(surface,color,(x-6,y+dy),(x+6,y+dy),2)
     elif name == 'Animations':
         pygame.draw.ellipse(surface,color,(x-16,y-9,32,18),2)
         pygame.draw.circle(surface,color,(x,y),5)
@@ -586,8 +591,62 @@ def toggle(surface, fonts, accent, on, y, hits, action):
     add_hit(hits,pygame.Rect(track.left-10,track.top-10,150,58),action)
 
 
+MEMORY_ROWS = 4  # memories per page in Settings > Memory
+
+
+def memory_pages(count):
+    return max(1,-(-count//MEMORY_ROWS))
+
+
+def memory_section(surface, fonts, accent, prefs, y, memory, hits):
+    """Settings > Memory: the switch, the saved facts (newest first) and delete buttons."""
+    facts,page,confirm,error = memory
+    row_label(surface,fonts,'Memory',y+130)
+    toggle(surface,fonts,accent,prefs['memory'],y+111,hits,('memory',None))
+    if error:
+        note = tr('Memory could not be read')
+    elif prefs['memory']:
+        note = tr('On - Luna saves only what you ask her to remember')
+    else:
+        note = tr('Off - Luna does not use or save memories')
+    draw_text(surface,wrap_text(fonts['mini'],note,CONTROL_RIGHT-CONTROL_X-170,1)[0],fonts['mini'],
+              MUTED,topleft=(CONTROL_X+170,y+119))
+    if not facts:
+        draw_text(surface,tr('Nothing saved yet.'),fonts['small'],TEXT,topleft=(LABEL_X,y+200))
+        draw_text(surface,tr('Try: "Hey Luna, remember that I like jazz."'),fonts['mini'],MUTED,
+                  topleft=(LABEL_X,y+236))
+        return
+    pages = memory_pages(len(facts))
+    page = min(page,pages-1)
+    for i,fact in enumerate(facts[page*MEMORY_ROWS:(page+1)*MEMORY_ROWS]):
+        row = pygame.Rect(LABEL_X,y+186+i*50,CONTROL_RIGHT-LABEL_X-58,42)
+        pygame.draw.rect(surface,(8,32,62),row,border_radius=10)
+        pygame.draw.rect(surface,(33,73,109),row,1,border_radius=10)
+        draw_text(surface,wrap_text(fonts['small'],fact.text,row.width-28,1)[0],fonts['small'],
+                  TEXT,topleft=(row.left+14,row.centery-12))
+        delete = pygame.Rect(row.right+12,row.top,46,42)
+        pygame.draw.rect(surface,(8,32,62),delete,border_radius=10)
+        pygame.draw.rect(surface,(255,110,110),delete,1,border_radius=10)
+        line(surface,(255,110,110),(delete.centerx-8,delete.centery-8),(delete.centerx+8,delete.centery+8),2)
+        line(surface,(255,110,110),(delete.centerx-8,delete.centery+8),(delete.centerx+8,delete.centery-8),2)
+        add_hit(hits,delete,('forget_memory',fact.id))
+    bottom = y+398
+    if pages>1:
+        for rect,(text,step) in zip(control_rects(bottom,2,44,60),(('<',-1),('>',1))):
+            rect.x -= CONTROL_X-LABEL_X
+            choice_button(surface,fonts,accent,rect,text,False,hits,('memory_page',step))
+        draw_text(surface,'%d / %d' % (page+1,pages),fonts['small'],MUTED,
+                  topleft=(LABEL_X+160,bottom+10))
+    button = pygame.Rect(CONTROL_RIGHT-330,bottom,330,44)
+    pygame.draw.rect(surface,(60,20,32) if confirm else (8,32,62),button,border_radius=10)
+    pygame.draw.rect(surface,(255,110,110),button,2 if confirm else 1,border_radius=10)
+    label = ('Tap again to forget everything' if confirm else 'Forget everything')
+    draw_text(surface,tr(label),fonts['small'],TEXT,center=button.center)
+    add_hit(hits,button,('forget_all',None))
+
+
 def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic',''),
-                  online=('basic','')):
+                  online=('basic',''), memory=((),0,False,False)):
     """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
     hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
     settings_sidebar(surface,fonts,accent,active)
@@ -666,6 +725,9 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
         for i,text in enumerate(notes):
             draw_text(surface,wrap_text(fonts['mini'],text,860,1)[0],fonts['mini'],MUTED,
                       topleft=(LABEL_X,y+262+i*28))
+    elif name=='Memory':
+        section_header(surface,fonts,name,y,'What Luna remembers about you')
+        memory_section(surface,fonts,accent,prefs,y,memory,hits)
     else:
         section_header(surface,fonts,name,y)
         about = (tr('Luna 1.0 - personal robot for Raspberry Pi 5.'),
@@ -716,6 +778,10 @@ class RobotHUD:
         self.wave_until=0.0
         self.wave_amp=.35
         self.conversation=Conversation()  # routing, AI answers, follow-ups (assistant core)
+        self.memory=MemoryStore()  # facts the user asked Luna to remember (~/.luna-memory.db)
+        self.memory_page=0
+        self.forget_all_until=0.0  # "Forget everything" waits for a second tap until then
+        self.conversation.set_memory(self.memory if self.prefs['memory'] else None)
         self.utterance=UtteranceAssembler(self.utterance_end)  # joins Vosk's pieces
         self.online=OnlineListening()  # optional online transcription of questions
         self.ring=AudioRing()          # recent mic audio in memory, only while online listening is on
@@ -818,6 +884,19 @@ class RobotHUD:
             self.settings_section=value
         elif kind=='preview':
             self.preview_voice()
+        elif kind=='forget_memory':
+            self.change_memory(self.memory.forget,value)
+        elif kind=='forget_all':
+            now=time.monotonic()
+            if now<self.forget_all_until:
+                self.forget_all_until=0.0
+                self.memory_page=0
+                self.change_memory(self.memory.forget_all)
+            else:
+                self.forget_all_until=now+4.0
+        elif kind=='memory_page':
+            pages=memory_pages(len(self.memory_view()[0]))
+            self.memory_page=max(0,min(pages-1,self.memory_page+value))
         else:
             changed=apply_choice(self.prefs,kind,value)
             if changed=='color':
@@ -831,11 +910,27 @@ class RobotHUD:
                 if self.voice:
                     self.forget_utterance()
                     self.voice.set_language(self.talk_language)
+            elif changed=='memory':
+                self.conversation.set_memory(self.memory if self.prefs['memory'] else None)
             elif changed=='online_listening' and not self.prefs['online_listening']:
                 self.online.cancel()
                 self.ring.clear()
             if changed:
                 self.save()
+
+    def change_memory(self,change,*args):
+        try:
+            change(*args)
+        except MEMORY_ERRORS as error:
+            print('Luna memory: could not be changed (%s)' % type(error).__name__,flush=True)
+
+    def memory_view(self):
+        """(facts newest first, page, waiting for the second "forget everything" tap, error)."""
+        try:
+            facts,error=list(reversed(self.memory.facts())),False
+        except MEMORY_ERRORS:
+            facts,error=[],True
+        return facts,self.memory_page,time.monotonic()<self.forget_all_until,error
 
     def preview_voice(self):
         """Play a sample with the selected voice, once it has finished loading."""
@@ -1134,7 +1229,8 @@ class RobotHUD:
                                              self.settings_section,self.preview,
                                              listening_status(self.voice,self.talk_language),
                                              online_status(self.prefs,self.ai is not None,
-                                                           self.voice is not None))
+                                                           self.voice is not None),
+                                             self.memory_view())
         nav_bar(self.canvas,self.page,self.fonts,accent)
 
     def draw_footer(self,t,default):

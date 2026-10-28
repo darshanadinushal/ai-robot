@@ -190,6 +190,11 @@ Then talk:
   accurate long questions. Commands and the wake word stay offline; audio is kept in memory only.
   It uses your API key (costs money) and falls back to the offline text on any error.
   Options: `LUNA_TRANSCRIBE_MODEL=gpt-transcribe`, `LUNA_TRANSCRIBE_TIMEOUT=8`.
+- **Memory:** "Hey Luna, remember that I like jazz." / "What do you remember about me?" /
+  "Forget that I like jazz." (Swedish: "kom ihåg att ...", "glöm ..."). Luna saves only what you
+  ask her to remember, refuses things that look private (numbers, passwords), and never takes a
+  memory as permission for anything. See, delete or switch it off in Settings → Memory. Stored in
+  `~/.luna-memory.db` (or `LUNA_MEMORY_FILE`), outside the repo. Needs the AI.
 - Luna's face follows the conversation: attentive while you speak, thinking while she waits,
   and a short expression that fits her answer (your own face settings stay as they are).
 - Luna knows today's date and time, and says so when something (camera, motors, smart home,

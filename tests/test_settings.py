@@ -96,7 +96,8 @@ class SettingsTouchTests(unittest.TestCase):
                    mock.patch.object(app, "read_preferences",
                                      lambda: read_preferences(Path(folder) / "prefs.json")),
                    mock.patch.object(app, "write_preferences",
-                                     lambda prefs: self.saved.append(dict(prefs)))]
+                                     lambda prefs: self.saved.append(dict(prefs))),
+                   mock.patch.dict(os.environ, {"LUNA_MEMORY_FILE": str(Path(folder) / "m.db")})]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
@@ -147,11 +148,32 @@ class SettingsTouchTests(unittest.TestCase):
             return {a[0] for _, a in self.hud.settings_hits} - {"section"}
         self.assertEqual(actions(), {"mode", "color", "layout"})
         expected = {1: {"language"}, 2: {"voice_language", "voice", "preview"},
-                    3: {"animations"}, 4: {"online_listening"}, 5: set()}
+                    3: {"animations"}, 4: {"online_listening"}, 5: {"memory"}, 6: set()}
         for index, kinds in expected.items():
             self.tap(("section", index))
             self.assertEqual(actions(), kinds, SECTIONS[index])
 
+
+    def test_memory_section_lists_and_deletes(self):
+        memory = self.hud.memory
+        for text in ("You like jazz.", "Your cat is Misse.", "You live in Lund.", "You love tea.",
+                     "You wake at seven."):
+            memory.remember(text)
+        self.tap(("section", 5))
+        self.draw()
+        forget = sorted(a[1] for _, a in self.hud.settings_hits if a[0] == "forget_memory")
+        self.assertEqual(forget, [2, 3, 4, 5], "newest first, 4 per page")
+        self.tap(("memory_page", 1))
+        self.tap(("forget_memory", 1))
+        self.assertEqual([f.id for f in memory.facts()], [2, 3, 4, 5])
+        self.tap(("forget_all", None))
+        self.assertEqual(len(memory.facts()), 4, "one tap is not enough")
+        self.tap(("forget_all", None))
+        self.assertEqual(memory.facts(), [])
+        self.tap(("memory", None))
+        self.assertEqual((self.saved[-1]["memory"], self.hud.conversation.memory), (False, None))
+        self.tap(("memory", None))
+        self.assertIs(self.hud.conversation.memory, memory)
 
     def test_switching_app_language_to_swedish(self):
         self.tap(("section", 1))
@@ -180,7 +202,8 @@ class TranslationTests(unittest.TestCase):
         names = set(SECTIONS) | {pack.name for pack in languages.PACKS.values()}
         names |= {"Listening", "Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
                                  "FEMALE", "MALE", "Wave layout", "Face layout", "Online listening",
-                                 "Hear long questions more accurately"}
+                                 "Hear long questions more accurately",
+                                 "What Luna remembers about you"}
         from robot_hud.preferences import COLOR_CHOICES, LAYOUT_CHOICES, WAVE_LAYOUTS
         from robot_hud.voices import VOICES
         names |= set(COLOR_CHOICES) | set(LAYOUT_CHOICES) | set(WAVE_LAYOUTS)

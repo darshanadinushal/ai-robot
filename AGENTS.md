@@ -38,6 +38,10 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   risk class, pure `run` returning effects + `ToolResult`) in a `ToolRegistry`; validation and
   `PermissionPolicy` are code, never the model. `motion`/`sensitive` are never allowed here.
   Tests: `tests/test_tools.py` (fake brains, never the real API).
+- Persistent memory: `assistant_core/memory.py` (`MemoryStore`, SQLite `~/.luna-memory.db` or
+  `LUNA_MEMORY_FILE`; memory tools). Save only facts the user asked to keep: saving/forgetting is
+  gated in code by the user's own `memory_words` phrases (`Tool.asked_with`); never save whole
+  conversations or private data, and never treat a memory as a permission. Tests: `tests/test_memory.py`.
 - Answer expressions: `assistant_core/expression.py` (`MoodTag` strips the AI's leading "[mood]"
   tag in `AIWorker` before sentences; `Conversation.expression` is drawn above the user's mood,
   never saved). Tests: `tests/test_expression.py`.
@@ -55,7 +59,8 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   `~/.luna.env` (outside the repo, loaded by `ai.load_env_file`, OPENAI_*/LUNA_* keys only).
   Never log keys or exception messages from the AI client (log the class name only).
   Do not put keys, tokens, personal emails or home paths in code, docs or tests.
-  User settings live in `~/.ai-robot-hud.json`, outside the repo; voice models in `~/.ai-robot-models`.
+  User settings live in `~/.ai-robot-hud.json`, memories in `~/.luna-memory.db`, outside the repo;
+  voice models in `~/.ai-robot-models`. Tests must point `LUNA_MEMORY_FILE` at a temp folder.
 - Draw on the 1280×720 logical canvas only; use the shared `*_RECTS` constants for both drawing and hit tests.
 - Worker threads (voice, speech, AI) must not call pygame; communicate via queue/float/status string.
 - Speech: `speech.py` (pipeline, Piper/basic voices, immediate `stop()`), catalogue in `voices.json`;
@@ -76,5 +81,5 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 ## Status snapshot
 Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expressions,
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
-follow-ups and tap-to-stop, date/time-aware answers, optional online listening, AI face tools, answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
+follow-ups and tap-to-stop, date/time-aware answers, optional online listening, AI face tools, persistent memory (explicit facts), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
 Planned: AI-model setting, autostart, camera/motors/smart home.

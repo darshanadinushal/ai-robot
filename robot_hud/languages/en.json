@@ -133,6 +133,12 @@
   "speech": {},
   "transcription_prompt": "Someone talks to Luna, a friendly home robot, and asks her a question.",
   "transcription_keywords": ["Luna", "cyan", "amber", "purple"],
+  "memory_words": {
+    "remember": ["remember", "note that", "make a note", "save that", "keep in mind"],
+    "forget": ["forget", "delete", "remove", "erase"],
+    "private": ["password", "passcode", "pin", "pin code", "credit card", "card number", "bank account", "social security", "passport", "api key"],
+    "ignore": ["that", "this", "what", "with", "have", "your", "about", "remember", "forget", "please", "luna", "would", "could", "there", "when", "where", "which", "does", "from", "they", "them", "know", "tell", "some", "want", "just", "really", "also", "been", "will", "should", "think", "much", "more", "very", "make"]
+  },
   "ai_instruction": "Always answer in English.",
   "sample": "Hello, I am Luna. This is how my voice sounds.",
   "warm_up": "Hello.",

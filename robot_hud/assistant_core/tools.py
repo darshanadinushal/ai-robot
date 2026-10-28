@@ -6,18 +6,22 @@ into effects for the app. Nothing the model writes is ever run as code.
 
 Risk classes (future skills reuse the same interfaces):
   local      Luna's own face and screen: harmless, always allowed
+  memory     Luna's notes about the user (phase 5.2); saving or deleting needs the user's own
+             words ("remember", "forget"), checked in code, never the AI's judgement
   info       reading information (sensors, states): planned
   device     controlling smart-home devices: planned, needs user permission settings
   motion     driving the robot: only through a MotionManager with a hardware stop; never here
   sensitive  locks, cameras, purchases, deleting things: extra confirmation; never automatic
 """
 import json
+import re
 from dataclasses import dataclass, field
 
+from .. import languages
 from ..commands import EXPRESSIONS
 from .events import Act
 
-RISKS = ("local", "info", "device", "motion", "sensitive")
+RISKS = ("local", "memory", "info", "device", "motion", "sensitive")
 MAX_CALLS_PER_TURN = 6
 
 
@@ -46,7 +50,8 @@ class Tool:
     description: str
     parameters: dict           # JSON schema of the arguments (objects of enums/strings)
     risk: str
-    run: object                # function(arguments) -> (effects, ToolResult); pure, no I/O
+    run: object                # function(arguments) -> (effects, ToolResult); no pygame
+    asked_with: str = ""       # memory_words kind the user's own words must contain
 
     def schema(self):
         """The tool in the Responses API function-calling format."""
@@ -64,9 +69,21 @@ def _enum(values, description):
     return {"type": "string", "enum": list(values), "description": description}
 
 
+def words(text):
+    """Lower-case words of `text`, space-separated with a space at each end (phrase search)."""
+    return " %s " % " ".join(re.findall(r"\w+", str(text).lower()))
+
+
+def said(text, language, kind):
+    """The user's words contain one of the pack's `memory_words[kind]` phrases."""
+    heard = words(text)
+    return any(" %s " % phrase in heard
+               for phrase in languages.get(language).memory_words.get(kind, ()))
+
+
 def validate(schema, arguments):
     """Arguments (a dict) that match the schema exactly, or ValueError. Supports the small
-    subset Luna's tools use: objects with required string enums/strings, no extra keys."""
+    subset Luna's tools use: objects with required strings, enums and integers, no extra keys."""
     if not isinstance(arguments, dict):
         raise ValueError("arguments must be an object")
     properties = schema.get("properties", {})
@@ -80,6 +97,8 @@ def validate(schema, arguments):
         rule = properties[name]
         if rule.get("type") == "string" and not isinstance(value, str):
             raise ValueError(name + " must be text")
+        if rule.get("type") == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
+            raise ValueError(name + " must be a whole number")
         if "enum" in rule and value not in rule["enum"]:
             raise ValueError("%s must be one of: %s" % (name, ", ".join(rule["enum"])))
     return arguments
@@ -94,14 +113,17 @@ class Decision:
 class PermissionPolicy:
     """Decides, in code, whether a validated call may run. The AI's confidence never counts.
 
-    Only `local` tools are allowed in phase 5.0C. Later phases add user-configured autonomy levels
-    for `info`/`device`; `motion` and `sensitive` are never allowed through this path.
+    `local` and `memory` tools are allowed; a tool with `asked_with` also needs the user's own
+    words for it in this turn. Later phases add user-configured autonomy levels for
+    `info`/`device`; `motion` and `sensitive` are never allowed through this path.
     """
 
-    def __init__(self, allowed=("local",)):
+    def __init__(self, allowed=("local", "memory")):
         self.allowed = frozenset(allowed) - {"motion", "sensitive"}
 
-    def decide(self, tool, arguments):
+    def decide(self, tool, arguments, heard="", language="en"):
+        if tool.asked_with and not said(heard, language, tool.asked_with):
+            return Decision(False, "the user did not ask for this in their own words")
         if tool.risk == "motion":
             return Decision(False, "movement is only possible through the motion system")
         if tool.risk == "sensitive":
@@ -146,7 +168,9 @@ class ToolExecutor:
         self.policy = policy or PermissionPolicy()
         self.new_turn()
 
-    def new_turn(self):
+    def new_turn(self, heard="", language="en"):
+        """A new question: `heard` is what the user said (for `asked_with` tools)."""
+        self._heard, self._language = heard, language
         self._by_id = {}
         self._by_call = {}
         self._ran = 0
@@ -170,7 +194,7 @@ class ToolExecutor:
         key = (tool.name, json.dumps(arguments, sort_keys=True))
         if key in self._by_call:
             return [], self._by_call[key]
-        decision = self.policy.decide(tool, arguments)
+        decision = self.policy.decide(tool, arguments, self._heard, self._language)
         if not decision.allowed:
             return [], ToolResult(False, "not allowed: " + decision.reason)
         if self._ran >= MAX_CALLS_PER_TURN:
