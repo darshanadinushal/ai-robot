@@ -110,6 +110,10 @@ class Decision:
     reason: str = ""
 
 
+NOT_ASKED = ("the user did not ask for this in their own words; ask them briefly whether "
+             "you should, and call it again only if they say yes")
+
+
 class PermissionPolicy:
     """Decides, in code, whether a validated call may run. The AI's confidence never counts.
 
@@ -121,10 +125,12 @@ class PermissionPolicy:
     def __init__(self, allowed=("local", "memory")):
         self.allowed = frozenset(allowed) - {"motion", "sensitive"}
 
-    def decide(self, tool, arguments, heard="", language="en"):
+    def decide(self, tool, arguments, heard="", language="en", granted=()):
+        """`granted`: asked_with kinds the user agreed to with "yes" (see ToolExecutor)."""
         kinds = (tool.asked_with,) if isinstance(tool.asked_with, str) else tool.asked_with
-        if tool.asked_with and not any(said(heard, language, kind) for kind in kinds):
-            return Decision(False, "the user did not ask for this in their own words")
+        if (tool.asked_with and not set(kinds) & set(granted)
+                and not any(said(heard, language, kind) for kind in kinds)):
+            return Decision(False, NOT_ASKED)
         if tool.risk == "motion":
             return Decision(False, "movement is only possible through the motion system")
         if tool.risk == "sensitive":
@@ -170,7 +176,15 @@ class ToolExecutor:
         self.new_turn()
 
     def new_turn(self, heard="", language="en"):
-        """A new question: `heard` is what the user said (for `asked_with` tools)."""
+        """A new question: `heard` is what the user said (for `asked_with` tools).
+
+        If the last turn refused an `asked_with` tool because the user had not asked, and the
+        user now answers "yes" (the pack's `memory_words.yes`), that kind is granted for this
+        turn only. A yes at any other time grants nothing.
+        """
+        refused = getattr(self, "_refused", set())
+        self._granted = refused if said(heard, language, "yes") else set()
+        self._refused = set()
         self._heard, self._language = heard, language
         self._by_id = {}
         self._by_call = {}
@@ -195,7 +209,11 @@ class ToolExecutor:
         key = (tool.name, json.dumps(arguments, sort_keys=True))
         if key in self._by_call:
             return [], self._by_call[key]
-        decision = self.policy.decide(tool, arguments, self._heard, self._language)
+        decision = self.policy.decide(tool, arguments, self._heard, self._language,
+                                      self._granted)
+        if decision.reason == NOT_ASKED:
+            kinds = (tool.asked_with,) if isinstance(tool.asked_with, str) else tool.asked_with
+            self._refused.update(kinds)
         if not decision.allowed:
             return [], ToolResult(False, "not allowed: " + decision.reason)
         if self._ran >= MAX_CALLS_PER_TURN:

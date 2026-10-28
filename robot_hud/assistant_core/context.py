@@ -45,9 +45,13 @@ MEMORY_ABILITY = (
     "remember short facts when the user asks you to, and recall or forget them"
 )
 MEMORY_RULES = (
-    "Memory: call remember_fact only when the user explicitly asks you to remember something "
-    "(for example 'remember that I like jazz'); write one short fact in the user's language, "
-    "said to the user, like 'You like jazz.' To correct a saved fact, pass its id as replaces. "
+    "Memory: call remember_fact when the user asks you to remember something (for example "
+    "'remember that I like jazz') or tells you a lasting personal detail worth keeping, such "
+    "as a family member's birthday or a favourite food; not for passing remarks. Write one "
+    "short fact in the user's language, said to the user, like 'You like jazz.' or 'Your "
+    "wife's birthday is 4 November.' If saving is refused because the user did not ask, do "
+    "not say you cannot save; ask briefly whether you should remember it, and if they say "
+    "yes, call it again. To correct a saved fact, pass its id as replaces. "
     "Never save passwords, codes, numbers, health, money or other private details; say you "
     "cannot keep those. When asked what you remember, call recall_memories. When asked to "
     "forget something, call forget_memory with its id (recall first if needed); if it is "

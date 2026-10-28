@@ -84,6 +84,22 @@ class MemoryPermissionTests(unittest.TestCase):
         self.assertEqual(len(self.store.facts()), 1)
         self.assertEqual(effects, [], "already remembered: nothing new")
 
+    def test_yes_right_after_a_refused_save(self):
+        save = call("remember_fact", fact="Your wife's birthday is 4 November.", replaces=0)
+        self.assertFalse(self.run_call("my wife's birthday is 4th of November", "en", save)[1].ok)
+        self.assertTrue(self.run_call("yes please", "en", call("remember_fact", "c2",
+                                      fact="Your wife's birthday is 4 November.", replaces=0))[1].ok)
+        self.assertEqual(len(self.store.facts()), 1)
+        other = call("remember_fact", "c3", fact="You like tea.", replaces=0)
+        self.assertFalse(self.run_call("yes", "en", other)[1].ok, "a yes grants only once")
+        self.assertFalse(self.run_call("I like tea", "sv", other)[1].ok)
+        self.assertFalse(self.run_call("no", "sv", other)[1].ok)
+        self.assertFalse(self.run_call("I like tea", "sv", other)[1].ok)
+        self.assertTrue(self.run_call("ja", "sv", other)[1].ok)
+        self.store.remember("You like coffee.")
+        self.assertFalse(self.run_call("ok", "en", call("forget_memory", "c4", id=3))[1].ok,
+                         "a yes after a refused save does not allow forgetting")
+
     def test_forgetting_needs_the_users_own_words_and_recall_is_free(self):
         self.store.remember("You like jazz.")
         effects, result = self.run_call("what do you know about me", "en", call("recall_memories"))

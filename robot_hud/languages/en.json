@@ -137,6 +137,7 @@
     "remember": ["call me", "remember", "note that", "make a note", "save that", "keep in mind"],
     "forget": ["forget", "delete", "remove", "erase"],
     "about": ["my name is", "my name s", "i am called", "i live in", "i m living in", "i am living in", "my birthday is", "my birthday s", "my birth day is", "i was born on", "i was born in"],
+    "yes": ["yes", "yeah", "yep", "sure", "ok", "okay", "please do", "do it", "go ahead", "of course", "absolutely"],
     "private": ["password", "passcode", "pin", "pin code", "credit card", "card number", "bank account", "social security", "passport", "api key"],
     "ignore": ["that", "this", "what", "with", "have", "your", "about", "remember", "forget", "please", "luna", "would", "could", "there", "when", "where", "which", "does", "from", "they", "them", "know", "tell", "some", "want", "just", "really", "also", "been", "will", "should", "think", "much", "more", "very", "make"]
   },

@@ -43,7 +43,7 @@ class LanguagePackTests(unittest.TestCase):
                 self.assertEqual(set(raw.get("replies", {})), set(commands.ACTIONS),
                                  "a reply for every action")
                 self.assertEqual(set(pack.controls), set(commands.CONTROLS), "controls")
-                for kind in ("remember", "forget", "private", "ignore", "about"):
+                for kind in ("remember", "forget", "private", "ignore", "about", "yes"):
                     self.assertTrue(pack.memory_words.get(kind), "memory_words: " + kind)
                 for name, phrases in pack.controls.items():
                     self.assertTrue(phrases, name)

@@ -152,6 +152,10 @@ home, driving) without growing `app.py`, and is tested without pygame
     unless the user's **own words** this turn contain a pack `memory_words.remember` /
     `forget` phrase (checked in code, whole words). Recall is always allowed. "Forget
     everything" exists only in Settings (two taps), never by voice.
+  - Consent by "yes": the AI may also try to save a lasting detail the user only *told* her
+    ("my wife's birthday is 4 November"). That is refused (`NOT_ASKED`), and she asks "Shall I
+    remember that?". If the user's next utterance contains a pack `memory_words.yes` phrase,
+    `ToolExecutor.new_turn` grants the refused kind for that one turn only.
   - Each question: `MemoryStore.relevant` picks up to `RELEVANT` (5) facts sharing a word stem
     with it (minus the pack's `memory_words.ignore` words) and `context.instructions` lists them
     as notes, "never permission"; with more facts saved the AI may call `recall_memories`.
