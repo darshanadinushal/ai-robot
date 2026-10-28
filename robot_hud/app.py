@@ -680,6 +680,7 @@ class RobotHUD:
         self.running=True
         self.mood='neutral'
         self.mood_until=0.0
+        self.look_held=False  # a requested look stays while Luna answers
         self.wave_state='listening'
         self.wave_until=0.0
         self.wave_amp=.35
@@ -820,6 +821,7 @@ class RobotHUD:
             elif kind=='look':
                 self.target_x,self.target_y=value
                 self.touch_time=t
+                self.look_held=True
                 self.prefs['mode']='FACE'
             elif kind=='blink':
                 self.blink_start=t
@@ -984,11 +986,14 @@ class RobotHUD:
         status_bar(self.canvas,self.fonts,accent)
         talking=speech.is_talking()
         if self.page=='Home':
-            if self.conversation.thinking:
+            if self.look_held and (self.conversation.thinking or self.conversation.streaming or talking):
+                self.touch_time=t  # e.g. "look left" by a tool: keep it until Luna has answered
+            if self.conversation.thinking and not self.look_held:
                 # Look up and to the side while waiting for the AI.
                 self.target_x=.55+.12*math.sin(t*1.3)
                 self.target_y=-.8
             elif t-self.touch_time > 2.7:
+                self.look_held=False
                 self.target_x=.36*math.sin(t*.42) if self.prefs['animations'] else 0
                 self.target_y=.2*math.sin(t*.29) if self.prefs['animations'] else 0
             self.gaze_x+=(self.target_x-self.gaze_x)*.13

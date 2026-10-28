@@ -323,6 +323,25 @@ class StreamingAppTests(unittest.TestCase):
         self.addCleanup(app.pygame.quit)
         self.ai = self.hud.ai = FakeAI()
 
+    def test_tool_look_is_kept_while_luna_answers(self):
+        from robot_hud.assistant_core.tools import ToolCall
+        self.ai.tool_results = lambda request, outputs: None
+        self.hud.ask_ai("look left", 1.0)
+        self.ai.send("tools", [ToolCall("c1", "set_gaze_direction", '{"direction": "left"}')])
+        for step in range(60):  # 6 s of thinking: the look is not replaced by the thinking gaze
+            self.hud.frame(1.0 + step * 0.1)
+        self.assertLess(self.hud.target_x, 0)
+        self.ai.send("text", "Done.")
+        self.ai.send("sentence", "Done.")
+        self.ai.send("done")
+        self.speech.talking = True
+        self.hud.frame(7.5)
+        self.assertLess(self.hud.target_x, 0, "still looking left while she says it")
+        self.speech.talking = False
+        for step in range(40):
+            self.hud.frame(8.0 + step * 0.1)
+        self.assertFalse(self.hud.look_held, "then the eyes wander again")
+
     def test_decision_c_text_shows_progressively_and_sentences_are_spoken(self):
         self.hud.ask_ai("tell me about mars", 1.0)
         self.assertTrue(self.hud.conversation.thinking)
