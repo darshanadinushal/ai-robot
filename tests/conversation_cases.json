@@ -18,7 +18,7 @@
     {"id": "en-background-command-word", "language": "en", "say": "I was so happy when the bus came on time today.", "route": "ignore"},
     {"id": "en-ambiguous-dark", "language": "en", "say": "Luna, it's getting dark in here.", "route": "ai", "later": "5.0C/5.3: hint, never an action without permission"},
     {"id": "en-smart-home", "language": "en", "say": "Luna, turn on the living room lights.", "route": "ai", "later": "5.3: home control"},
-    {"id": "en-natural-face", "language": "en", "say": "Luna, you look tired, cheer up.", "route": "ai", "later": "5.0C: face tool"},
+    {"id": "en-natural-face", "language": "en", "say": "Luna, you look tired, cheer up.", "route": "ai", "tool": "set_face_mood (5.0C, via the AI)"},
     {"id": "en-move", "language": "en", "say": "Luna, can you move closer?", "route": "ai", "later": "6.x: motion, until then she says she cannot move"},
     {"id": "en-never-mind", "language": "en", "say": "Never mind.", "conversation": true, "route": "control", "ending": "command"},
     {"id": "en-background-never-mind", "language": "en", "say": "Never mind.", "route": "ignore"},

@@ -133,7 +133,7 @@ class StreamBrain:
         self.previous_id, self.completed_id = None, None
         self.languages, self.closed = [], 0
 
-    def stream(self, question, language="en", instructions=None, result=None):
+    def stream(self, question, language="en", instructions=None, result=None, **options):
         self.languages.append(language)
         self.instructions = instructions
         self.completed_id = None
@@ -278,7 +278,7 @@ class FakeAI:
         self.answers = queue.Queue()
         self.asked, self.cancelled, self.confirmed = [], [], []
 
-    def ask(self, question, language="en", instructions=None):
+    def ask(self, question, language="en", instructions=None, tools=None):
         self.asked.append((question, language))
         return len(self.asked)
 

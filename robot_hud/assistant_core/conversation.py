@@ -12,6 +12,7 @@ from ..commands import route, spoken
 from .context import ConversationSettings, instructions
 from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS, Session, Turn
+from .tools import ToolExecutor, face_registry
 
 HEARD_SECONDS = 8.0    # how long the screen shows what Luna heard
 ANSWER_SECONDS = 20.0  # how long it shows her answer after the last piece arrived
@@ -25,12 +26,17 @@ class Conversation:
     A session ends after `settings.idle_seconds` of real quiet, after `settings.max_turns`
     answers, or when the user asks for a new conversation; the AI history starts fresh then.
     `clock` gives the local wall-clock time for the instructions.
+    Tools: the AI proposes calls, `tools` (a ToolExecutor) validates, permits and runs them
+    here on the UI thread; their results go back to the AI on the next poll, after the app
+    has applied the effects.
     """
 
-    def __init__(self, ai=None, settings=None, clock=datetime.now):
+    def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None):
         self.ai = ai
         self.settings = settings or ConversationSettings()
         self.clock = clock
+        self.tools = tools or ToolExecutor(face_registry())
+        self._tool_outputs = None  # (request, [(call_id, output)]) to send on the next poll
         self.session = Session()
         self.turn = None               # the question being answered or spoken
         self.streaming = False         # its answer is still arriving
@@ -91,10 +97,15 @@ class Conversation:
         effects = []
         if not self.streaming and self.session.turns >= self.settings.max_turns:
             effects = self._fresh("after %d answers" % self.session.turns)
-        request = self.ai.ask(question, language,
-                              instructions(language, self.clock(), self.settings.profile))
+        use_tools = self.settings.tools
+        request = self.ai.ask(
+            question, language,
+            instructions(language, self.clock(), self.settings.profile, use_tools),
+            tools=self.tools.registry.schemas() if use_tools else None)
         if not request:
             return []  # still answering the previous question
+        self.tools.new_turn()
+        self._tool_outputs = None
         self.session.touch(t)
         self.turn = Turn(self.session.id, request, question, language, t)
         self._confirmed = self._audible = self._asked_back = False
@@ -114,6 +125,11 @@ class Conversation:
         `listening`: the user is in the middle of an utterance.
         """
         effects = []
+        if self._tool_outputs is not None:  # applied by the app since the last poll
+            request, outputs = self._tool_outputs
+            self._tool_outputs = None
+            if self._current(request):
+                self.ai.tool_results(request, outputs)
         if self.ai is not None:
             while True:
                 try:
@@ -149,6 +165,7 @@ class Conversation:
             if self.ai is not None and self.turn is not None:
                 self.ai.cancel(self.turn.request)
             self.turn = None
+            self._tool_outputs = None
             self.streaming = False
             self.thinking = False
         return [StopSpeech()]
@@ -159,6 +176,17 @@ class Conversation:
         self.session.renew()
         if self.ai is not None:
             self.ai.forget()
+        return effects
+
+    def _run_tools(self, calls):
+        effects, outputs = [], []
+        for call in calls:
+            done, result = self.tools.execute(call)
+            effects += done
+            outputs.append((call.call_id, result.output()))
+            effects.append(Log("Luna tool: %s -> %s" % (call.name, "ok" if result.ok
+                                                       else result.message)))
+        self._tool_outputs = (self.turn.request, outputs)
         return effects
 
     def _idle(self, t, speaking, listening):
@@ -192,6 +220,10 @@ class Conversation:
             self.answer += value  # each piece arrives once, in order
         elif kind == "sentence":
             return [Speak(value)]
+        elif kind == "tools":
+            self.thinking = True  # the spoken answer comes after the tools
+            self.answer = ""      # text beside a tool call is not shown or spoken
+            return self._run_tools(value)
         elif kind == "say":
             text = spoken(value, language)
             self.answer = self.answer or text

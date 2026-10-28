@@ -807,8 +807,8 @@ class RobotHUD:
         self.conversation.heard_until=t+6
         self.apply_actions(parse_command(text,self.heard_language),t)
 
-    def apply_actions(self,actions,t):
-        reply=reply_for(actions,self.talk_language)
+    def apply_actions(self,actions,t,quiet=False):
+        reply=None if quiet else reply_for(actions,self.talk_language)
         if reply:
             speech.speak_async(reply)
         for kind,value in actions:
@@ -908,7 +908,7 @@ class RobotHUD:
             if isinstance(effect,Speak):
                 speech.speak_async(effect.text)
             elif isinstance(effect,Act):
-                self.apply_actions(list(effect.actions),t)
+                self.apply_actions(list(effect.actions),t,effect.quiet)
             elif isinstance(effect,StopSpeech):
                 speech.stop()
             elif isinstance(effect,Accepted):

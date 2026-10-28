@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .assistant_core.context import BASE_INSTRUCTIONS, instructions
+from .assistant_core.tools import ToolCall
 from .speech import SentenceStream
 
 DEFAULT_MODEL = "gpt-6-luna"
@@ -18,6 +19,8 @@ INSTRUCTIONS = BASE_INSTRUCTIONS  # built by assistant_core.context
 LOST_CONNECTION = "Sorry, I lost my connection."
 ENV_FILE = Path.home() / ".luna.env"
 _ALLOWED_PREFIXES = ("OPENAI_", "LUNA_")
+MAX_TOOL_ROUNDS = 3      # rounds of tool calls per question; the last answer must be text
+TOOL_WAIT_SECONDS = 10.0  # how long the worker waits for the app to run the tools
 # Values of the Responses API "reasoning.effort"; not every model accepts every value.
 REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
 
@@ -94,14 +97,19 @@ class LunaBrain:
         self.previous_id = None
         self.completed_id = None
 
-    def _args(self, question, language, instructions_text=None):
+    def _args(self, question, language, instructions_text=None, tools=None, tool_choice=None,
+              previous=None):
         # Luna answers in the language she listens and speaks in (the voice language).
         args = {"model": self.model, "input": question,
                 "instructions": instructions_text or instructions(language, datetime.now())}
-        if self.previous_id:
-            args["previous_response_id"] = self.previous_id
+        previous = previous or self.previous_id
+        if previous:
+            args["previous_response_id"] = previous
         if getattr(self, "reasoning", None):
             args["reasoning"] = {"effort": self.reasoning}
+        if tools:
+            args["tools"] = tools
+            args["tool_choice"] = tool_choice or "auto"
         return args
 
     def ask(self, question, language="en", instructions_text=None):
@@ -110,25 +118,38 @@ class LunaBrain:
         self.previous_id = response.id
         return response.output_text.strip()
 
-    def stream(self, question, language="en", instructions_text=None, result=None):
+    def stream(self, question, language="en", instructions_text=None, result=None, tools=None,
+               tool_choice=None, previous=None):
         """Yield the answer text in pieces as it is generated.
 
         Afterwards `completed_id` (and `result["id"]` if a dict is given: safe when two streams
         overlap) is the answer's id, or StreamError is raised if the answer did not complete.
+        With `tools`, function calls are collected in `result["calls"]` (ToolCall) and
+        `result["calling"]` is set as soon as one starts. `question` may be a list of input items
+        (tool outputs), continuing from response `previous`.
         Closing the generator early closes the connection.
         """
         self.completed_id = None
-        events = self.client.responses.create(**self._args(question, language, instructions_text),
-                                              stream=True)
+        result = {} if result is None else result
+        events = self.client.responses.create(
+            **self._args(question, language, instructions_text, tools, tool_choice, previous),
+            stream=True)
         try:
             for event in events:
                 kind = getattr(event, "type", "")
+                item = getattr(event, "item", None)
+                is_call = getattr(item, "type", "") == "function_call"
                 if kind == "response.output_text.delta":
                     yield event.delta
+                elif kind == "response.output_item.added" and is_call:
+                    result["calling"] = True
+                elif kind == "response.output_item.done" and is_call:
+                    result["calling"] = True
+                    result.setdefault("calls", []).append(
+                        ToolCall(item.call_id, item.name, item.arguments or "{}"))
                 elif kind == "response.completed":
                     self.completed_id = event.response.id
-                    if result is not None:
-                        result["id"] = event.response.id
+                    result["id"] = event.response.id
                 elif kind in ("response.failed", "response.incomplete", "error"):
                     raise StreamError(kind)
         finally:
@@ -156,10 +177,12 @@ class AIWorker:
       ("text", id, piece)        more answer text to show (in order, never repeated)
       ("sentence", id, text)     a complete sentence to speak now
       ("say", id, sentence)      one of Luna's fixed English sentences (translate, then speak)
+      ("tools", id, [ToolCall])  run these (validated by the app), then call tool_results()
       ("done", id, None)         the answer completed; call confirm(id) once it was spoken
       ("lost", id, None)         the stream failed after sentences were sent: apologise
       ("error", id, sentence)    it failed before anything was said: a fixed error sentence
     `cancel(id)` stops a request: no more messages for it, and it is not added to the history.
+    Text in a response that calls tools is not spoken: the answer after the tool results is.
     """
 
     def __init__(self, brain_factory=LunaBrain):
@@ -172,21 +195,31 @@ class AIWorker:
         self._active = None  # the request being answered
         self._cancelled = set()
         self._pending = None  # (request id, response id) waiting for confirm()
+        self._tool_waits = {}  # request id -> (threading.Event, outputs list)
 
     @property
     def busy(self):
         with self._lock:
             return self._active is not None
 
-    def ask(self, question, language="en", instructions_text=None):
+    def ask(self, question, language="en", instructions_text=None, tools=None):
         with self._lock:
             if self._active is not None:
                 return False
             self._next_id += 1
             request = self._active = self._next_id
-        threading.Thread(target=self._run, args=(request, question, language, instructions_text),
+        threading.Thread(target=self._run,
+                         args=(request, question, language, instructions_text, tools),
                          daemon=True).start()
         return request
+
+    def tool_results(self, request, outputs):
+        """The app ran the tools of a "tools" message: [(call_id, output text)]."""
+        with self._lock:
+            waiting = self._tool_waits.get(request)
+            if waiting:
+                waiting[1].extend(outputs)
+                waiting[0].set()
 
     def cancel(self, request):
         """Stop a request now (the user interrupted Luna). Silent: no error is reported."""
@@ -196,6 +229,9 @@ class AIWorker:
                 self._pending = None
             if self._active == request:
                 self._active = None
+            waiting = self._tool_waits.get(request)
+            if waiting:
+                waiting[0].set()
 
     def confirm(self, request):
         """The answer was spoken completely: keep it in the conversation history."""
@@ -226,12 +262,12 @@ class AIWorker:
                 self._brain = self._factory()
             return self._brain
 
-    def _run(self, request, question, language, instructions_text):
+    def _run(self, request, question, language, instructions_text, tools):
         spoke = []  # one entry per sentence sent, so errors know if Luna already talked
         brain = None
         try:
             brain = self._get_brain()
-            self._handle(brain, request, question, language, instructions_text, spoke)
+            self._handle(brain, request, question, language, instructions_text, tools, spoke)
         except Exception as error:  # network, key, model or package problems
             if not self._stopped(request):
                 name = type(error).__name__
@@ -239,6 +275,9 @@ class AIWorker:
                 if name == "BadRequestError" and getattr(brain, "reasoning", None):
                     print("Luna AI: the model may not support LUNA_AI_REASONING=%s"
                           % brain.reasoning, flush=True)
+                if name == "BadRequestError" and tools:
+                    print("Luna AI: the model may not support tools; LUNA_AI_TOOLS=off turns "
+                          "them off", flush=True)
                 if spoke:
                     self._send(request, "lost")
                 else:
@@ -248,24 +287,69 @@ class AIWorker:
                 if self._active == request:
                     self._active = None
 
-    def _handle(self, brain, request, question, language, instructions_text, spoke):
+    def _handle(self, brain, request, question, language, instructions_text, tools, spoke):
         started = time.monotonic()
-        result = {}
-        if hasattr(brain, "stream"):
-            pieces = brain.stream(question, language, instructions_text, result)
-        else:  # a brain that only answers in one piece (already remembered by ask())
-            pieces = [brain.ask(question, language, instructions_text)]
-        sentences = SentenceStream()
+        if not hasattr(brain, "stream"):  # a brain that answers in one piece (no tools)
+            self._finish(request, [brain.ask(question, language, instructions_text)], {},
+                         SentenceStream(), spoke, started)
+            return
+        given, previous = question, None
+        for round_ in range(MAX_TOOL_ROUNDS + 1):
+            result = {}
+            options = {}
+            if tools:
+                options = {"tools": tools,
+                           "tool_choice": "none" if round_ == MAX_TOOL_ROUNDS else "auto"}
+            if previous:
+                options["previous"] = previous
+            sentences = SentenceStream()
+            pieces = brain.stream(given, language, instructions_text, result, **options)
+            if not self._read(request, pieces, result, sentences, spoke, started):
+                return
+            if not result.get("calls"):
+                self._finish(request, (), result, sentences, spoke, started)
+                return
+            outputs = self._wait_for_tools(request, result["calls"])
+            if outputs is None:
+                return  # cancelled
+            given = [{"type": "function_call_output", "call_id": call_id, "output": output}
+                     for call_id, output in outputs]
+            previous = result.get("id")
+
+    def _read(self, request, pieces, result, sentences, spoke, started):
+        """Stream one response; False if the request was cancelled meanwhile."""
         try:
             for piece in pieces:
                 if self._stopped(request):
-                    return
+                    return False
+                if result.get("calling"):
+                    continue  # text next to a tool call is not spoken
                 if piece and self._send(request, "text", piece):
                     self._speak(request, sentences.feed(piece), spoke, started)
         finally:
             close = getattr(pieces, "close", None)
             if close:
                 close()  # stops the download when Luna was interrupted
+        return not self._stopped(request)
+
+    def _wait_for_tools(self, request, calls):
+        event, outputs = threading.Event(), []
+        with self._lock:
+            self._tool_waits[request] = (event, outputs)
+        try:
+            if not self._send(request, "tools", list(calls)):
+                return None
+            if not event.wait(TOOL_WAIT_SECONDS):
+                raise TimeoutError("tools")
+            return None if self._stopped(request) else outputs
+        finally:
+            with self._lock:
+                self._tool_waits.pop(request, None)
+
+    def _finish(self, request, pieces, result, sentences, spoke, started):
+        for piece in pieces:
+            if piece and self._send(request, "text", piece):
+                self._speak(request, sentences.feed(piece), spoke, started)
         if self._stopped(request):
             return
         self._speak(request, sentences.flush(), spoke, started)

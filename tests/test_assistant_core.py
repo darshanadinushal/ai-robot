@@ -23,12 +23,13 @@ class FakeAI:
         self.asked, self.cancelled, self.confirmed, self.forgot = [], [], [], 0
         self.busy = False
         self.next_id = 0
+        self.results = []
 
-    def ask(self, question, language="en", instructions=None):
+    def ask(self, question, language="en", instructions=None, tools=None):
         if self.busy:
             return False
         self.asked.append((question, language))
-        self.instructions = instructions
+        self.instructions, self.tools = instructions, tools
         self.next_id += 1
         return self.next_id
 
@@ -40,6 +41,9 @@ class FakeAI:
 
     def forget(self):
         self.forgot += 1
+
+    def tool_results(self, request, outputs):
+        self.results.append((request, outputs))
 
     def send(self, kind, value=None, request=None):
         self.answers.put((kind, request or self.next_id, value))

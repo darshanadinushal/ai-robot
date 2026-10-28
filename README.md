@@ -165,6 +165,7 @@ Then talk:
 | A follow-up within ~8 s, e.g. "How far is it?" | Answers without needing "Luna" again (15 s if she asked you something) |
 | "Never mind" / "No thanks" (or "Luna, cancel") | Stops waiting for a follow-up |
 | "Luna, start a new conversation" | Forgets the conversation so far |
+| "Luna, you look tired, cheer up" / "make your eyes purple" | The AI changes her face (expression, colour, mode, gaze, blink), then confirms |
 | "look left", "happy", … | Still handled offline as commands |
 | Tap the screen or press `S` | Stops her talking |
 
@@ -180,7 +181,8 @@ Then talk:
 - Optional lines in `~/.luna.env`: `LUNA_USER_NAME=Sam` (what Luna calls you),
   `LUNA_LOCATION=Living room`, `LUNA_AI_REASONING=low` (only if your model supports it; compare
   with `python scripts/test_ai.py --bench`), `LUNA_IDLE_RESET_SECONDS=300` (a new conversation
-  after this much quiet), `LUNA_MAX_TURNS=20`.
+  after this much quiet), `LUNA_MAX_TURNS=20`, `LUNA_AI_TOOLS=off` (if your model has no
+  function calling; Luna then only changes her face through the offline commands).
 - Luna knows today's date and time, and says so when something (camera, motors, smart home,
   music) is not connected yet instead of pretending.
 - Try typed chat without the face: `python scripts/test_ai.py`.

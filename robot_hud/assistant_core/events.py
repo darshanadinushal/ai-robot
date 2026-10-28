@@ -10,8 +10,10 @@ class Speak:
 
 @dataclass(frozen=True)
 class Act:
-    """Apply offline robot actions: a list of (kind, value) from commands.route."""
+    """Apply robot actions: (kind, value) pairs from commands.route or a tool.
+    `quiet`: no spoken confirmation (a tool's result is reported by the AI's answer)."""
     actions: tuple
+    quiet: bool = False
 
 
 @dataclass(frozen=True)

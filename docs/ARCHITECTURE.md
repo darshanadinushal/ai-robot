@@ -20,6 +20,7 @@ robot_hud/
     session.py              Session (id, follow-up window) and Turn (one question)
     context.py              Instructions (personality, abilities, date/time, profile) + settings
     events.py               Effects the core returns: Speak, Act, StopSpeech, Accepted, Mood, Log
+    tools.py                AI tools: ToolRegistry, PermissionPolicy, ToolExecutor, face tools
   commands.py               Pure: spoken words -> actions; actions -> spoken reply (from the packs)
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
   voice.py                  Mic capture + Vosk recognition in a background thread
@@ -44,6 +45,7 @@ scripts/
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_assistant_core.py    Phase 5.0A: Conversation without pygame, stale/stalled answers, sessions
+  test_tools.py             Phase 5.0C: tool validation, permissions, no duplicates, tool rounds
   test_conversation_cases.py  Baseline: 34 English/Swedish sentences (conversation_cases.json)
   test_streaming.py         Phase 4: sentence splitter, AI stream, cancel, history, errors, live answer text
   test_listening.py         Phase 4.2: joining pauses, endpoints, limits, mic buffer, cloud interface
@@ -112,6 +114,28 @@ home, driving) without growing `app.py`, and is tested without pygame
   follow-up and says "Okay."; `new_conversation` ("start a new conversation", "nytt samtal")
   forgets the history and listens for a new question. `route` returns `("control", name)`.
   The microphone is off while Luna speaks, so they do not interrupt her; tap the screen for that.
+- **Tools (phase 5.0C, `tools.py`):** natural requests ("you look tired, cheer up", "make your
+  eyes purple") reach the AI, which may *propose* function calls (Responses API, `strict`
+  schemas). Exact offline commands keep their fast path. Flow:
+  1. `AIWorker` streams a response with `tools`; a `function_call` item marks the round as a
+     tool round (text beside it is not spoken or shown) and the calls are sent as
+     `("tools", id, [ToolCall])`.
+  2. `Conversation` (UI thread) checks the turn is current, then `ToolExecutor.execute`:
+     parse JSON, validate against the schema (known enum values only, no extra keys),
+     `PermissionPolicy.decide`, run once. Effects are `Act(..., quiet=True)` (no offline reply).
+  3. On the **next** poll, after `run_effects` applied them, the `ToolResult`s go back with
+     `AIWorker.tool_results`; the worker continues with `function_call_output` items and
+     `previous_response_id` = the tool round. At most `MAX_TOOL_ROUNDS` (3); the last round has
+     `tool_choice: "none"`, so it must answer in words. The final response id enters the history.
+  - Safety: the same call id, or the same tool + arguments, runs once per question; at most
+    `MAX_CALLS_PER_TURN` (6) actions; cancelled or old turns never run tools; the worker waits
+    at most 10 s for results; tool calls are logged as `Luna tool: name -> ok/reason`.
+  - Risk classes: `local` (own face, allowed), `info`, `device` (planned, off), `motion` and
+    `sensitive` (always refused here; driving will need a MotionManager, ESP32 watchdog and a
+    hardware emergency stop). New skills register a `Tool` with a risk; the AI never decides
+    permission.
+  - `LUNA_AI_TOOLS=off` sends no tools (for a model without function calling; a
+    `BadRequestError` logs that hint). Instructions then describe only the offline commands.
 - **Diagnostics:** `Luna: first spoken reply X s after the question` is logged once per answer
   (time from the routed utterance to the first audible sentence).
 - `RobotHUD` (the adapter) keeps the microphone (`listen`), the face (`apply_actions`), touch and
@@ -401,8 +425,8 @@ to change a case); `scripts/measure_listening.py --cases` speaks them through th
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
 3. Real camera, motors, smart-home control (UI placeholders exist).
-4. Phase 5.0C–D on the assistant core: face tools with a permission policy, expressive
-   answers. Then online listening, memory, smart home and driving, each as its own phase.
+4. Phase 5.0D: expressive answers. Then online listening, memory, smart home and driving,
+   each as its own phase, reusing the tool registry and permission policy.
 
 ## 11. Known gaps
 - Wi-Fi, audio and battery icons are decorative, not live readings.
