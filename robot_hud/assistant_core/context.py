@@ -178,7 +178,8 @@ def about_text(about, birthday_today=False):
 
 
 def instructions(language="en", now=None, profile=None, tools=False, expressions=False,
-                 memories=None, about=None, birthday_today=False, web=False):
+                 memories=None, about=None, birthday_today=False, web=False,
+                 extension_abilities=(), connected=()):
     """Instructions for one question; Luna answers in the voice language.
 
     `memories`: a memory.Recall when memory is on (None: off). `about`: the saved "About you"
@@ -190,7 +191,11 @@ def instructions(language="en", now=None, profile=None, tools=False, expressions
         abilities.append(MEMORY_ABILITY)
     if web:
         abilities.append(WEB_ABILITY)
-    missing = [item for item in NOT_CONNECTED if not (web and item == "internet search")]
+    if tools:
+        abilities.extend(extension_abilities)
+    connected = set(connected) if tools else set()
+    missing = [item for item in NOT_CONNECTED
+               if item not in connected and not (web and item == "internet search")]
     parts = [PERSONALITY, CONVERSATION, HONESTY,
              "You can: %s." % "; ".join(abilities),
              "Not connected yet: %s. If the user asks for one of these, say briefly that it is "
