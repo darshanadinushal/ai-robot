@@ -15,7 +15,8 @@ class InterruptionTests(unittest.TestCase):
                                      ("luna sluta", "sv", "stop"), ("var tyst", "sv", "stop"),
                                      ("hey luna", "en", "wake"), ("luna what time is it", "en", "wake"),
                                      ("hej luna", "sv", "wake"), ("what a nice day", "en", None),
-                                     ("luna quiet", "en", "wake"), ("", "en", None)):
+                                     ("luna quiet", "en", "wake"), ("", "en", None),
+                                     ("hey lena", "en", "wake"), ("loona stop", "en", "stop")):
             with self.subTest(text):
                 self.assertEqual(interruption(text, language, "The moon is far away."), kind)
 

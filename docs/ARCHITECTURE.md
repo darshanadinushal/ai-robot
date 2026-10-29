@@ -310,6 +310,9 @@ Up/Down keys change it). The section list and what each tap changes live in `set
    - `("wake", "")`: only the wake word ("luna"; misheard variants lunar/loona/looner accepted).
      Each pack lists its `wake_words`: the Swedish model has no "luna", so sv.json lists what it
      hears instead (lugn, lugna, lund, lunch, helene…; found by feeding it Piper's Swedish voices).
+     `commands.find_wake` also accepts sound-alikes of "luna" (`sounds_like_name`: starts with
+     "l", ends on a vowel, at most one sound apart: lena, lona, luma, loner, "lou na"), but only
+     as the first word (after greetings) or the last word, where a name is said.
    - `("ai", question)`: wake word plus more words (leading hey/hi/hello/ok are stripped), or any
      longer phrase during the 8 s follow-up window (`conversation=True`).
    - `("ignore", "")`: background talk without the wake word.

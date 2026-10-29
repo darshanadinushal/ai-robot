@@ -129,6 +129,21 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(route("why is the sky blue", conversation=True), ("ai", "why is the sky blue"))
         self.assertEqual(route("")[0], "ignore")
 
+    def test_names_that_sound_like_luna(self):
+        from robot_hud.commands import route
+        for text, expected in (("hey lena what time is it", ("ai", "what time is it")),
+                               ("lou na why is the sky blue", ("ai", "why is the sky blue")),
+                               ("what time is it loner", ("ai", "what time is it")),
+                               ("hey luma", ("wake", "")),
+                               ("loona look left", ("command", [("look", (-1.0, 0.0))]))):
+            with self.subTest(text):
+                self.assertEqual(route(text), expected)
+        self.assertEqual(route("hej lona vad är klockan", language="sv"), ("ai", "vad är klockan"))
+        for text in ("the lung is an organ", "lunch is ready now", "tuna salad please",
+                     "we met lena today and talked", "hello"):
+            with self.subTest(text):
+                self.assertEqual(route(text)[0], "ignore", "only near the start or end, like a name")
+
     def test_clean_for_speech(self):
         from robot_hud.speech import clean_for_speech
         self.assertEqual(clean_for_speech("**Hi** `there`\n- one"), "Hi there one")

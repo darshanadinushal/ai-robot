@@ -188,7 +188,9 @@ Then talk:
 | "Luna, stop" / "Hey Luna, …" while she talks | Stops her / asks the new question (only with *Interrupt by voice* on) |
 
 - Only the recognised **text** is sent to OpenAI, never microphone audio. You pay only for AI answers.
-- Mishearings such as "he luna", "lunar" or "loona" are accepted as the wake word.
+- Mishearings such as "he luna", "lunar" or "loona" are accepted as the wake word, and so are
+  names that sound like Luna (Lena, Lona, Luma, "Lou na") at the start or end of what you say.
+  So a sentence starting with "Lena ..." also wakes her.
 - **In Swedish** (Swedish voice selected) say "Hej Luna, …"; Luna answers in Swedish. The Swedish
   model has no word "Luna", so the words it hears instead (lugn, lugna, lund, lunch, helene…)
   count as the wake word. If the Swedish model is missing, Luna keeps listening in English and

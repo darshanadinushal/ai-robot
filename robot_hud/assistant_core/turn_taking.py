@@ -6,7 +6,7 @@ without "Luna") and the wake word ("Hey Luna, ..."). Words Luna is saying hersel
 works too. Never use this as a safety stop for motion: that needs its own hardware stop.
 """
 from .. import languages
-from ..commands import _words
+from ..commands import _words, find_wake
 
 
 def interruption(text, language, saying=""):
@@ -18,10 +18,10 @@ def interruption(text, language, saying=""):
     if all(word in echo for word in words):
         return None  # only her own words: the speaker's echo
     pack = languages.get(language)
-    rest = [word for word in words if word not in pack.wake_words]
+    wake = find_wake(words, language)
+    rest = [word for i, word in enumerate(words) if i not in wake]
     if " ".join(rest) in pack.controls.get("stop", ()):
         return "stop"
-    if len(rest) < len(words) and not any(word in echo for word in pack.wake_words
-                                          if word in words):
+    if wake and not any(words[i] in echo for i in wake):
         return "wake"
     return None

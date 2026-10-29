@@ -67,6 +67,65 @@ def _words(text):
     return cleaned.split()
 
 
+ROBOT_NAME = "luna"
+
+
+def _sound(word):
+    """A rough spelling of how a word sounds: "loona", "loner", "lunar", "lou"+"na" -> "luna"."""
+    word = word.lower()
+    if word.endswith("'s"):
+        word = word[:-2]
+    for ending in ("er", "ar", "ah", "uh", "or"):
+        if word.endswith(ending) and len(word) > 3:
+            word = word[:-len(ending)] + "a"
+            break
+    for spelling, sound in (("oo", "u"), ("ou", "u"), ("ew", "u"), ("o", "u")):
+        word = word.replace(spelling, sound)
+    return "".join(c for i, c in enumerate(word) if i == 0 or c != word[i - 1])
+
+
+def _distance(a, b):
+    row = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        previous, row[0] = row[0], i
+        for j, cb in enumerate(b, 1):
+            previous, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, previous + (ca != cb))
+    return row[-1]
+
+
+def sounds_like_name(word):
+    """True for words the recogniser may write instead of "Luna" (lena, loona, luma, lou na...).
+
+    The word must start with "l", end on a vowel and differ by at most one sound, so "lung",
+    "lunch" or "tuna" do not count.
+    """
+    sound = _sound(word)
+    return (3 <= len(sound) <= 6 and sound[0] == "l" and sound[-1] in "aeiouy"
+            and _distance(sound, ROBOT_NAME) <= 1)
+
+
+def find_wake(words, language="en"):
+    """Indexes of the words that are the wake word ("Luna" or how the recogniser heard it).
+
+    The pack's `wake_words` count anywhere. Sound-alikes ("Hey Lena", "Loona, look left",
+    "what time is it, Lou na") count only where a name is said: first (after a greeting) or last.
+    """
+    pack = languages.get(language)
+    found = {i for i, word in enumerate(words) if word in pack.wake_words}
+    if found or not words:
+        return found
+    first = 0
+    while first < len(words) - 1 and words[first] in pack.greetings:
+        first += 1
+    for i in (first, len(words) - 1):
+        if sounds_like_name(words[i]):
+            return {i}
+    for i in (first, len(words) - 2):
+        if 0 <= i < len(words) - 1 and sounds_like_name(words[i] + words[i + 1]):
+            return {i, i + 1}
+    return set()
+
+
 def route(text, conversation=False, language="en"):
     """Decide what to do with recognised speech.
 
@@ -77,9 +136,10 @@ def route(text, conversation=False, language="en"):
     """
     pack = languages.get(language)
     words = _words(text)
-    woke = any(w in pack.wake_words for w in words)
+    wake = find_wake(words, language)
+    woke = bool(wake)
     if woke:
-        words = [w for w in words if w not in pack.wake_words]
+        words = [w for i, w in enumerate(words) if i not in wake]
         while words and words[0] in pack.greetings:
             words = words[1:]
     if not words:
@@ -117,8 +177,9 @@ def utterance_end(text, language="en", conversation=False):
     if kind == "control":
         return "command"
     if kind == "command":
-        known = set(pack.commands) | set(pack.filler_words) | set(pack.wake_words) | set(pack.greetings)
-        if all(w in known for w in words):
+        known = set(pack.commands) | set(pack.filler_words) | set(pack.greetings)
+        wake = find_wake(words, language)
+        if all(w in known for i, w in enumerate(words) if i not in wake):
             return "command"
     return "complete"
 
