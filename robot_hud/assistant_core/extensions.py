@@ -10,6 +10,7 @@ from importlib.metadata import entry_points
 from .tools import FACE_TOOLS, RISKS, Tool
 
 ENTRY_POINT_GROUP = "luna.extensions"
+EXTENSION_API_VERSION = 1
 # Core names are reserved even if memory is switched off at the moment.
 CORE_TOOL_NAMES = frozenset(tool.name for tool in FACE_TOOLS) | {
     "remember_fact", "recall_memories", "forget_memory", "set_about_user",
@@ -29,11 +30,14 @@ class LunaExtension:
     tools: tuple = ()
     abilities: tuple = ()
     connected: tuple = ()
+    api_version: int = EXTENSION_API_VERSION
 
 
 def _valid(extension, name, taken):
     if not isinstance(extension, LunaExtension) or extension.name != name:
         raise ValueError("invalid extension descriptor")
+    if extension.api_version != EXTENSION_API_VERSION:
+        raise ValueError("unsupported extension API version")
     if not isinstance(extension.tools, tuple) or not all(
             isinstance(tool, Tool) and tool.risk in RISKS for tool in extension.tools):
         raise ValueError("invalid tools")
