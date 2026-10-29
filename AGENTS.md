@@ -61,6 +61,19 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   non-English pack (the tests check this).
 - Pure logic needs tests in `tests/test_core.py`; keep pure modules free of pygame imports.
 
+## Optional Luna Core extensions
+
+- Add independent features through `robot_hud/assistant_core/extensions.py` and
+  installed Python entry points in the `luna.extensions` group, not by
+  copying `robot_hud` into separate repositories. See `docs/EXTENSIONS.md`.
+- Load only names explicitly listed in `LUNA_EXTENSIONS`. Extension factories
+  must return `LunaExtension`; advertise abilities and remove entries from
+  `NOT_CONNECTED` only after verifying the underlying service works.
+- All extension actions use the existing `ToolExecutor` and `PermissionPolicy`.
+  Device/info permissions are denied by default; motion and sensitive controls
+  are never authorized through this tool path. Never add permission shortcuts
+  in an extension. New behavior needs `tests/test_extensions.py`.
+
 ## Rules and gotchas
 - **Never commit secrets.** API keys come only from the `OPENAI_API_KEY` environment variable or
   `~/.luna.env` (outside the repo, loaded by `ai.load_env_file`, OPENAI_*/LUNA_* keys only).
