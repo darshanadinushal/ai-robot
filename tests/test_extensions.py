@@ -65,6 +65,11 @@ class ExtensionTests(unittest.TestCase):
                 entry = Entry("bad", lambda: LunaExtension("bad", (quiz_tool(name),)))
                 self.assertEqual(load_extensions("bad", [entry])[0], ())
 
+    def test_unsupported_api_version_is_rejected(self):
+        entry = Entry("future", lambda: LunaExtension("future", api_version=2))
+        self.assertEqual(load_extensions("future", [entry])[1],
+                         (("future", "ValueError"),))
+
     def test_duplicate_entry_point_names_are_rejected(self):
         entries = [Entry("education", lambda: LunaExtension("education")) for _ in range(2)]
         self.assertEqual(load_extensions("education", entries)[1],
