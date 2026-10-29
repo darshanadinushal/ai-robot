@@ -7,7 +7,7 @@ from .i18n import LANGUAGES
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS
 from .voices import VOICES, get_voice, voice_for, voices_for
 
-SECTIONS = ("Display & Theme", "Language", "Voice", "Listening", "Memory", "About")
+SECTIONS = ("Display & Theme", "Voice", "Listening", "Memory", "About")
 
 
 def voice_interrupt_wanted(prefs, echo_cancelling=False):

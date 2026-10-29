@@ -421,12 +421,6 @@ def section_icon(surface, name, x, y, color):
         for dx,dy,col in ((-6,-6,(34,216,255)),(4,-8,(184,113,255)),(8,2,(67,235,179))):
             pygame.draw.circle(surface,col,(x+dx,y+dy),3)
         pygame.draw.circle(surface,color,(x-5,y+6),4)
-    elif name == 'Language':
-        pygame.draw.circle(surface,color,(x,y),15,2)
-        pygame.draw.ellipse(surface,color,(x-7,y-15,14,30),2)
-        line(surface,color,(x-15,y),(x+15,y),2)
-        line(surface,color,(x-12,y-8),(x+12,y-8),1)
-        line(surface,color,(x-12,y+8),(x+12,y+8),1)
     elif name == 'Voice':
         pygame.draw.rect(surface,color,(x-6,y-16,12,21),2,border_radius=6)
         draw_arc(surface,color,x,y-3,12,math.pi,2*math.pi,2)
@@ -668,32 +662,31 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
     y = CONTENT_CLIP.top
 
     if name=='Display & Theme':
-        section_header(surface,fonts,name,y,'How Luna looks on the Home screen')
-        row_label(surface,fonts,'Mode',y+130)
-        for mode,rect in zip(MODES,control_rects(y+107,2,46,220)):
+        section_header(surface,fonts,name,y,'How Luna looks and the screen language')
+        row_label(surface,fonts,'Mode',y+122)
+        for mode,rect in zip(MODES,control_rects(y+99,2,46,220)):
             choice_button(surface,fonts,accent,rect,tr(mode+' MODE'),prefs['mode']==mode,hits,('mode',mode))
-        row_label(surface,fonts,'Theme colour',y+217)
-        for color,rect in zip(COLOR_CHOICES,control_rects(y+184,4,66,160)):
+        row_label(surface,fonts,'Theme colour',y+200)
+        for color,rect in zip(COLOR_CHOICES,control_rects(y+167,4,66,160)):
             choice_button(surface,fonts,accent,rect,tr(color),prefs['color']==color,hits,('color',color),
                           swatch=COLOR_CHOICES[color])
         wave = prefs['mode']=='WAVE'
         current = prefs['wave_layout'] if wave else prefs['layout']
         choices = WAVE_LAYOUTS if wave else tuple(LAYOUT_CHOICES)
-        row_label(surface,fonts,'Wave layout' if wave else 'Face layout',y+304)
-        for layout,rect in zip(choices,control_rects(y+281,3,46,220)):
+        row_label(surface,fonts,'Wave layout' if wave else 'Face layout',y+278)
+        for layout,rect in zip(choices,control_rects(y+255,3,46,220)):
             choice_button(surface,fonts,accent,rect,tr(layout),current==layout,hits,('layout',layout))
-        row_label(surface,fonts,'Animations',y+391)
-        toggle(surface,fonts,accent,prefs['animations'],y+372,hits,('animations',None))
-    elif name=='Language':
-        section_header(surface,fonts,name,y,'The language of the texts on the screen')
-        row_label(surface,fonts,'App language',y+130)
+        row_label(surface,fonts,'App language',y+356)
         codes = i18n.LANGUAGES
-        for (code,label),rect in zip(codes.items(),control_rects(y+107,len(codes),46,220,
+        for (code,label),rect in zip(codes.items(),control_rects(y+333,len(codes),46,220,
                                                                  per_row=CHOICES_PER_ROW)):
             choice_button(surface,fonts,accent,rect,label,prefs['language']==code,hits,
                           ('language',code))
+        y += extra_rows_height(len(codes))
         draw_text(surface,tr('Luna listens, speaks and answers in the Voice language.'),
-                  fonts['mini'],MUTED,topleft=(CONTROL_X,y+170+extra_rows_height(len(codes))))
+                  fonts['mini'],MUTED,topleft=(CONTROL_X,y+385))
+        row_label(surface,fonts,'Animations',y+444)
+        toggle(surface,fonts,accent,prefs['animations'],y+425,hits,('animations',None))
     elif name=='Voice':
         section_header(surface,fonts,name,y,voice.label)
         row_label(surface,fonts,'Voice language',y+130)

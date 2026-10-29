@@ -117,7 +117,7 @@ class SettingsTouchTests(unittest.TestCase):
 
     def test_choose_swedish_male_and_preview(self):
         self.assertEqual(self.speech.loaded, ["EN_FEMALE"])
-        self.tap(("section", 2))
+        self.tap(("section", 1))
         self.tap(("voice_language", "sv"))
         self.tap(("voice", "SV_MALE"))
         self.assertEqual(self.speech.loaded, ["EN_FEMALE", "SV_FEMALE", "SV_MALE"])
@@ -145,9 +145,9 @@ class SettingsTouchTests(unittest.TestCase):
         def actions():
             self.draw()
             return {a[0] for _, a in self.hud.settings_hits} - {"section"}
-        self.assertEqual(actions(), {"mode", "color", "layout", "animations"})
-        expected = {1: {"language"}, 2: {"voice_language", "voice", "preview"},
-                    3: {"online_listening", "voice_interrupt"}, 4: {"memory"}, 5: set()}
+        self.assertEqual(actions(), {"mode", "color", "layout", "language", "animations"})
+        expected = {1: {"voice_language", "voice", "preview"},
+                    2: {"online_listening", "voice_interrupt"}, 3: {"memory"}, 4: set()}
         for index, kinds in expected.items():
             self.tap(("section", index))
             self.assertEqual(actions(), kinds, SECTIONS[index])
@@ -158,7 +158,7 @@ class SettingsTouchTests(unittest.TestCase):
         for text in ("You like jazz.", "Your cat is Misse.", "You live in Lund.", "You love tea.",
                      "You wake at seven."):
             memory.remember(text)
-        self.tap(("section", 4))
+        self.tap(("section", 3))
         self.draw()
         forget = sorted(a[1] for _, a in self.hud.settings_hits if a[0] == "forget_memory")
         self.assertEqual(forget, [2, 3, 4, 5], "newest first, 4 per page")
@@ -183,7 +183,6 @@ class SettingsTouchTests(unittest.TestCase):
         self.assertIs(self.hud.conversation.memory, memory)
 
     def test_switching_app_language_to_swedish(self):
-        self.tap(("section", 1))
         self.tap(("language", "sv"))
         self.assertEqual(i18n.language, "sv")
         self.assertEqual(self.saved[-1]["language"], "sv")

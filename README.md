@@ -26,8 +26,8 @@ with an online AI. Camera video, motors and home control are future work.
   sentence while the rest is still being generated, and the text appears as it arrives
 - **Live transcript:** what you say appears in a "YOU:" bubble; Luna's reply appears at the bottom
 - **Chat**, **Home**, **Camera**, **Settings** touchscreen navigation
-- Settings with a section menu: Display & Theme (mode, colour, layout, animations), Language
-  (screen text in English / Svenska), Voice (voice language, female / male, **Play sample**,
+- Settings with a section menu: Display & Theme (mode, colour, layout,
+  app language English / Svenska, animations), Voice (voice language, female / male, **Play sample**,
   loading status), Listening, Memory,
   About — saved automatically in `~/.ai-robot-hud.json`
 - Fullscreen on the Pi with correct touch scaling; resizable window on Windows
