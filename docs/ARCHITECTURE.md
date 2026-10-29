@@ -254,7 +254,7 @@ home, driving) without growing `app.py`, and is tested without pygame
   `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
-A section menu on the left (Display & Theme, Language, Voice, Animations, Listening, Memory, About) works like
+A section menu on the left (Display & Theme with Animations, Language, Voice, Listening, Memory, About) works like
 tabs: the panel on the right shows **only the selected section** (`self.settings_section`;
 Up/Down keys change it). The section list and what each tap changes live in `settings.py`
 (no pygame, unit-tested).

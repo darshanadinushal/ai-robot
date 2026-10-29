@@ -136,7 +136,6 @@ class SettingsTouchTests(unittest.TestCase):
         self.tap(("color", "PURPLE"))
         self.tap(("mode", "WAVE"))
         self.tap(("layout", "CIRCLE"))
-        self.tap(("section", 3))
         self.tap(("animations", None))
         last = self.saved[-1]
         self.assertEqual((last["color"], last["mode"], last["wave_layout"], last["animations"]),
@@ -146,9 +145,9 @@ class SettingsTouchTests(unittest.TestCase):
         def actions():
             self.draw()
             return {a[0] for _, a in self.hud.settings_hits} - {"section"}
-        self.assertEqual(actions(), {"mode", "color", "layout"})
+        self.assertEqual(actions(), {"mode", "color", "layout", "animations"})
         expected = {1: {"language"}, 2: {"voice_language", "voice", "preview"},
-                    3: {"animations"}, 4: {"online_listening", "voice_interrupt"}, 5: {"memory"}, 6: set()}
+                    3: {"online_listening", "voice_interrupt"}, 4: {"memory"}, 5: set()}
         for index, kinds in expected.items():
             self.tap(("section", index))
             self.assertEqual(actions(), kinds, SECTIONS[index])
@@ -159,7 +158,7 @@ class SettingsTouchTests(unittest.TestCase):
         for text in ("You like jazz.", "Your cat is Misse.", "You live in Lund.", "You love tea.",
                      "You wake at seven."):
             memory.remember(text)
-        self.tap(("section", 5))
+        self.tap(("section", 4))
         self.draw()
         forget = sorted(a[1] for _, a in self.hud.settings_hits if a[0] == "forget_memory")
         self.assertEqual(forget, [2, 3, 4, 5], "newest first, 4 per page")

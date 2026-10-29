@@ -440,11 +440,6 @@ def section_icon(surface, name, x, y, color):
         pygame.draw.rect(surface,color,(x-12,y-15,24,30),2,border_radius=4)
         for dy in (-7,0,7):
             line(surface,color,(x-6,y+dy),(x+6,y+dy),2)
-    elif name == 'Animations':
-        pygame.draw.ellipse(surface,color,(x-16,y-9,32,18),2)
-        pygame.draw.circle(surface,color,(x,y),5)
-        for dx in (-9,0,9):
-            line(surface,color,(x+dx,y-11),(x+dx*1.2,y-16),2)
     else:
         pygame.draw.circle(surface,color,(x,y),15,2)
         pygame.draw.circle(surface,color,(x,y-7),2)
@@ -687,6 +682,8 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
         row_label(surface,fonts,'Wave layout' if wave else 'Face layout',y+304)
         for layout,rect in zip(choices,control_rects(y+281,3,46,220)):
             choice_button(surface,fonts,accent,rect,tr(layout),current==layout,hits,('layout',layout))
+        row_label(surface,fonts,'Animations',y+391)
+        toggle(surface,fonts,accent,prefs['animations'],y+372,hits,('animations',None))
     elif name=='Language':
         section_header(surface,fonts,name,y,'The language of the texts on the screen')
         row_label(surface,fonts,'App language',y+130)
@@ -725,10 +722,6 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
         add_hit(hits,button,('preview',None))
         status_row(surface,fonts,'Status',y+331,voice_status(voice))
         status_row(surface,fonts,'Listening',y+391,listening)
-    elif name=='Animations':
-        section_header(surface,fonts,name,y,'Blinking, looking around and moving effects')
-        row_label(surface,fonts,'Animations',y+130)
-        toggle(surface,fonts,accent,prefs['animations'],y+111,hits,('animations',None))
     elif name=='Listening':
         section_header(surface,fonts,name,y,'Hear long questions more accurately')
         row_label(surface,fonts,'Online listening',y+130)
