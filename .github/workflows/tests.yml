@@ -6,15 +6,39 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+        include:
+          # Like the Raspberry Pi 5: 64-bit ARM Linux with Python 3.11 (Raspberry Pi OS Bookworm).
+          - os: ubuntu-24.04-arm
+            python: "3.11"
+    runs-on: ${{ matrix.os }}
     env:
       SDL_VIDEODRIVER: dummy
       SDL_AUDIODRIVER: dummy
+      LUNA_LOG_FILE: "off"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      # Voice, speech and AI packages are optional at runtime, so tests only need pygame.
+      - run: python -m pip install "pygame>=2.6,<3"
+      - run: python -m unittest discover -s tests -v
+
+  install:
+    # A clean installation: wheel + example plugin in a new venv, `luna`, a headless screenshot.
+    runs-on: ubuntu-latest
+    env:
+      LUNA_SLOW_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Voice packages are optional at runtime, so tests only need pygame.
-      - run: python -m pip install "pygame>=2.6,<3"
-      - run: python -m unittest discover -s tests -v
+      - run: python -m pip install --upgrade pip
+      - run: python -m unittest discover -s tests -p test_install.py -v
