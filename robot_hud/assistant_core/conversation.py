@@ -40,10 +40,16 @@ class Conversation:
     and its tools join the face tools (see set_memory).
     """
 
-    def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None, memory=None):
+    def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None, memory=None,
+                 extensions=()):
         self.ai = ai
         self.settings = settings or ConversationSettings()
         self.clock = clock
+        self.extensions = tuple(extensions)
+        self.extension_abilities = tuple(ability for extension in self.extensions
+                                         for ability in extension.abilities)
+        self.extension_connected = tuple(item for extension in self.extensions
+                                         for item in extension.connected)
         self._own_tools = tools is None
         self.tools = tools or ToolExecutor(ToolRegistry(FACE_TOOLS))
         self.memory = None
@@ -74,7 +80,9 @@ class Conversation:
         self.memory = memory
         if self._own_tools:
             extra = memory_tools(memory) if memory is not None else ()
-            self.tools = ToolExecutor(ToolRegistry(FACE_TOOLS + tuple(extra)))
+            extension_tools = tuple(tool for extension in self.extensions
+                                    for tool in extension.tools)
+            self.tools = ToolExecutor(ToolRegistry(FACE_TOOLS + tuple(extra) + extension_tools))
 
     def in_followup(self, t):
         return self.ai is not None and self.session.in_followup(t)
@@ -151,7 +159,9 @@ class Conversation:
         request = self.ai.ask(
             question, language,
             instructions(language, now, self.settings.profile, use_tools,
-                         self.settings.expressions, memories, about, wish, web),
+                         self.settings.expressions, memories, about, wish, web,
+                         extension_abilities=self.extension_abilities if use_tools else (),
+                         connected=self.extension_connected if use_tools else ()),
             tools=((self.tools.registry.schemas() if use_tools else [])
                    + ([WEB_SEARCH] if web else [])) or None)
         if not request:
