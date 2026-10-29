@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luna-education-example"
+version = "0.1.0"
+description = "Minimal optional education extension for Luna Core"
+requires-python = ">=3.11"
+
+[project.entry-points."luna.extensions"]
+education = "luna_education:extension"
+
+[tool.setuptools]
+py-modules = ["luna_education"]
