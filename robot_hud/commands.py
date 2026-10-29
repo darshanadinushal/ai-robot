@@ -4,7 +4,7 @@ The words, wake words, greetings and replies of each language come from its lang
 (robot_hud/languages/<code>.json). Packs map words to the action IDs in ACTIONS below; new
 languages need no code changes, new actions do.
 """
-from . import languages
+from . import languages, naming
 
 EXPRESSIONS = ("neutral", "happy", "sad", "angry", "sleepy", "surprised")
 
@@ -41,11 +41,18 @@ def command_words(language="en"):
 KEYWORDS = command_words("en")
 
 
+def wake_words(language="en"):
+    """How the recogniser writes the robot's name: the pack's list for "Luna", else the name."""
+    if naming.is_default():
+        return languages.get(language).wake_words
+    return (naming.name.lower(),)
+
+
 def vocabulary(language="en"):
     """Words the command-only recogniser listens for in `language`."""
     pack = languages.get(language)
     stop = {word for phrase in pack.controls.get("stop", ()) for word in phrase.lower().split()}
-    return sorted(set(pack.commands) | set(pack.filler_words) | set(pack.wake_words) | stop)
+    return sorted(set(pack.commands) | set(pack.filler_words) | set(wake_words(language)) | stop)
 
 
 VOCABULARY = vocabulary("en")
@@ -65,9 +72,6 @@ def parse_command(text, language="en"):
 def _words(text):
     cleaned = "".join(c if c.isalnum() or c == "'" else " " for c in str(text).lower())
     return cleaned.split()
-
-
-ROBOT_NAME = "luna"
 
 
 def _sound(word):
@@ -94,14 +98,17 @@ def _distance(a, b):
 
 
 def sounds_like_name(word):
-    """True for words the recogniser may write instead of "Luna" (lena, loona, luma, lou na...).
+    """True for words the recogniser may write instead of the name ("Luna": lena, loona, luma,
+    lou na...).
 
-    The word must start with "l", end on a vowel and differ by at most one sound, so "lung",
-    "lunch" or "tuna" do not count.
+    The word must start with the same sound, end like the name (on a vowel or not) and differ by
+    at most one sound, so "lung", "lunch" or "tuna" do not count. Names shorter than 4 sounds
+    ("Max") only count exactly: too many words are one sound away.
     """
-    sound = _sound(word)
-    return (3 <= len(sound) <= 6 and sound[0] == "l" and sound[-1] in "aeiouy"
-            and _distance(sound, ROBOT_NAME) <= 1)
+    target, sound = _sound(naming.name), _sound(word)
+    return (len(target) >= 4 and abs(len(sound) - len(target)) <= 1 and sound[0] == target[0]
+            and (sound[-1] in "aeiouy") == (target[-1] in "aeiouy")
+            and _distance(sound, target) <= 1)
 
 
 def find_wake(words, language="en"):
@@ -110,8 +117,8 @@ def find_wake(words, language="en"):
     The pack's `wake_words` count anywhere. Sound-alikes ("Hey Lena", "Loona, look left",
     "what time is it, Lou na") count only where a name is said: first (after a greeting) or last.
     """
-    pack = languages.get(language)
-    found = {i for i, word in enumerate(words) if word in pack.wake_words}
+    pack, names = languages.get(language), wake_words(language)
+    found = {i for i, word in enumerate(words) if word in names}
     if found or not words:
         return found
     first = 0

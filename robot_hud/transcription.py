@@ -23,6 +23,7 @@ from collections import deque
 from dataclasses import dataclass
 
 from . import languages
+from .naming import personalise
 
 DEFAULT_MODEL = "gpt-transcribe"
 SAMPLE_RATE = 16000
@@ -89,7 +90,7 @@ class AudioRing:
 
 
 def _hint(text):
-    return " ".join(str(text).translate(_NOT_ALLOWED).split())
+    return " ".join(personalise(str(text)).translate(_NOT_ALLOWED).split())
 
 
 def request_options(model, language):

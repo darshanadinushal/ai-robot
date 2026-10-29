@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from .i18n import DEFAULT_LANGUAGE, LANGUAGES
+from .naming import DEFAULT_NAME, clean_name
 from .voices import DEFAULT_VOICE, VOICES
 
 COLOR_CHOICES = {
@@ -31,7 +32,8 @@ def read_preferences(path=None):
     result = {"color": "CYAN", "mode": "FACE", "layout": "CLASSIC",
               "wave_layout": "MESH", "animations": True, "voice": DEFAULT_VOICE,
               "language": DEFAULT_LANGUAGE, "online_listening": False, "memory": True,
-              "voice_interrupt": None}  # None = automatic (on with echo-cancelling audio)
+              "voice_interrupt": None,  # None = automatic (on with echo-cancelling audio)
+              "robot_name": DEFAULT_NAME}
     try:
         data = json.loads(Path(path or default_path()).read_text(encoding="utf-8"))
         if isinstance(data, dict):
@@ -55,6 +57,7 @@ def read_preferences(path=None):
                 result["memory"] = data["memory"]
             if isinstance(data.get("voice_interrupt"), bool):  # null/missing = automatic
                 result["voice_interrupt"] = data["voice_interrupt"]
+            result["robot_name"] = clean_name(data.get("robot_name")) or DEFAULT_NAME
     except (OSError, ValueError, TypeError):
         pass
     return result
@@ -70,5 +73,6 @@ def write_preferences(prefs, path=None):
                "online_listening": prefs.get("online_listening") is True,
                "memory": prefs.get("memory") is not False,
                "voice_interrupt": (prefs.get("voice_interrupt")
-                                   if isinstance(prefs.get("voice_interrupt"), bool) else None)}
+                                   if isinstance(prefs.get("voice_interrupt"), bool) else None),
+               "robot_name": clean_name(prefs.get("robot_name")) or DEFAULT_NAME}
     path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")

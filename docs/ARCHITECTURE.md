@@ -270,6 +270,15 @@ Up/Down keys change it). The section list and what each tap changes live in `set
 - `settings_page(...)` draws the selected section and **returns the tap targets**
   `[(rect, action)]`; `handle_touch` uses the ones from the last frame, so only visible
   controls can be tapped.
+- **Robot name (About):** preference `robot_name` (default "Luna"; `naming.clean_name`: one word
+  of 2-12 letters). `naming.set_name` runs once at start; `naming.personalise` swaps "Luna" in
+  `tr()` screen texts, the AI personality/abilities, the voice sample and the transcription hint
+  (never in user memories). The wake word becomes the name (`commands.wake_words`; the packs'
+  misheard lists apply only to "Luna"), with sound-alikes for names of 4+ sounds. The on-screen
+  keyboard (`settings.NameEditor`, `name_keyboard`) checks the word with
+  `VoiceListener.knows` (`vosk_model_find_word`); an unknown word warns once, Save again keeps it.
+  Saving sets `RobotHUD.restart` and `main()` starts the app again (`os.execv`; a new process on
+  Windows).
 - Display & Theme: FACE / WAVE mode (which one Home shows), colour, and face or wave layouts.
 - Language (ENGLISH / SVENSKA) changes only the screen text on every page and saves
   `language`. Each on-screen text goes through `i18n.tr()`, which looks it up in the app

@@ -290,6 +290,16 @@
     "listening": "lyssnar",
     "voice packages missing": "röstpaket saknas",
     "voice model missing": "röstmodell saknas",
-    "microphone error: ": "mikrofonfel: "
+    "microphone error: ": "mikrofonfel: ",
+    "Type a new name. Luna restarts to use it.": "Skriv ett nytt namn. Luna startar om för att använda det.",
+    "Use 2 to 12 letters.": "Använd 2 till 12 bokstäver.",
+    "The speech model does not know \"{name}\", so the robot may not hear it. Tap Save again to keep it.": "Taligenkänningen känner inte till \"{name}\", så roboten kanske inte hör det. Tryck Spara igen för att behålla det.",
+    "Delete": "Radera",
+    "Cancel": "Avbryt",
+    "Save": "Spara",
+    "Robot name": "Robotens namn",
+    "Change": "Ändra",
+    "Say the new name to wake the robot. It restarts after a change.": "Säg det nya namnet för att väcka roboten. Den startar om efter en ändring.",
+    "Restarting...": "Startar om..."
   }
 }

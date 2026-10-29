@@ -29,7 +29,10 @@ with an online AI. Camera video, motors and home control are future work.
 - Settings with a section menu: Display & Theme (mode, colour, layout,
   app language English / Svenska, animations), Voice (voice language, female / male, **Play sample**,
   loading status), Listening, Memory,
-  About — saved automatically in `~/.ai-robot-hud.json`
+  About (**Robot name**: type a new name on the on-screen keyboard; she answers to it, uses it on
+  screen and to the AI, and restarts) — saved automatically in `~/.ai-robot-hud.json`
+- A new name must be a word the offline speech model knows, or she may not hear it; Luna warns
+  and you tap Save again to keep it anyway. Names like Nova, Max, Eva or Lena work in English.
 - Fullscreen on the Pi with correct touch scaling; resizable window on Windows
 - Chat page waveform is **simulated**; Camera page is a **placeholder**; Wi-Fi/audio/battery
   icons are decorative

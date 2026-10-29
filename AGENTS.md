@@ -76,6 +76,8 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   (guarded imports, `--no-voice`, `--no-speech`, `--no-ai`).
 - Voice recognition is grammar-restricted to `commands.vocabulary(language)` when AI is off, and
   free-form when AI is on; new command words go in the packs' `commands` either way.
+- The robot's name is configurable (`naming.py`): write fixed texts with "Luna" (they pass
+  through `personalise`) and use `commands.wake_words`, never a hard-coded "luna" check.
 - Changing a setting means updating `read_preferences`, `write_preferences`, the Settings UI,
   `handle_touch`, and the preference tests (they compare the whole dict).
 - Raspberry Pi uses apt `python3-pygame`; do not "fix" this by pinning pygame there.
@@ -88,5 +90,5 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 ## Status snapshot
 Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expressions,
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
-follow-ups and tap-to-stop, date/time-aware answers, web search (news, live scores), optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
+follow-ups and tap-to-stop, date/time-aware answers, web search (news, live scores), configurable robot name, optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
 Planned: AI-model setting, autostart, camera/motors/smart home.

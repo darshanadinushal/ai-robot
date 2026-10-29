@@ -180,6 +180,14 @@ class VoiceListener:
             self.partial = partial.replace("[unk]", "").strip()
         self.decode_seconds += time.perf_counter() - started
 
+    def knows(self, word):
+        """True/False: the loaded speech model can hear `word`; None if no model is loaded."""
+        model = self._model
+        try:
+            return None if model is None else model.vosk_model_find_word(word) >= 0
+        except Exception:  # an old vosk without find_word
+            return None
+
     def _load(self, Model, KaldiRecognizer):
         """Load the model for `language` (English if it is missing); None if none exists."""
         wanted = self.language

@@ -12,6 +12,26 @@ from robot_hud.settings import SECTIONS, apply_choice
 from robot_hud.voices import sample_text, get_voice, voice_for
 
 
+class NameEditorTests(unittest.TestCase):
+    def test_typing_checking_and_confirming(self):
+        from robot_hud.settings import NameEditor
+        editor = NameEditor("Luna")
+        for _ in range(4):
+            editor.back()
+        for char in "nOVa1":
+            editor.key(char)
+        self.assertEqual(editor.text, "Nova")
+        self.assertEqual(editor.save("Luna", lambda word: True), "restart")
+        self.assertEqual(editor.save("Nova", lambda word: True), "close", "unchanged")
+        editor.text = "Zyra"
+        self.assertIsNone(editor.save("Luna", lambda word: False))
+        self.assertEqual(editor.warning, ("unknown", "Zyra"))
+        self.assertEqual(editor.save("Luna", lambda word: False), "restart", "Save again keeps it")
+        editor.text = "Z"
+        self.assertIsNone(editor.save("Luna", lambda word: None))
+        self.assertEqual(editor.warning, ("letters", None))
+
+
 class ChoiceTests(unittest.TestCase):
     def setUp(self):
         self.prefs = read_preferences(Path(tempfile.gettempdir()) / "no-such-luna-prefs.json")
@@ -147,7 +167,7 @@ class SettingsTouchTests(unittest.TestCase):
             return {a[0] for _, a in self.hud.settings_hits} - {"section"}
         self.assertEqual(actions(), {"mode", "color", "layout", "language", "animations"})
         expected = {1: {"voice_language", "voice", "preview"},
-                    2: {"online_listening", "voice_interrupt"}, 3: {"memory"}, 4: set()}
+                    2: {"online_listening", "voice_interrupt"}, 3: {"memory"}, 4: {"name_edit"}}
         for index, kinds in expected.items():
             self.tap(("section", index))
             self.assertEqual(actions(), kinds, SECTIONS[index])
@@ -181,6 +201,18 @@ class SettingsTouchTests(unittest.TestCase):
         self.assertEqual((self.saved[-1]["memory"], self.hud.conversation.memory), (False, None))
         self.tap(("memory", None))
         self.assertIs(self.hud.conversation.memory, memory)
+
+    def test_new_robot_name_on_the_keyboard_restarts(self):
+        self.tap(("section", 4))
+        self.tap(("name_edit", None))
+        for _ in range(4):
+            self.tap(("name_back", None))
+        for letter in "NOVA":
+            self.tap(("name_key", letter))
+        self.assertEqual(self.hud.name_editor.text, "Nova")
+        self.tap(("name_save", None))
+        self.assertEqual(self.saved[-1]["robot_name"], "Nova")
+        self.assertTrue(self.hud.restart and not self.hud.running)
 
     def test_switching_app_language_to_swedish(self):
         self.tap(("language", "sv"))

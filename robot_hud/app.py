@@ -22,7 +22,7 @@ except ImportError as exc:
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
 from .commands import parse_command, reply_for, route, utterance_end
 from .listening import UtteranceAssembler, continue_seconds
-from . import audio_devices, i18n, languages, speech
+from . import audio_devices, i18n, languages, naming, speech
 from .i18n import tr
 from .ai import AIWorker, ai_configured
 from .assistant_core.conversation import Conversation
@@ -33,7 +33,7 @@ from .assistant_core.memory import ERRORS as MEMORY_ERRORS, MemoryStore
 from .transcription import PREROLL_SECONDS, AudioRing, OnlineListening
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
-from .settings import SECTIONS, apply_choice, voice_interrupt_wanted
+from .settings import KEYBOARD_ROWS, SECTIONS, NameEditor, apply_choice, voice_interrupt_wanted
 from .voices import LANGUAGES as VOICE_LANGUAGES, get_voice, sample_text, voices_for
 
 FPS = 30
@@ -347,7 +347,7 @@ def wifi_icon(surface, x, y, color):
 def status_bar(surface, fonts, accent):
     draw_text(surface,datetime.now().strftime('%H:%M'), fonts['header'], TEXT,
               topleft=(42,26))
-    draw_text(surface,'LUNA 1.0', fonts['header'], MUTED,center=(640,43))
+    draw_text(surface,naming.name.upper()+' 1.0', fonts['header'], MUTED,center=(640,43))
     color = (115,153,187)
     wifi_icon(surface,994,42,color)
     # Visual icons only: not network, audio or battery readings.
@@ -648,9 +648,44 @@ def memory_section(surface, fonts, accent, prefs, y, memory, hits):
     add_hit(hits,button,('forget_all',None))
 
 
+WARNING = (255, 185, 67)
+
+
+def key_button(surface, fonts, accent, rect, text, hits, action, strong=False):
+    pygame.draw.rect(surface,(8,32,62) if not strong else mix(accent,BACKGROUND,.55),rect,border_radius=10)
+    pygame.draw.rect(surface,accent,rect,2,border_radius=10)
+    draw_text(surface,text,fonts['small'],TEXT,center=rect.center)
+    add_hit(hits,rect,action)
+
+
+def name_keyboard(surface, fonts, accent, editor, y, hits):
+    """The on-screen keyboard for a new robot name (replaces the section content)."""
+    section_header(surface,fonts,'About',y,'Type a new name. Luna restarts to use it.')
+    field = pygame.Rect(LABEL_X,y+92,520,54)
+    pygame.draw.rect(surface,(8,34,66),field,border_radius=12)
+    pygame.draw.rect(surface,accent,field,2,border_radius=12)
+    draw_text(surface,editor.text+'|',fonts['body'],TEXT,topleft=(field.left+18,field.top+12))
+    if editor.warning:
+        kind,value = editor.warning
+        text = (tr('Use 2 to 12 letters.') if kind=='letters' else
+                tr('The speech model does not know "{name}", so the robot may not hear it. Tap Save again to keep it.',name=value))
+        draw_text(surface,wrap_text(fonts['mini'],text,880,1)[0],fonts['mini'],WARNING,
+                  topleft=(LABEL_X,y+156))
+    for row,letters in enumerate(KEYBOARD_ROWS):
+        for i,letter in enumerate(letters):
+            rect = pygame.Rect(LABEL_X+i*76,y+186+row*64,66,54)
+            key_button(surface,fonts,accent,rect,letter,hits,('name_key',letter))
+    key_button(surface,fonts,accent,pygame.Rect(LABEL_X+7*76,y+314,218,54),tr('Delete'),hits,
+               ('name_back',None))
+    key_button(surface,fonts,accent,pygame.Rect(LABEL_X+446,y+390,180,54),tr('Cancel'),hits,
+               ('name_cancel',None))
+    key_button(surface,fonts,accent,pygame.Rect(LABEL_X+646,y+390,180,54),tr('Save'),hits,
+               ('name_save',None),strong=True)
+
+
 def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic',''),
                   online=('basic',''), memory=((),0,False,False), interrupt=False,
-                  audio=('basic','')):
+                  audio=('basic',''), editor=None):
     """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
     hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
     settings_sidebar(surface,fonts,accent,active)
@@ -661,7 +696,9 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
     name = SECTIONS[active]
     y = CONTENT_CLIP.top
 
-    if name=='Display & Theme':
+    if editor is not None:
+        name_keyboard(surface,fonts,accent,editor,y,hits)
+    elif name=='Display & Theme':
         section_header(surface,fonts,name,y,'How Luna looks and the screen language')
         row_label(surface,fonts,'Mode',y+122)
         for mode,rect in zip(MODES,control_rects(y+99,2,46,220)):
@@ -745,6 +782,12 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
         for i,text in enumerate(about):
             draw_text(surface,wrap_text(fonts['small'],text,820,1)[0],fonts['small'],
                       TEXT if i==0 else MUTED,topleft=(LABEL_X,y+104+i*32))
+        row_label(surface,fonts,'Robot name',y+283)
+        draw_text(surface,naming.name,fonts['body'],TEXT,topleft=(CONTROL_X,y+270))
+        button = pygame.Rect(CONTROL_X+260,y+260,200,46)
+        choice_button(surface,fonts,accent,button,tr('Change'),False,hits,('name_edit',None))
+        draw_text(surface,tr('Say the new name to wake the robot. It restarts after a change.'),
+                  fonts['mini'],MUTED,topleft=(CONTROL_X,y+322))
     return hits
 
 
@@ -754,7 +797,6 @@ class RobotHUD:
         pygame.font.init()
         self.fullscreen = args.fullscreen or (not args.windowed and os.name != 'nt')
         self.screen = self.make_screen()
-        pygame.display.set_caption('Luna 1.0')
         self.canvas=pygame.Surface((W,H)).convert()
         self.background=background_surface()
         self.fonts={
@@ -769,7 +811,11 @@ class RobotHUD:
         }
         self.clock=pygame.time.Clock()
         self.prefs=read_preferences()
+        naming.set_name(self.prefs['robot_name'])  # before any text: tr() and the wake word use it
+        pygame.display.set_caption(naming.name+' 1.0')
         i18n.set_language(self.prefs['language'])
+        self.name_editor=None  # NameEditor while the robot name is typed
+        self.restart=False     # main() starts the app again (after a new name)
         self.glow=glow_disc(169,self.accent)
         self.page='Home'
         self.gaze_x=self.gaze_y=self.target_x=self.target_y=0.0
@@ -896,6 +942,9 @@ class RobotHUD:
     def settings_choice(self,kind,value):
         if kind=='section':
             self.settings_section=value
+            self.name_editor=None
+        elif kind.startswith('name_'):
+            self.edit_name(kind,value)
         elif kind=='preview':
             self.preview_voice()
         elif kind=='forget_memory':
@@ -933,6 +982,32 @@ class RobotHUD:
                 self.ring.clear()
             if changed:
                 self.save()
+
+    def edit_name(self,kind,value):
+        """The robot-name keyboard; a new name is saved and the app restarts."""
+        if kind=='name_edit':
+            self.name_editor=NameEditor(naming.name)
+            return
+        editor=self.name_editor
+        if editor is None:
+            return
+        if kind=='name_key':
+            editor.key(value)
+        elif kind=='name_back':
+            editor.back()
+        elif kind=='name_cancel':
+            self.name_editor=None
+        elif kind=='name_save':
+            knows=self.voice.knows if self.voice else (lambda word:None)
+            result=editor.save(naming.name,knows)
+            if result=='close':
+                self.name_editor=None
+            elif result=='restart':
+                self.prefs['robot_name']=naming.clean_name(editor.text)
+                self.save()
+                print('Luna: new robot name %r, restarting' % self.prefs['robot_name'],flush=True)
+                self.restart=True
+                self.running=False
 
     def change_memory(self,change,*args):
         try:
@@ -1173,6 +1248,15 @@ class RobotHUD:
                 self.running=False
             elif event.type==pygame.VIDEORESIZE and not self.fullscreen:
                 self.screen=pygame.display.set_mode((max(event.w,600),max(event.h,350)),pygame.RESIZABLE)
+            elif event.type==pygame.KEYDOWN and self.name_editor is not None and self.page=='Settings':
+                if event.key==pygame.K_BACKSPACE:
+                    self.edit_name('name_back',None)
+                elif event.key in (pygame.K_RETURN,pygame.K_KP_ENTER):
+                    self.edit_name('name_save',None)
+                elif event.key==pygame.K_ESCAPE:
+                    self.edit_name('name_cancel',None)
+                elif event.unicode:
+                    self.edit_name('name_key',event.unicode)
             elif event.type==pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_q):
                     self.running=False
@@ -1295,7 +1379,8 @@ class RobotHUD:
                                                            self.voice is not None),
                                              self.memory_view(),
                                              voice_interrupt_wanted(self.prefs,self.audio.echo_cancelling),
-                                             audio_status(self.audio,self.voice is not None))
+                                             audio_status(self.audio,self.voice is not None),
+                                             self.name_editor)
         nav_bar(self.canvas,self.page,self.fonts,accent)
 
     def draw_footer(self,t,default):
@@ -1303,7 +1388,7 @@ class RobotHUD:
         if self.thinking:
             lines=[tr('LUNA IS STILL THINKING...' if self.conversation.slow else 'LUNA IS THINKING...')]
         elif self.conversation.answer and (speech.is_talking() or t<self.conversation.answer_until):
-            lines=wrap_text(self.fonts['small'],'LUNA: '+self.conversation.answer,1040,2)
+            lines=wrap_text(self.fonts['small'],naming.name.upper()+': '+self.conversation.answer,1040,2)
         else:
             lines=[default]
         color=MUTED if lines==[default] else TEXT
@@ -1383,10 +1468,24 @@ class RobotHUD:
                     break
                 self.clock.tick(FPS)
         finally:
+            if self.restart:  # one frame so the screen does not just go black
+                self.canvas.blit(self.background,(0,0))
+                draw_text(self.canvas,tr('Restarting...'),self.fonts['title'],self.accent,center=(W//2,H//2))
+                self.present()
             speech.stop()
             if self.voice:
                 self.voice.stop()
             pygame.quit()
+
+
+def restart_app():
+    """Start Luna again with the same arguments (after a new robot name)."""
+    command=[sys.executable]+sys.argv
+    if os.name=='nt':  # execv mangles arguments on Windows: start a new process instead
+        import subprocess
+        subprocess.Popen(command)
+        sys.exit(0)
+    os.execv(sys.executable,command)
 
 
 def main():
@@ -1402,7 +1501,10 @@ def main():
     if args.screenshot:
         # One static frame: don't start the microphone, speech or AI threads.
         args.no_voice=args.no_speech=args.no_ai=True
-    RobotHUD(args).run(screenshot=args.screenshot)
+    hud=RobotHUD(args)
+    hud.run(screenshot=args.screenshot)
+    if hud.restart:
+        restart_app()
 
 
 if __name__=='__main__':

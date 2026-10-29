@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from .. import languages
+from .. import languages, naming
 from .events import Log
 from .tools import Tool, ToolResult, _object, words
 
@@ -263,7 +263,7 @@ class MemoryStore:
     def relevant(self, question, language, limit=RELEVANT):
         """Memories sharing words with the question (best first); unrelated ones are left out."""
         facts = self.facts()
-        ignore = set(languages.get(language).memory_words.get("ignore", ()))
+        ignore = set(languages.get(language).memory_words.get("ignore", ())) | {naming.name.lower()}
         wanted = _keys(question, ignore)
         scored = sorted(((len(wanted & _keys(fact.text, ignore)), fact) for fact in facts),
                         key=lambda item: (-item[0], -item[1].id))

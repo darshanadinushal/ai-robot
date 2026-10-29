@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import languages
+from .naming import personalise
 
 CATALOGUE = Path(__file__).resolve().with_name("voices.json")
 
@@ -104,4 +105,5 @@ def voice_for(language, gender):
 
 def sample_text(voice):
     """A short preview sentence in the voice's own language."""
-    return languages.get(voice.language).sample or languages.get(languages.DEFAULT).sample
+    return personalise(languages.get(voice.language).sample
+                       or languages.get(languages.DEFAULT).sample)

@@ -38,14 +38,14 @@ class PreferenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'preferences.json'
             self.assertEqual(read_preferences(p)['color'],'CYAN')
-            write_preferences({'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'memory':False},p)
-            self.assertEqual(read_preferences(p),{'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':False,'voice_interrupt':None})
+            write_preferences({'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'memory':False,'robot_name':'max'},p)
+            self.assertEqual(read_preferences(p),{'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':False,'voice_interrupt':None,'robot_name':'Max'})
 
     def test_invalid_values_are_ignored(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'prefs.json'
-            p.write_text('{"color":"NOT_A_COLOR","animations":"no"}')
-            self.assertEqual(read_preferences(p),{'color':'CYAN','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':True,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':True,'voice_interrupt':None})
+            p.write_text('{"color":"NOT_A_COLOR","animations":"no","robot_name":"R2-D2"}')
+            self.assertEqual(read_preferences(p),{'color':'CYAN','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':True,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':True,'voice_interrupt':None,'robot_name':'Luna'})
             self.assertIn('CYAN',COLOR_CHOICES)
 
     def test_voice_interrupt_is_automatic_until_chosen(self):
@@ -143,6 +143,29 @@ class RouteTests(unittest.TestCase):
                      "we met lena today and talked", "hello"):
             with self.subTest(text):
                 self.assertEqual(route(text)[0], "ignore", "only near the start or end, like a name")
+
+    def test_a_new_robot_name(self):
+        from robot_hud import i18n, naming
+        from robot_hud.assistant_core.context import instructions
+        from robot_hud.commands import route, vocabulary
+        self.assertEqual([naming.clean_name(n) for n in ('nOVA', 'Åsa', 'R2', 'x', 'Two words')],
+                         ['Nova', 'Åsa', None, None, None])
+        naming.set_name('Nova')
+        try:
+            self.assertEqual(route('hey nova what is mars'), ('ai', 'what is mars'))
+            self.assertEqual(route('hey nava what is mars'), ('ai', 'what is mars'), 'sounds alike')
+            self.assertEqual(route('hey luna what is mars')[0], 'ignore', 'the old name is gone')
+            self.assertIn('nova', vocabulary('sv'))
+            self.assertNotIn('lugn', vocabulary('sv'))
+            self.assertTrue(instructions().startswith('You are Nova,'))
+            self.assertEqual(i18n.tr('SAY "HEY LUNA" AND ASK ANYTHING  •  TAP TO STOP TALKING'),
+                             'SAY "HEY NOVA" AND ASK ANYTHING  •  TAP TO STOP TALKING')
+            naming.set_name('Max')
+            self.assertEqual(route('hey max look left')[0], 'command')
+            self.assertEqual(route('hey mix look left')[0], 'command', 'short name: exact only')
+            self.assertEqual(route('mix look left please now')[0], 'ignore')
+        finally:
+            naming.set_name('Luna')
 
     def test_clean_for_speech(self):
         from robot_hud.speech import clean_for_speech

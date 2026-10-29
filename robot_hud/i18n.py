@@ -6,6 +6,7 @@ texts a pack does not translate are shown in English. Only screen labels are tra
 listening, spoken replies and AI answers follow the voice language.
 """
 from . import languages
+from .naming import personalise
 
 LANGUAGES = {code: pack.native_name.upper() for code, pack in languages.PACKS.items()}
 DEFAULT_LANGUAGE = languages.DEFAULT
@@ -23,6 +24,6 @@ def translations(code=None):
 
 
 def tr(text, **values):
-    """Screen text in the app language; unknown text is shown unchanged."""
-    result = translations().get(text, text)
+    """Screen text in the app language with the robot's name; unknown text is shown unchanged."""
+    result = personalise(translations().get(text, text))
     return result.format(**values) if values else result

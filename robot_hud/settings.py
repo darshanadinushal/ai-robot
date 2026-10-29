@@ -4,10 +4,49 @@ The page in app.py shows one section at a time, chosen in the menu on the left. 
 is applied with `apply_choice` and saved straight away.
 """
 from .i18n import LANGUAGES
+from .naming import MAX_LETTERS, clean_name
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS
 from .voices import VOICES, get_voice, voice_for, voices_for
 
 SECTIONS = ("Display & Theme", "Voice", "Listening", "Memory", "About")
+
+
+KEYBOARD_ROWS = ("QWERTYUIOPÅ", "ASDFGHJKLÖÄ", "ZXCVBNM")
+
+
+class NameEditor:
+    """Typing a new robot name on the on-screen keyboard (Settings > About > Robot name).
+
+    `warning` is None, ("letters", None) for an invalid name or ("unknown", name) when the
+    speech model does not know the word; Save again keeps it anyway.
+    """
+
+    def __init__(self, current):
+        self.text, self.warning, self._confirmed = current, None, None
+
+    def key(self, char):
+        if len(self.text) < MAX_LETTERS and len(char) == 1 and char.isalpha():
+            self.text += char.upper() if not self.text else char.lower()
+            self.warning = None
+
+    def back(self):
+        self.text, self.warning = self.text[:-1], None
+
+    def save(self, current, knows):
+        """"restart" (a new name to save), "close" (unchanged) or None (see `warning`).
+
+        `knows(word)` is True/False if the speech model knows the word, None if unsure.
+        """
+        name = clean_name(self.text)
+        if name is None:
+            self.warning = ("letters", None)
+            return None
+        if name == current:
+            return "close"
+        if knows(name.lower()) is False and self._confirmed != name:
+            self._confirmed, self.warning = name, ("unknown", name)
+            return None
+        return "restart"
 
 
 def voice_interrupt_wanted(prefs, echo_cancelling=False):

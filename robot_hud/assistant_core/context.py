@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass, field
 
 from .. import languages
+from ..naming import personalise
 
 PERSONALITY = (
     "You are Luna, a friendly robot assistant with a touchscreen face. "
@@ -191,8 +192,8 @@ def instructions(language="en", now=None, profile=None, tools=False, expressions
     if web:
         abilities.append(WEB_ABILITY)
     missing = [item for item in NOT_CONNECTED if not (web and item == "internet search")]
-    parts = [PERSONALITY, CONVERSATION, HONESTY,
-             "You can: %s." % "; ".join(abilities),
+    parts = [personalise(PERSONALITY), CONVERSATION, HONESTY,
+             personalise("You can: %s." % "; ".join(abilities)),
              "Not connected yet: %s. If the user asks for one of these, say briefly that it is "
              "not connected yet." % ", ".join(missing)]
     if tools:
