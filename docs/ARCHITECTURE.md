@@ -524,11 +524,12 @@ to change a case); `scripts/measure_listening.py --cases` speaks them through th
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
 3. Real camera, motors, smart-home control (UI placeholders exist).
-4. Natural turn-taking (Phase 5.3), smart home and driving, each as its own phase,
-   reusing the tool registry and permission policy.
+4. Timers and reminders, music (Soundcore speaker), smart home and driving, each as its own
+   phase, reusing the tool registry and permission policy.
 
 ## 11. Known gaps
 - Wi-Fi, audio and battery icons are decorative, not live readings.
 - The small Vosk model may mishear "Luna"; variants are accepted in `commands.route`.
 - Free-form recognition (AI on) is less accurate for one-word commands than grammar mode.
-- The microphone is muted while Luna speaks, so you cannot interrupt her by voice (tap instead).
+- Without a headset or an echo-cancelling array the microphone is muted while Luna speaks, so
+  only a tap interrupts her (Interrupt by voice, phase 5.3, needs echo cancelling).
