@@ -76,6 +76,11 @@ class VoiceListener:
     def set_language(self, language):
         self.language = language if language in MODELS else languages.DEFAULT
 
+    def reload_words(self):
+        """Reload the command grammar (new plugin words); free-form listening needs nothing."""
+        if not self.free_form:
+            self._loaded_for = None
+
     def start(self):
         self._thread.start()
 

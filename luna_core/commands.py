@@ -22,6 +22,25 @@ ACTIONS.update({
     "color.GREEN": ("color", "GREEN"), "color.AMBER": ("color", "AMBER"),
 })
 ACTION_IDS = {action: action_id for action_id, action in ACTIONS.items()}
+CORE_ACTIONS = frozenset(ACTIONS)
+
+
+def add_action(action_id, action):
+    """A new action ID (plugins: ("plugin", id)); pack words can then map to it."""
+    action = tuple(action)
+    if action_id in ACTIONS or action in ACTION_IDS:
+        raise ValueError("action already exists: " + action_id)
+    ACTIONS[action_id] = action
+    ACTION_IDS[action] = action_id
+
+
+def remove_action(action_id):
+    """Remove an added action (Luna's own actions stay)."""
+    if action_id in CORE_ACTIONS:
+        raise ValueError("Luna's own actions cannot be removed")
+    action = ACTIONS.pop(action_id, None)
+    if action is not None:
+        ACTION_IDS.pop(action, None)
 
 # Conversation controls (phrases in the packs' "controls"): stop the follow-up, start afresh,
 # or stop Luna talking ("stop" also works while she talks, see assistant_core/turn_taking.py).

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luna-hello"
+version = "1.0.0"
+description = "Example Luna Core plugin: a spoken command, a page, an AI tool and a setting"
+requires-python = ">=3.11"
+dependencies = ["luna-core>=1.0,<2"]
+
+# Luna finds installed plugins through this entry point group. They start switched off:
+# the user turns them on in Settings > Plugins.
+[project.entry-points."luna.plugins"]
+hello = "luna_hello:HelloPlugin"

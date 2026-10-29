@@ -289,6 +289,11 @@ luna --windowed                       # same as: python main.py / python -m luna
 Without hardware (a laptop, CI, a server): `luna --headless --mock-hardware` runs Luna with
 no screen, microphone or speaker (`LUNA_HARDWARE=mock`, or `Robot(hardware="mock")`).
 
+Apps extend Luna with **plugins** (commands, pages, AI tools, personality, translations,
+settings) without editing the core: `robot.add_plugin(MyPlugin())`. Settings > Plugins turns
+them on or off and allows sensitive permissions (microphone, memory, camera, motors...).
+`luna --no-plugins` starts without plugins. Guide: [docs/PLUGINS.md](docs/PLUGINS.md).
+
 Luna logs to the console and to `~/.luna/logs/luna.log` (rotated; `LUNA_LOG_FILE=<file>` or
 `off`). Keys are masked in the log. The old package name `robot_hud` still imports (same
 modules, with a deprecation warning) and will be removed in 2.0.

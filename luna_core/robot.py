@@ -14,9 +14,13 @@ class Robot:
     "headless" (no screen needed: SDL's dummy video and audio drivers).
     voice, speech, ai: switch the microphone, spoken replies and online AI chat off.
     hardware: "real", "mock", a hardware.Hardware, or None for LUNA_HARDWARE (default real).
+    plugins: the app's plugins (luna_core.plugins.Plugin), on by default.
+    discover_plugins: also offer installed plugins (entry points "luna.plugins"; off until the
+    user turns them on). safe_mode: start no plugins at all (recovery after a bad plugin).
     """
 
-    def __init__(self, *, display="auto", voice=True, speech=True, ai=True, hardware=None):
+    def __init__(self, *, display="auto", voice=True, speech=True, ai=True, hardware=None,
+                 plugins=(), discover_plugins=True, safe_mode=False):
         if display not in DISPLAYS:
             raise ValueError("display must be one of: " + ", ".join(DISPLAYS))
         if not isinstance(hardware, devices.Hardware):
@@ -26,7 +30,8 @@ class Robot:
         self.options = SimpleNamespace(windowed=display in ("window", "headless"),
                                        fullscreen=display == "fullscreen",
                                        no_voice=not voice, no_speech=not speech, no_ai=not ai,
-                                       hardware=hardware, pages=[])
+                                       hardware=hardware, pages=[], plugins=list(plugins),
+                                       discover_plugins=discover_plugins, no_plugins=safe_mode)
         self.restart_requested = False
 
     def add_page(self, page):
@@ -39,6 +44,15 @@ class Robot:
             raise ValueError("there is already a page called %r" % page.name)
         self.options.pages.append(page)
         return page
+
+    def add_plugin(self, plugin):
+        """Add one of the app's plugins (a luna_core.plugins.Plugin); returns it."""
+        from .plugins import Plugin
+
+        if not (isinstance(plugin, Plugin) or (isinstance(plugin, type) and issubclass(plugin, Plugin))):
+            raise TypeError("a plugin must be a luna_core.plugins.Plugin")
+        self.options.plugins.append(plugin)
+        return plugin
 
     def run(self, screenshot=None):
         """Show the robot until it is closed. Returns True when it asked to restart

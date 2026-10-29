@@ -18,7 +18,11 @@ CHANGELOG.md                Versions of Luna Core
 robot_hud/                  Old package name (section 1a)
 luna_core/
   __init__.py               Public API: Robot, __version__ (importing it does not import pygame)
-  robot.py                  Robot(display=, voice=, speech=, ai=).run() -> True to restart
+  robot.py                  Robot(display=, voice=, speech=, ai=, plugins=).run() -> True to restart
+  plugins/                  Pure plugin system (section 1c, docs/PLUGINS.md):
+    api.py                  Plugin, Setting, PERMISSIONS, version_matches (what authors use)
+    manager.py              PluginManager (lifecycle, guards, recovery) + PluginContext (`luna`)
+    store.py                ~/.luna/plugins.json: on/off, granted permissions, settings
   cli.py                    Command-line options, logging start, restart_app()
   logs.py                   Console + ~/.luna/logs/luna.log, masks API keys, logs crashes
   hardware/                 Pure device layer (section 1b): base.py interfaces, real.py, mock.py
@@ -80,9 +84,13 @@ tests/
   test_visual_smoke.py      Launches the app headless and saves a screenshot
   test_packaging.py         Version, Robot entry point, robot_hud compatibility, log masking, restart
   test_hardware.py          Mock/absent devices, speaker switching, the app on mock hardware
+  test_plugins.py           Plugins: lifecycle, permissions, recovery, versions, a real headless Luna
+  test_install.py           Opt-in (LUNA_SLOW_TESTS=1): wheel in a new venv, `luna`, plugin discovery
+examples/hello_plugin/      Example plugin package (entry point luna.plugins)
 docs/ARCHITECTURE.md        This file
+docs/PLUGINS.md             Writing plugins: API, permissions, lifecycle
 docs/BASELINE.md            Phase 5.0 baseline measurements (simulated and real Pi)
-.github/workflows/tests.yml GitHub Actions: runs the tests headless
+.github/workflows/tests.yml GitHub Actions: tests on Linux/Windows/ARM, Python 3.11-3.13, clean install
 AGENTS.md                   Rules and quick facts for AI coding assistants
 ```
 
@@ -114,8 +122,27 @@ AGENTS.md                   Rules and quick facts for AI coding assistants
   `speech.use_speaker(speaker)` / `SpeechEngine.set_player`; `Hardware.close()` at exit stops motors.
 - Without a screen: `--headless` / `Robot(display="headless")` uses SDL's dummy drivers;
   with `--mock-hardware` Luna runs on any machine.
-- Camera and motors have no real adapter yet; plugins will reach them only through Core
-  permissions (step 4).
+- Camera and motors have no real adapter yet; plugins reach them only through Core
+  permissions (`luna.camera()`, `luna.motors()`).
+
+## 1c. Plugins (`luna_core/plugins/`, guide: docs/PLUGINS.md)
+- `PluginManager` (in `RobotHUD.plugins`) adds app plugins (`args.plugins`), discovers installed
+  ones (`discover_plugins`, entry points `luna.plugins`) and starts them before the
+  `VoiceListener`, so their words are in the grammar. `--no-plugins` / `args.no_plugins` skips all.
+- Each running plugin has a `PluginContext`; everything it registers goes through Core:
+  `commands.add_action` (`("plugin", action_id)` actions, run by `RobotHUD.apply_actions` via
+  `plugins.run_command`), `languages.extend(owner, code, ...)` (core texts win; `retract` removes),
+  `RobotHUD.add_page/remove_page`, and tools/personality passed to
+  `Conversation.set_plugins` (tools in the registry, their risks added to the `PermissionPolicy`,
+  sentences added by `context.instructions(extra=)`).
+- Host methods RobotHUD provides: `add_page`, `remove_page`, `say`, `face_actions`, `memories`,
+  `hardware`, `plugins_changed(words)` (refreshes AI tools; `VoiceListener.reload_words`).
+- Every call into plugin code (setup, commands, tools, timers, `on_heard`, page methods) goes
+  through `PluginManager.call`/`guard`: errors are logged and counted; `MAX_ERRORS` (3) turns
+  the plugin off and `PluginContext.close()` undoes every registration (and stops its motors).
+- Permissions: `api.PERMISSIONS`; sensitive ones need the user's yes in Settings > Plugins
+  (`PluginStore`, separate from the face preferences so the preference tests are unaffected).
+  Not a sandbox: plugins are in-process Python.
 
 ## 2. Runtime overview
 
@@ -336,7 +363,7 @@ Four pages keep the original button positions; more pages share the bar evenly. 
   `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
-A section menu on the left (Display & Theme with App language and Animations, Voice, Listening, Memory, About) works like
+A section menu on the left (Display & Theme with App language and Animations, Voice, Listening, Memory, Plugins, About) works like
 tabs: the panel on the right shows **only the selected section** (`self.settings_section`;
 Up/Down keys change it). The section list and what each tap changes live in `settings.py`
 (no pygame, unit-tested).
@@ -582,7 +609,7 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
 - Privacy: only recognised text is sent, never audio.
 
 ## 6. Command-line options (`main.py`, `luna_core/cli.py`)
-`--version`, `--headless`, `--mock-hardware`, `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
+`--version`, `--headless`, `--mock-hardware`, `--no-plugins` (safe mode), `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
 `--no-voice`, `--no-speech`, `--no-ai`, `--screenshot FILE` (save first frame and exit; implies
 no voice/speech/AI so no native audio thread is alive at exit — on the Pi that caused a segfault).
 `VoiceListener.stop()` joins the thread (3 s timeout) for the same reason.
@@ -602,6 +629,9 @@ rendering to PNG (`--screenshot`) or by building `RobotHUD` with a dummy driver 
 `canvas` — pass a namespace with `fullscreen, windowed, no_voice, no_speech, no_ai`.
 To preview AI states, assign a fake object with an `answers` queue to `hud.ai` and set
 `hud.conversation.thinking`, `answer`, `answer_until`.
+CI (`.github/workflows/tests.yml`) runs the suite on Ubuntu and Windows with Python 3.11-3.13 and
+on ARM Linux (like the Pi), plus `tests/test_install.py` (a clean install, `LUNA_SLOW_TESTS=1`).
+Plugin tests use `UnsavedStore` (no `~/.luna/plugins.json` writes) and a fake host.
 Baseline sentences: `tests/conversation_cases.json` (route expected today, and the phase meant
 to change a case); `scripts/measure_listening.py --cases` speaks them through the real models.
 

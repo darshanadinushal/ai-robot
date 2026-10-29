@@ -32,6 +32,8 @@ from .assistant_core.memory import ERRORS as MEMORY_ERRORS, MemoryStore
 from .transcription import PREROLL_SECONDS, AudioRing, OnlineListening
 from .voice import VoiceListener
 from .face_state import FaceState
+from .plugins.manager import PluginManager
+from .plugins.store import PluginStore
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, read_preferences, write_preferences
 from .settings import SECTIONS, NameEditor, apply_choice, voice_interrupt_wanted
 from .voices import get_voice, sample_text
@@ -41,7 +43,7 @@ from .ui.draw import (background_surface, draw_eye, draw_mic, draw_scifi_chrome,
                       draw_wave_bars, draw_wave_circle, glow_disc, mix, smile, wrap_text)
 from .ui.pages import Page, default_pages
 from .ui.settings_page import (audio_status, listening_status, memory_pages, mic_status, online_status,
-                               settings_page)
+                               plugin_pages, settings_page)
 from .ui.theme import BACKGROUND, FPS, H, MUTED, QUIT_RECT, TEXT, W, nav_rects
 from .ui.touch import TouchInput
 
@@ -119,6 +121,9 @@ class RobotHUD:
         self.settings_section=0
         self.settings_hits=[]
         self.preview=''  # '' | 'waiting' (voice still loading) | 'playing'
+        self.plugin_page=0
+        self.plugin_open=None  # the plugin shown in Settings > Plugins
+        self.voice=None
         # The devices (hardware.create): real ones, mocks, or an app's own Hardware.
         chosen=getattr(args,'hardware',None)
         self.hardware=(chosen if isinstance(chosen,hardware.Hardware)
@@ -138,6 +143,15 @@ class RobotHUD:
             log.info('Luna audio (%s hardware): mic %r, speaker %r, echo cancelling: %s',
                      self.hardware.mode,self.audio.mic or 'default',self.audio.speaker or 'default',
                      self.audio.echo_cancelling)
+        # Plugins (app ones, installed ones unless --no-plugins) start before listening, so
+        # their command words are in the grammar from the start.
+        self.plugins=PluginManager(host=self,store=getattr(args,'plugin_store',None) or PluginStore())
+        if not getattr(args,'no_plugins',False):
+            for plugin in getattr(args,'plugins',None) or ():
+                self.plugins.add(plugin)
+            if getattr(args,'discover_plugins',False):
+                self.plugins.discover()
+            self.plugins.start_all()
         self.voice=(VoiceListener(muted=self.mic_muted,free_form=self.ai is not None,
                                   language=self.talk_language,microphone=self.hardware.microphone)
                     if not args.no_voice else None)
@@ -187,6 +201,31 @@ class RobotHUD:
         if any(page.name==other.name for other in self.pages):
             raise ValueError('there is already a page called %r' % page.name)
         self.pages.append(page)
+
+    def remove_page(self,page):
+        """Remove an added page (a plugin stopped); Home is shown if it was on screen."""
+        if page in self.pages and self.pages.index(page)>=4:
+            self.pages.remove(page)
+            if self.page==page.name:
+                self.page='Home'
+
+    # --- what plugins use (plugins.manager.PluginContext) -----------------------------------
+    def say(self,text):
+        speech.speak_async(text)
+
+    def face_actions(self,actions):
+        self.apply_actions(list(actions),time.monotonic()-self.start_time,quiet=True)
+
+    def memories(self):
+        memory=self.conversation.memory
+        return [fact.text for fact in memory.facts()] if memory is not None else []
+
+    def plugins_changed(self,words=False):
+        """The running plugins changed: give the AI their tools and personality, hear new words."""
+        plugins=self.plugins
+        self.conversation.set_plugins(plugins.tools(),plugins.tool_risks(),plugins.instructions())
+        if words and self.voice:
+            self.voice.reload_words()
 
     def current_page(self):
         for page in self.pages:
@@ -255,6 +294,9 @@ class RobotHUD:
         if kind=='section':
             self.settings_section=value
             self.name_editor=None
+            self.plugin_open=None
+        elif kind.startswith('plugin_'):
+            self.plugin_choice(kind,value)
         elif kind.startswith('name_'):
             self.edit_name(kind,value)
         elif kind=='preview':
@@ -294,6 +336,23 @@ class RobotHUD:
                 self.ring.clear()
             if changed:
                 self.save()
+
+    def plugin_choice(self,kind,value):
+        """Settings > Plugins: open one, turn it on or off, allow a permission, change a setting."""
+        if kind=='plugin_open':
+            self.plugin_open=value
+        elif kind=='plugin_back':
+            self.plugin_open=None
+        elif kind=='plugin_page':
+            pages=plugin_pages(len(self.plugins.records))
+            self.plugin_page=max(0,min(pages-1,self.plugin_page+value))
+        elif kind=='plugin_toggle':
+            self.plugins.set_enabled(value,not self.plugins.records[value].enabled)
+        elif kind=='plugin_grant':
+            plugin_id,permission=value
+            self.plugins.grant(plugin_id,permission,permission not in self.plugins.records[plugin_id].granted)
+        elif kind=='plugin_setting':
+            self.plugins.set_setting(*value)
 
     def edit_name(self,kind,value):
         """The robot-name keyboard; a new name is saved and the app restarts."""
@@ -369,6 +428,10 @@ class RobotHUD:
         reply=None if quiet else reply_for(actions,self.talk_language)
         if reply:
             speech.speak_async(reply)
+        for kind,value in actions:
+            if kind=='plugin':
+                self.plugins.run_command(value,t)
+        actions=[action for action in actions if action[0]!='plugin']
         changes=self.face.apply(actions,t)
         self.prefs.update(changes)
         if 'color' in changes:
@@ -496,6 +559,7 @@ class RobotHUD:
         """
         self.run_effects(self.conversation.hear(text,t,self.heard_language,self.talk_language,
                                                 conversation),t)
+        self.plugins.heard(text)
 
     def ask_ai(self,question,t):
         self.run_effects(self.conversation.ask(question,t,self.talk_language),t)
@@ -564,6 +628,7 @@ class RobotHUD:
 
     def frame(self,t):
         self.poll_voice(t)
+        self.plugins.tick(t)
         self.face.expire(t)
         self.canvas.blit(self.background,(0,0))
         self.update_preview()
@@ -633,7 +698,8 @@ class RobotHUD:
                                          voice_interrupt_wanted(self.prefs,self.audio.echo_cancelling),
                                          audio_status(self.audio,self.voice is not None),
                                          self.name_editor,
-                                         speech.voice_state() if speech.enabled else None)
+                                         speech.voice_state() if speech.enabled else None,
+                                         (self.plugins.view(),self.plugin_page,self.plugin_open))
 
     def draw_footer(self,t,default):
         """Bottom text: Luna's answer while relevant, otherwise the hint."""
@@ -727,6 +793,7 @@ class RobotHUD:
             speech.stop()
             if self.voice:
                 self.voice.stop()
+            self.plugins.stop_all()
             self.hardware.close()
             pygame.quit()
 

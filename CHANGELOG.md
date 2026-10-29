@@ -17,5 +17,15 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 - `app.py` is split: drawing, pages and touch input are in `luna_core.ui`, the face state in
   `luna_core.face_state`. Apps add pages with `Robot.add_page(page)` (a `luna_core.ui.Page`);
   the navigation bar makes room for them and keys `1`-`9` choose pages. Old `app.X` names still work.
+- Plugins (`luna_core.plugins`, docs/PLUGINS.md): apps add commands, pages, AI tools,
+  personality, language text and settings with `Robot.add_plugin(plugin)` or as installed
+  packages (entry points `luna.plugins`, off until the user turns them on). Settings > Plugins
+  turns plugins on and off, allows sensitive permissions (microphone, memory, network, camera,
+  motors, devices: off by default) and changes plugin settings (`~/.luna/plugins.json`).
+  Plugin errors are caught; after 3 a plugin is turned off and everything it added is removed.
+  Version checks (`core = ">=1.0,<2"`, plugin API 1) and `luna --no-plugins` safe mode.
+- Tests: plugin unit, lifecycle, permission, compatibility and integration tests, an example
+  plugin (`examples/hello_plugin`), an opt-in clean-install test (`LUNA_SLOW_TESTS=1`), and CI on
+  Linux, Windows and ARM Linux with Python 3.11-3.13.
 - Includes everything before the package: face, offline voice commands, Piper speech, AI chat
   with web search and memory, wake-word sound-alikes, configurable robot name, Settings.

@@ -39,6 +39,8 @@ def main(argv=None):
     mode.add_argument("--headless", action="store_true", help="Run without a screen")
     parser.add_argument("--mock-hardware", action="store_true",
                         help="Use mock microphone, speaker, camera and motors (LUNA_HARDWARE=mock)")
+    parser.add_argument("--no-plugins", action="store_true",
+                        help="Safe mode: start without any plugins (if a plugin causes trouble)")
     parser.add_argument("--screenshot", metavar="FILE", help="Save first frame as PNG and exit")
     args = parser.parse_args(argv)
     setup_logging()
@@ -48,6 +50,7 @@ def main(argv=None):
     display = ("window" if args.windowed else "fullscreen" if args.fullscreen
                else "headless" if args.headless else "auto")
     robot = Robot(display=display, voice=not args.no_voice, speech=not args.no_speech,
-                  ai=not args.no_ai, hardware="mock" if args.mock_hardware else None)
+                  ai=not args.no_ai, hardware="mock" if args.mock_hardware else None,
+                  safe_mode=args.no_plugins)
     if robot.run(screenshot=args.screenshot):
         restart_app()

@@ -33,7 +33,7 @@ Fields:
 """
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 FOLDER = Path(__file__).resolve().parent
@@ -127,6 +127,47 @@ def load(folder=FOLDER):
 
 
 PACKS = load()
+_BASE = dict(PACKS)
+TABLES = ("screen", "speech", "replies", "commands")
+_EXTRA = {}  # owner (a plugin id) -> {code: {table: {key: value}}}
+
+
+def extend(owner, code, **tables):
+    """Add an owner's (a plugin's) texts to a language; Luna's own texts win on a clash.
+
+    Tables: screen, speech, replies, commands. False for a language Luna does not have.
+    """
+    if code not in _BASE:
+        return False
+    unknown = set(tables) - set(TABLES)
+    if unknown:
+        raise ValueError("unknown language table: " + ", ".join(sorted(unknown)))
+    entry = _EXTRA.setdefault(owner, {}).setdefault(code, {name: {} for name in TABLES})
+    for name, values in tables.items():
+        entry[name].update({(k.lower() if name == "commands" else k): v for k, v in (values or {}).items()})
+    _rebuild()
+    return True
+
+
+def retract(owner):
+    """Remove everything an owner added."""
+    if _EXTRA.pop(owner, None) is not None:
+        _rebuild()
+
+
+def _rebuild():
+    for code, base in _BASE.items():
+        merged = {name: {} for name in TABLES}
+        for languages_of_owner in _EXTRA.values():
+            for name, values in languages_of_owner.get(code, {}).items():
+                merged[name].update(values)
+        if not any(merged.values()):
+            PACKS[code] = base
+            continue
+        PACKS[code] = replace(base, screen={**merged["screen"], **base.screen},
+                              speech={**merged["speech"], **base.speech},
+                              replies={**merged["replies"], **base.replies},
+                              commands={**merged["commands"], **base.commands})
 
 
 def get(code):

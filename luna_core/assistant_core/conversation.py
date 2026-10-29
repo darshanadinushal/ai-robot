@@ -14,7 +14,7 @@ from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .expression import LINGER_SECONDS
 from .memory import ERRORS as MEMORY_ERRORS, is_birthday, memory_tools
 from .session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS, Session, Turn
-from .tools import FACE_TOOLS, ToolExecutor, ToolRegistry
+from .tools import FACE_TOOLS, PermissionPolicy, ToolExecutor, ToolRegistry
 from .turn_taking import interruption
 
 HEARD_SECONDS = 8.0    # how long the screen shows what Luna heard
@@ -46,6 +46,7 @@ class Conversation:
         self.clock = clock
         self._own_tools = tools is None
         self.tools = tools or ToolExecutor(ToolRegistry(FACE_TOOLS))
+        self.plugin_tools, self.plugin_risks, self.plugin_instructions = (), (), ()
         self.memory = None
         self.set_memory(memory)
         self._tool_outputs = None  # (request, [(call_id, output)]) to send on the next poll
@@ -74,7 +75,14 @@ class Conversation:
         self.memory = memory
         if self._own_tools:
             extra = memory_tools(memory) if memory is not None else ()
-            self.tools = ToolExecutor(ToolRegistry(FACE_TOOLS + tuple(extra)))
+            self.tools = ToolExecutor(ToolRegistry(FACE_TOOLS + tuple(extra) + tuple(self.plugin_tools)),
+                                      PermissionPolicy(("local", "memory") + tuple(self.plugin_risks)))
+
+    def set_plugins(self, tools=(), risks=(), instructions=()):
+        """The running plugins' AI tools (with the risk classes they were allowed) and personality."""
+        self.plugin_tools, self.plugin_risks = tuple(tools), tuple(risks)
+        self.plugin_instructions = tuple(instructions)
+        self.set_memory(self.memory)
 
     def in_followup(self, t):
         return self.ai is not None and self.session.in_followup(t)
@@ -151,7 +159,8 @@ class Conversation:
         request = self.ai.ask(
             question, language,
             instructions(language, now, self.settings.profile, use_tools,
-                         self.settings.expressions, memories, about, wish, web),
+                         self.settings.expressions, memories, about, wish, web,
+                         self.plugin_instructions),
             tools=((self.tools.registry.schemas() if use_tools else [])
                    + ([WEB_SEARCH] if web else [])) or None)
         if not request:

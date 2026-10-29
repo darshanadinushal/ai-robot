@@ -37,6 +37,9 @@ def section_icon(surface, name, x, y, color):
         pygame.draw.rect(surface,color,(x-12,y-15,24,30),2,border_radius=4)
         for dy in (-7,0,7):
             line(surface,color,(x-6,y+dy),(x+6,y+dy),2)
+    elif name == 'Plugins':
+        for dx,dy in ((-7,-7),(7,-7),(-7,7),(7,7)):
+            pygame.draw.rect(surface,color,(x+dx-6,y+dy-6,12,12),2,border_radius=3)
     else:
         pygame.draw.circle(surface,color,(x,y),15,2)
         pygame.draw.circle(surface,color,(x,y-7),2)
@@ -188,8 +191,8 @@ def audio_status(audio, mic_on):
     return 'basic',tr('No echo cancelling detected')
 
 
-def toggle(surface, fonts, accent, on, y, hits, action):
-    track = pygame.Rect(CONTROL_X,y,76,38)
+def toggle(surface, fonts, accent, on, y, hits, action, x=CONTROL_X):
+    track = pygame.Rect(x,y,76,38)
     pygame.draw.rect(surface,accent if on else (24,52,84),track,border_radius=19)
     pygame.draw.circle(surface,TEXT,(track.right-19 if on else track.left+19,track.centery),15)
     draw_text(surface,tr('ON' if on else 'OFF'),fonts['small'],TEXT,
@@ -254,6 +257,99 @@ def memory_section(surface, fonts, accent, prefs, y, memory, hits):
     add_hit(hits,button,('forget_all',None))
 
 
+PLUGIN_ROWS = 4  # plugins per page in Settings > Plugins
+PLUGIN_DOTS = {'running':(67,235,179),'permission':(255,185,67),'off':MUTED}
+
+
+def plugin_pages(count):
+    return max(1,-(-count//PLUGIN_ROWS))
+
+
+def plugin_status(view):
+    from ..plugins.manager import STATUS_TEXT
+    return tr(STATUS_TEXT.get(view.status,view.status))
+
+
+def plugins_section(surface, fonts, accent, y, plugins, hits):
+    """Settings > Plugins: the list with on/off switches, or one plugin's details.
+
+    `plugins`: (views, page, open id); a view is plugins.manager.PluginView.
+    """
+    views,page,open_id = plugins
+    shown = next((v for v in views if v.id==open_id),None)
+    if shown is not None:
+        plugin_details(surface,fonts,accent,y,shown,hits)
+        return
+    section_header(surface,fonts,'Plugins',y,'Apps that add to Luna')
+    if not views:
+        draw_text(surface,tr('No plugins yet.'),fonts['small'],TEXT,topleft=(LABEL_X,y+110))
+        draw_text(surface,tr('Apps built on Luna Core add their plugins here.'),fonts['mini'],MUTED,
+                  topleft=(LABEL_X,y+146))
+        return
+    pages = plugin_pages(len(views))
+    page = min(page,pages-1)
+    for i,view in enumerate(views[page*PLUGIN_ROWS:(page+1)*PLUGIN_ROWS]):
+        row = pygame.Rect(LABEL_X,y+94+i*84,CONTROL_RIGHT-LABEL_X,76)
+        pygame.draw.rect(surface,(8,32,62),row,border_radius=10)
+        pygame.draw.rect(surface,(33,73,109),row,1,border_radius=10)
+        pygame.draw.circle(surface,PLUGIN_DOTS.get(view.status,(255,110,110)),(row.left+20,row.top+24),7)
+        draw_text(surface,wrap_text(fonts['small'],view.name,row.width-260,1)[0],fonts['small'],TEXT,
+                  topleft=(row.left+38,row.top+12))
+        detail = view.version+'  •  '+plugin_status(view)
+        draw_text(surface,wrap_text(fonts['mini'],detail,row.width-260,1)[0],fonts['mini'],MUTED,
+                  topleft=(row.left+38,row.top+44))
+        if view.status not in ('broken','incompatible'):
+            toggle(surface,fonts,accent,view.enabled,row.top+19,hits,('plugin_toggle',view.id),
+                   x=row.right-180)
+        add_hit(hits,row,('plugin_open',view.id))
+    if pages>1:
+        bottom = y+430
+        for rect,(text,step) in zip(control_rects(bottom,2,40,60),(('<',-1),('>',1))):
+            rect.x -= CONTROL_X-LABEL_X
+            choice_button(surface,fonts,accent,rect,text,False,hits,('plugin_page',step))
+        draw_text(surface,'%d / %d' % (page+1,pages),fonts['small'],MUTED,topleft=(LABEL_X+160,bottom+8))
+
+
+def plugin_details(surface, fonts, accent, y, view, hits):
+    """One plugin: status, on/off, its permissions (sensitive ones need a yes) and settings."""
+    section_icon(surface,'Plugins',LABEL_X+8,y+32,TEXT)
+    draw_text(surface,wrap_text(fonts['heading'],view.name,560,1)[0],fonts['heading'],TEXT,
+              topleft=(LABEL_X+42,y+14))
+    subtitle = tr('Version {version}',version=view.version)+('  •  '+view.description if view.description else '')
+    draw_text(surface,wrap_text(fonts['mini'],subtitle,640,1)[0],fonts['mini'],MUTED,topleft=(LABEL_X+43,y+52))
+    back = pygame.Rect(CONTROL_RIGHT-150,y+14,150,46)
+    choice_button(surface,fonts,accent,back,tr('Back'),False,hits,('plugin_back',None))
+    line(surface,(20,52,88),(CONTENT_CLIP.left+10,y+78),(CONTENT_CLIP.right-10,y+78),1)
+    state = {'running':'natural','permission':'loading'}.get(view.status,'basic')
+    status_row(surface,fonts,'Status',y+112,(state,plugin_status(view)))
+    row_label(surface,fonts,'Use plugin',y+168)
+    if view.status in ('broken','incompatible'):
+        draw_text(surface,tr('OFF'),fonts['small'],MUTED,topleft=(CONTROL_X,y+156))
+    else:
+        toggle(surface,fonts,accent,view.enabled,y+149,hits,('plugin_toggle',view.id))
+    row_label(surface,fonts,'Permissions',y+222)
+    if not view.permissions:
+        draw_text(surface,tr('None'),fonts['small'],MUTED,topleft=(CONTROL_X,y+210))
+    for i,(name,sensitive,granted,description) in enumerate(view.permissions):
+        top = y+204+i*46
+        draw_text(surface,wrap_text(fonts['small'],tr(description),420,1)[0],fonts['small'],TEXT,
+                  topleft=(CONTROL_X,top+6))
+        if sensitive:
+            toggle(surface,fonts,accent,granted,top,hits,('plugin_grant',(view.id,name)),x=CONTROL_X+440)
+        else:
+            draw_text(surface,tr('Allowed'),fonts['small'],MUTED,topleft=(CONTROL_X+440,top+6))
+    top = y+214+max(1,len(view.permissions))*46
+    if any(sensitive for _,sensitive,_,_ in view.permissions):
+        draw_text(surface,tr('Only allow plugins you trust.'),fonts['mini'],WARNING,topleft=(CONTROL_X,top-6))
+        top += 26
+    for setting,value in view.settings:
+        row_label(surface,fonts,setting.label,top+22)
+        for choice,rect in zip(setting.choices,control_rects(top,len(setting.choices),44,180)):
+            choice_button(surface,fonts,accent,rect,tr(choice),choice==value,hits,
+                          ('plugin_setting',(view.id,setting.key,choice)))
+        top += 58
+
+
 def key_button(surface, fonts, accent, rect, text, hits, action, strong=False):
     pygame.draw.rect(surface,(8,32,62) if not strong else mix(accent,BACKGROUND,.55),rect,border_radius=10)
     pygame.draw.rect(surface,accent,rect,2,border_radius=10)
@@ -288,7 +384,7 @@ def name_keyboard(surface, fonts, accent, editor, y, hits):
 
 def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic',''),
                   online=('basic',''), memory=((),0,False,False), interrupt=False,
-                  audio=('basic',''), editor=None, speech_state=None):
+                  audio=('basic',''), editor=None, speech_state=None, plugins=((),0,None)):
     """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
     hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
     settings_sidebar(surface,fonts,accent,active)
@@ -376,6 +472,8 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
     elif name=='Memory':
         section_header(surface,fonts,name,y,'What Luna remembers about you')
         memory_section(surface,fonts,accent,prefs,y,memory,hits)
+    elif name=='Plugins':
+        plugins_section(surface,fonts,accent,y,plugins,hits)
     else:
         section_header(surface,fonts,name,y)
         about = (tr('Luna 1.0 - personal robot for Raspberry Pi 5.'),

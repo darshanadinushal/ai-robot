@@ -179,11 +179,12 @@ def about_text(about, birthday_today=False):
 
 
 def instructions(language="en", now=None, profile=None, tools=False, expressions=False,
-                 memories=None, about=None, birthday_today=False, web=False):
+                 memories=None, about=None, birthday_today=False, web=False, extra=()):
     """Instructions for one question; Luna answers in the voice language.
 
     `memories`: a memory.Recall when memory is on (None: off). `about`: the saved "About you"
     fields; a saved name replaces LUNA_USER_NAME. `web`: OpenAI web search is offered.
+    `extra`: sentences added by plugins (their personality and abilities).
     """
     about = about or {}
     abilities = list(TOOL_ABILITIES if tools else ABILITIES)
@@ -196,6 +197,7 @@ def instructions(language="en", now=None, profile=None, tools=False, expressions
              personalise("You can: %s." % "; ".join(abilities)),
              "Not connected yet: %s. If the user asks for one of these, say briefly that it is "
              "not connected yet." % ", ".join(missing)]
+    parts.extend(personalise(text) for text in extra)
     if tools:
         parts.append(TOOL_RULES)
     if web:

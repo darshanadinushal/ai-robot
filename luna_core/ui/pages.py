@@ -21,6 +21,7 @@ class Page:
 
     name = 'Page'  # unique; shown on the navigation button (translated with tr if known)
     chrome = True  # draw the sci-fi frame behind the page
+    plugin = None  # the id of the plugin that added it (set by Luna)
 
     def draw_icon(self, surface, x, y, color):
         """The navigation-button icon, centred on (x, y)."""

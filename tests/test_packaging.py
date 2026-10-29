@@ -24,7 +24,8 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(luna_core.__version__, "1.0.0")
 
     def test_importing_the_core_does_not_start_pygame(self):
-        code = "import sys, luna_core; print('pygame' in sys.modules, luna_core.Robot.__name__)"
+        code = ("import sys, luna_core, luna_core.plugins.manager; "
+                "print('pygame' in sys.modules, luna_core.Robot.__name__)")
         result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True,
                                 text=True, timeout=30)
         self.assertEqual(result.stdout.split(), ["False", "Robot"], result.stderr)
@@ -69,6 +70,13 @@ class LogTests(unittest.TestCase):
         self.assertEqual(text, "key *** and sk-*** end")
         record = logging.LogRecord("luna", logging.ERROR, __file__, 1, "bad key %s", ("sk-1234567890abcd",), None)
         self.assertEqual(logs.RedactingFormatter("%(message)s").format(record), "bad key sk-***")
+        try:  # a plugin's error is logged with its traceback: that is masked too
+            raise ValueError("token sk-1234567890abcd")
+        except ValueError:
+            record = logging.LogRecord("luna.plugins", logging.ERROR, __file__, 1, "failed", (), sys.exc_info())
+        text = logs.RedactingFormatter("%(message)s").format(record)
+        self.assertIn("ValueError: token sk-***", text)
+        self.assertNotIn("1234567890abcd", text)
 
     def test_log_file_setting(self):
         with mock.patch.dict(os.environ, {"LUNA_LOG_FILE": "off"}):

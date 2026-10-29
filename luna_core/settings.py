@@ -8,7 +8,7 @@ from .naming import MAX_LETTERS, clean_name
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS
 from .voices import VOICES, get_voice, voice_for, voices_for
 
-SECTIONS = ("Display & Theme", "Voice", "Listening", "Memory", "About")
+SECTIONS = ("Display & Theme", "Voice", "Listening", "Memory", "Plugins", "About")
 
 
 KEYBOARD_ROWS = ("QWERTYUIOPÅ", "ASDFGHJKLÖÄ", "ZXCVBNM")

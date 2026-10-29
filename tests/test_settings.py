@@ -170,7 +170,8 @@ class SettingsTouchTests(unittest.TestCase):
             return {a[0] for _, a in self.hud.settings_hits} - {"section"}
         self.assertEqual(actions(), {"mode", "color", "layout", "language", "animations"})
         expected = {1: {"voice_language", "voice", "preview"},
-                    2: {"online_listening", "voice_interrupt"}, 3: {"memory"}, 4: {"name_edit"}}
+                    2: {"online_listening", "voice_interrupt"}, 3: {"memory"},
+                    SECTIONS.index("Plugins"): set(), SECTIONS.index("About"): {"name_edit"}}
         for index, kinds in expected.items():
             self.tap(("section", index))
             self.assertEqual(actions(), kinds, SECTIONS[index])
@@ -206,7 +207,7 @@ class SettingsTouchTests(unittest.TestCase):
         self.assertIs(self.hud.conversation.memory, memory)
 
     def test_new_robot_name_on_the_keyboard_restarts(self):
-        self.tap(("section", 4))
+        self.tap(("section", SECTIONS.index("About")))
         self.tap(("name_edit", None))
         for _ in range(4):
             self.tap(("name_back", None))
@@ -246,7 +247,10 @@ class TranslationTests(unittest.TestCase):
         names |= {"Listening", "Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
                                  "FEMALE", "MALE", "Wave layout", "Face layout", "Online listening",
                                  "Hear long questions more accurately",
-                                 "What Luna remembers about you"}
+                                 "What Luna remembers about you", "Apps that add to Luna"}
+        from luna_core.plugins import PERMISSIONS
+        from luna_core.plugins.manager import STATUS_TEXT
+        names |= {text for _, text in PERMISSIONS.values()} | set(STATUS_TEXT.values())
         from luna_core.preferences import COLOR_CHOICES, LAYOUT_CHOICES, WAVE_LAYOUTS
         from luna_core.voices import VOICES
         names |= set(COLOR_CHOICES) | set(LAYOUT_CHOICES) | set(WAVE_LAYOUTS)

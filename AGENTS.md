@@ -62,6 +62,11 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
   face state in `face_state.py`; the robot itself (`RobotHUD`) in `luna_core/app.py`. Apps add
   pages with `Robot.add_page(Page)`; never add `if page == ...` branches to `RobotHUD`. Settings logic in `luna_core/settings.py` (tested in
   `tests/test_settings.py`), stored by `luna_core/preferences.py`.
+- Plugins: `luna_core/plugins/` (guide `docs/PLUGINS.md`). Apps add features as plugins, not by
+  editing Core. Every call into plugin code must go through `PluginManager.call`/`guard`; a plugin
+  reaches Luna only through `PluginContext` and its declared permissions (sensitive ones are off
+  until the user allows them). The `PluginContext`/`Plugin` names are a public API: only add,
+  never rename (`tests/test_plugins.py` checks). Tests use `UnsavedStore`.
 - Screen text is translated: wrap new on-screen text in `tr()` and add it to `screen` in every
   non-English pack (the tests check this).
 - Pure logic needs tests in `tests/test_core.py`; keep pure modules free of pygame imports.
@@ -100,5 +105,5 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
 ## Status snapshot
 Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expressions,
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
-follow-ups and tap-to-stop, date/time-aware answers, web search (news, live scores), configurable robot name, optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
+follow-ups and tap-to-stop, date/time-aware answers, plugins (Settings > Plugins), web search (news, live scores), configurable robot name, optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
 Planned: AI-model setting, autostart, camera/motors/smart home.
