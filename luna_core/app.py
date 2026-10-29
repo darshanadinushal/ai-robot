@@ -21,7 +21,7 @@ except ImportError as exc:
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
 from .commands import parse_command, reply_for, route, utterance_end
 from .listening import UtteranceAssembler, continue_seconds
-from . import audio_devices, i18n, languages, naming, speech
+from . import audio_devices, hardware, i18n, languages, naming, speech
 from .i18n import tr
 from .ai import AIWorker, ai_configured
 from .assistant_core.conversation import Conversation
@@ -845,7 +845,12 @@ class RobotHUD:
         self.settings_section=0
         self.settings_hits=[]
         self.preview=''  # '' | 'waiting' (voice still loading) | 'playing'
+        # The devices (hardware.create): real ones, mocks, or an app's own Hardware.
+        chosen=getattr(args,'hardware',None)
+        self.hardware=(chosen if isinstance(chosen,hardware.Hardware)
+                       else hardware.create(chosen,detect_audio=not args.no_voice))
         speech.enabled=not args.no_speech
+        speech.use_speaker(self.hardware.speaker)
         # The voice is a preference; LUNA_VOICE overrides it for testing without saving it.
         self.voice_key=os.environ.get('LUNA_VOICE') or self.prefs['voice']
         speech.set_voice(self.voice_key)
@@ -854,13 +859,13 @@ class RobotHUD:
         if use_ai:  # name, location, turn limit, idle reset (from ~/.luna.env or the environment)
             self.conversation.settings=settings_from_env()
         # Microphone + speech speaker; an echo-cancelling pair turns on interrupt by voice.
-        self.audio=audio_devices.detect() if not args.no_voice else audio_devices.AudioSetup()
+        self.audio=self.hardware.audio or audio_devices.AudioSetup()
         if not args.no_voice:
-            log.info('Luna audio: mic %r, speaker %r, echo cancelling: %s',
-                     self.audio.mic or 'default',self.audio.speaker or 'default',
+            log.info('Luna audio (%s hardware): mic %r, speaker %r, echo cancelling: %s',
+                     self.hardware.mode,self.audio.mic or 'default',self.audio.speaker or 'default',
                      self.audio.echo_cancelling)
         self.voice=(VoiceListener(muted=self.mic_muted,free_form=self.ai is not None,
-                                  language=self.talk_language,device=self.audio.mic_device)
+                                  language=self.talk_language,microphone=self.hardware.microphone)
                     if not args.no_voice else None)
         if self.voice:
             self.voice.start()
@@ -1476,6 +1481,7 @@ class RobotHUD:
             speech.stop()
             if self.voice:
                 self.voice.stop()
+            self.hardware.close()
             pygame.quit()
 
 

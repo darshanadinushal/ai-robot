@@ -11,5 +11,8 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 - Logging goes to the console and `~/.luna/logs/luna.log` (rotated, `LUNA_LOG_FILE`), with API
   keys masked; crashes are logged.
 - `luna --version` and `luna_core.__version__`.
+- Hardware layer `luna_core.hardware`: microphone, speaker, camera and motor interfaces with
+  real and mock adapters. `--mock-hardware` / `LUNA_HARDWARE=mock` / `Robot(hardware=...)`, and
+  `--headless` / `Robot(display="headless")` run Luna with no devices or screen.
 - Includes everything before the package: face, offline voice commands, Piper speech, AI chat
   with web search and memory, wake-word sound-alikes, configurable robot name, Settings.

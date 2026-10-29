@@ -1,27 +1,40 @@
 """The public entry point of Luna Core (pygame is only imported when a robot runs)."""
+import os
 from types import SimpleNamespace
 
-DISPLAYS = ("auto", "window", "fullscreen")
+from . import hardware as devices
+
+DISPLAYS = ("auto", "window", "fullscreen", "headless")
 
 
 class Robot:
     """One Luna robot: face, offline listening, speech and optional AI chat on one screen.
 
-    display: "auto" (fullscreen on the Pi, a window on Windows), "window" or "fullscreen".
+    display: "auto" (fullscreen on the Pi, a window on Windows), "window", "fullscreen" or
+    "headless" (no screen needed: SDL's dummy video and audio drivers).
     voice, speech, ai: switch the microphone, spoken replies and online AI chat off.
+    hardware: "real", "mock", a hardware.Hardware, or None for LUNA_HARDWARE (default real).
     """
 
-    def __init__(self, *, display="auto", voice=True, speech=True, ai=True):
+    def __init__(self, *, display="auto", voice=True, speech=True, ai=True, hardware=None):
         if display not in DISPLAYS:
             raise ValueError("display must be one of: " + ", ".join(DISPLAYS))
-        self.options = SimpleNamespace(windowed=display == "window",
+        if not isinstance(hardware, devices.Hardware):
+            hardware = devices.create(hardware, detect_audio=voice)
+        self.display = display
+        self.hardware = hardware
+        self.options = SimpleNamespace(windowed=display in ("window", "headless"),
                                        fullscreen=display == "fullscreen",
-                                       no_voice=not voice, no_speech=not speech, no_ai=not ai)
+                                       no_voice=not voice, no_speech=not speech, no_ai=not ai,
+                                       hardware=hardware)
         self.restart_requested = False
 
     def run(self, screenshot=None):
         """Show the robot until it is closed. Returns True when it asked to restart
         (after a new robot name); `luna_core.cli.main` then starts it again."""
+        if self.display == "headless":  # before pygame starts
+            os.environ["SDL_VIDEODRIVER"] = "dummy"
+            os.environ["SDL_AUDIODRIVER"] = "dummy"
         from .app import RobotHUD
 
         hud = RobotHUD(self.options)

@@ -86,6 +86,9 @@ class FakeSpeech:
     def set_voice(self, key):
         self.loaded.append(key)
 
+    def use_speaker(self, speaker):
+        self.speaker = speaker
+
     def voice_state(self):
         return self.state, "status"
 

@@ -306,6 +306,19 @@ class SpeechEngine:
         self.status = "Basic voice"
 
     # ---- public API
+    def set_player(self, make_player):
+        """Use another player factory (None: default_player) from the next sentence on."""
+        with self._lock:
+            old = self._player
+            self._make_player = make_player or default_player
+            # The play thread keeps using self._player, so replace it rather than clear it.
+            self._player = self._make_player() if self._threads else None
+        if old is not None:
+            try:
+                old.stop()
+            except OSError:
+                pass
+
     def is_talking(self):
         """True only while messages are queued or playing (no echo tail)."""
         return bool(self._open)
@@ -496,6 +509,11 @@ def speak_async(message):
     """Queue a message; Luna speaks queued messages in order."""
     if enabled and str(message).strip():
         _engine.speak_async(message)
+
+
+def use_speaker(speaker):
+    """Play through a hardware.Speaker (None: the system default player). Call before speaking."""
+    _engine.set_player(None if speaker is None else (lambda: speaker))
 
 
 def stop():

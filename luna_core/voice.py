@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import languages
 from .commands import vocabulary
+from .hardware.real import SoundDeviceMicrophone
 
 log = logging.getLogger("luna.voice")
 
@@ -49,9 +50,11 @@ class VoiceListener:
     added with their time, and it is cleared while muted (Luna never records herself).
     """
 
-    def __init__(self, muted=None, free_form=False, language="en", device=None):
+    def __init__(self, muted=None, free_form=False, language="en", device=None, microphone=None):
         self._muted = muted or (lambda: False)
-        self.device = device  # sounddevice microphone (audio_devices); None = system default
+        # A hardware.Microphone; by default the sounddevice one (device: audio_devices, None =
+        # the system default).
+        self.microphone = microphone or SoundDeviceMicrophone(device)
         self.free_form = free_form
         self.language = language if language in MODELS else languages.DEFAULT
         self.active_language = None
@@ -84,7 +87,6 @@ class VoiceListener:
 
     def _run(self):
         try:
-            import sounddevice
             from vosk import KaldiRecognizer, Model, SetLogLevel
         except ImportError:
             self.status = "voice packages missing"
@@ -94,10 +96,7 @@ class VoiceListener:
             recognizer = self._load(Model, KaldiRecognizer)
             if recognizer is None or self._stop.is_set():
                 return
-            def callback(data, frames, time_info, status):
-                self._on_audio(data, status)
-
-            with self._open(sounddevice, callback):
+            with self.microphone.open(self._on_audio, SAMPLE_RATE, BLOCK_SAMPLES):
                 self.status = "listening"
                 while not self._stop.is_set():
                     try:
@@ -112,23 +111,12 @@ class VoiceListener:
                         self._overflow.clear()
                         continue
                     self._step(recognizer, data)
+        except ImportError:  # sounddevice missing
+            self.status = "voice packages missing"
         except Exception as exc:  # no microphone, busy device, etc.
             self.status = "microphone error: " + str(exc)[:60]
         finally:
             self.partial = ""
-
-    def _open(self, sounddevice, callback):
-        """The chosen microphone, or the system default if it cannot be opened."""
-        options = dict(samplerate=SAMPLE_RATE, blocksize=BLOCK_SAMPLES, dtype="int16",
-                       channels=1, callback=callback)
-        if self.device is not None:
-            try:
-                return sounddevice.RawInputStream(device=self.device, **options)
-            except Exception as exc:
-                log.warning("Luna voice: microphone %r failed (%s); using the default",
-                            self.device, type(exc).__name__)
-                self.device = None
-        return sounddevice.RawInputStream(**options)
 
     def _on_audio(self, data, status=None):
         """Microphone callback (audio thread): queue a block, never block or grow forever."""

@@ -91,7 +91,7 @@ class AudioDeviceTests(unittest.TestCase):
         self.assertTrue(audio.echo_cancelling)
 
     def test_the_microphone_falls_back_to_the_default(self):
-        from luna_core.voice import VoiceListener
+        from luna_core.hardware import SoundDeviceMicrophone
         opened=[]
         class FakeSoundDevice:
             def RawInputStream(self,device=None,**options):
@@ -99,9 +99,9 @@ class AudioDeviceTests(unittest.TestCase):
                     raise OSError('Invalid number of channels')
                 opened.append(options['channels'])
                 return 'default stream'
-        listener=VoiceListener(device='reSpeaker')
-        self.assertEqual(listener._open(FakeSoundDevice(),None),'default stream')
-        self.assertEqual((opened,listener.device),([1],None))
+        mic=SoundDeviceMicrophone(device='reSpeaker')
+        self.assertEqual(mic._open(FakeSoundDevice(),None),'default stream')
+        self.assertEqual((opened,mic.device),([1],None))
 
 
 class CommandTests(unittest.TestCase):

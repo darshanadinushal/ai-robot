@@ -21,6 +21,7 @@ luna_core/
   robot.py                  Robot(display=, voice=, speech=, ai=).run() -> True to restart
   cli.py                    Command-line options, logging start, restart_app()
   logs.py                   Console + ~/.luna/logs/luna.log, masks API keys, logs crashes
+  hardware/                 Pure device layer (section 1b): base.py interfaces, real.py, mock.py
   app.py                    UI, rendering, input, main loop (class RobotHUD): the adapter
   assistant_core/           Pure (no pygame): the conversation logic (section 2a)
     conversation.py         Conversation: routes utterances, AI answer lifecycle, follow-ups
@@ -70,6 +71,7 @@ tests/
   test_languages.py         Every language pack and voice is complete; partial packs fall back
   test_visual_smoke.py      Launches the app headless and saves a screenshot
   test_packaging.py         Version, Robot entry point, robot_hud compatibility, log masking, restart
+  test_hardware.py          Mock/absent devices, speaker switching, the app on mock hardware
 docs/ARCHITECTURE.md        This file
 docs/BASELINE.md            Phase 5.0 baseline measurements (simulated and real Pi)
 .github/workflows/tests.yml GitHub Actions: runs the tests headless
@@ -89,6 +91,23 @@ AGENTS.md                   Rules and quick facts for AI coding assistants
   `logs.setup_logging()`: console + rotating `~/.luna/logs/luna.log` (`LUNA_LOG_FILE` = file or
   `off`); every line passes `logs.redact` (masks `sk-...` and the `OPENAI_API_KEY` value);
   uncaught crashes, also in threads, are logged.
+
+## 1b. Hardware layer (`luna_core/hardware/`)
+- Interfaces (`base.py`): `Microphone.open(callback, samplerate, blocksize)` (context manager;
+  `callback(pcm, status)` from an audio thread), `Speaker.start(wav)/wait()/stop()`,
+  `Camera.capture() -> Frame|None`, `Motors.drive(left, right)/stop()` (speeds -1..1).
+  `Hardware` bundles them plus `audio` (the names shown in Settings) and `mode`.
+- `hardware.create(mode)`: `"real"` = `SoundDeviceMicrophone` (the chosen device, falling back to
+  the default) + `SystemSpeaker` (`speech.default_player`) + `NoCamera` + `NoMotors` (drive raises
+  `HardwareUnavailable`); `"mock"` = `MockMicrophone` (`feed(pcm)`, silence otherwise),
+  `MockSpeaker` (records `played`), `MockCamera` (grey frame), `MockMotors` (records `commands`).
+  `None` reads `LUNA_HARDWARE` (default real). Apps can pass their own `Hardware`.
+- Wiring: `RobotHUD` takes `args.hardware` (a mode or a `Hardware`); `VoiceListener(microphone=)`;
+  `speech.use_speaker(speaker)` / `SpeechEngine.set_player`; `Hardware.close()` at exit stops motors.
+- Without a screen: `--headless` / `Robot(display="headless")` uses SDL's dummy drivers;
+  with `--mock-hardware` Luna runs on any machine.
+- Camera and motors have no real adapter yet; plugins will reach them only through Core
+  permissions (step 4).
 
 ## 2. Runtime overview
 
@@ -531,7 +550,7 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
 - Privacy: only recognised text is sent, never audio.
 
 ## 6. Command-line options (`main.py`, `luna_core/cli.py`)
-`--version`, `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
+`--version`, `--headless`, `--mock-hardware`, `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
 `--no-voice`, `--no-speech`, `--no-ai`, `--screenshot FILE` (save first frame and exit; implies
 no voice/speech/AI so no native audio thread is alive at exit — on the Pi that caused a segfault).
 `VoiceListener.stop()` joins the thread (3 s timeout) for the same reason.

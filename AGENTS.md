@@ -74,6 +74,9 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
   User settings live in `~/.ai-robot-hud.json`, memories in `~/.luna-memory.db`, outside the repo;
   voice models in `~/.ai-robot-models`. Tests must point `LUNA_MEMORY_FILE` at a temp folder.
 - Draw on the 1280×720 logical canvas only; use the shared `*_RECTS` constants for both drawing and hit tests.
+- Devices go through `luna_core/hardware/` (interfaces + real + mock adapters); never open
+  sounddevice, players, cameras or motors directly elsewhere. Every new device needs a mock.
+  Run without hardware: `main.py --headless --mock-hardware`.
 - Worker threads (voice, speech, AI) must not call pygame; communicate via queue/float/status string.
 - Speech: `speech.py` (pipeline, Piper/basic voices, immediate `stop()`), catalogue in `voices.json`;
   tests in `tests/test_speech.py` use fake voices/players. Design: `docs/VOICE_DESIGN.md`.

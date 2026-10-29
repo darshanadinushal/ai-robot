@@ -286,6 +286,9 @@ pip install -e ".[voice,speech,ai]"   # from this folder; extras are optional
 luna --windowed                       # same as: python main.py / python -m luna_core
 ```
 
+Without hardware (a laptop, CI, a server): `luna --headless --mock-hardware` runs Luna with
+no screen, microphone or speaker (`LUNA_HARDWARE=mock`, or `Robot(hardware="mock")`).
+
 Luna logs to the console and to `~/.luna/logs/luna.log` (rotated; `LUNA_LOG_FILE=<file>` or
 `off`). Keys are masked in the log. The old package name `robot_hud` still imports (same
 modules, with a deprecation warning) and will be removed in 2.0.
@@ -305,6 +308,7 @@ ai-robot/
 ├── luna_core/
 │   ├── __init__.py             # Public entry point: Robot, __version__
 │   ├── cli.py / logs.py        # Command line start, restart; log file with masked keys
+│   ├── hardware/               # Microphone, speaker, camera, motors: real and mock adapters
 │   ├── app.py                  # UI, drawing, touch, voice/AI wiring (RobotHUD)
 │   ├── assistant_core/         # Conversation logic without the screen (routing, answers, follow-ups)
 │   ├── commands.py             # Words -> actions, wake-word routing, spoken replies
