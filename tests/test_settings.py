@@ -235,7 +235,9 @@ class TranslationTests(unittest.TestCase):
         i18n.set_language("en")
 
     def test_every_screen_text_is_translated(self):
-        source = Path(__file__).parents[1].joinpath("luna_core", "app.py").read_text(encoding="utf-8")
+        core = Path(__file__).parents[1] / "luna_core"
+        files = [core / "app.py"] + sorted((core / "ui").glob("*.py"))
+        source = "\n".join(f.read_text(encoding="utf-8") for f in files)
         texts = set(re.findall(r"tr\('((?:[^'\\]|\\.)*)'", source))
         texts |= set(re.findall(r"(?:'|\()'([^']+)' if ", source))  # tr('A' if x else 'B')
         texts |= set(re.findall(r" else '([^']+)'\)", source))

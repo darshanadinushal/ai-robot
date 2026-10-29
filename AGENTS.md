@@ -58,7 +58,9 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
 - AI conversation: `luna_core/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
   `assistant_core/context.py`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`, via `Conversation.poll`).
-- Drawing and pages: `luna_core/app.py`. Settings logic in `luna_core/settings.py` (tested in
+- Drawing and pages: `luna_core/ui/` (theme, draw, chrome, `pages.Page`, settings_page, touch);
+  face state in `face_state.py`; the robot itself (`RobotHUD`) in `luna_core/app.py`. Apps add
+  pages with `Robot.add_page(Page)`; never add `if page == ...` branches to `RobotHUD`. Settings logic in `luna_core/settings.py` (tested in
   `tests/test_settings.py`), stored by `luna_core/preferences.py`.
 - Screen text is translated: wrap new on-screen text in `tr()` and add it to `screen` in every
   non-English pack (the tests check this).

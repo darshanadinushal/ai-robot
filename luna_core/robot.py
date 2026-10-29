@@ -26,8 +26,19 @@ class Robot:
         self.options = SimpleNamespace(windowed=display in ("window", "headless"),
                                        fullscreen=display == "fullscreen",
                                        no_voice=not voice, no_speech=not speech, no_ai=not ai,
-                                       hardware=hardware)
+                                       hardware=hardware, pages=[])
         self.restart_requested = False
+
+    def add_page(self, page):
+        """Add an app page (a luna_core.ui.Page) with its own navigation button.
+
+        Returns the page. The core pages are Chat, Home, Camera and Settings; names are unique.
+        """
+        names = {"Chat", "Home", "Camera", "Settings"} | {p.name for p in self.options.pages}
+        if getattr(page, "name", None) in names:
+            raise ValueError("there is already a page called %r" % page.name)
+        self.options.pages.append(page)
+        return page
 
     def run(self, screenshot=None):
         """Show the robot until it is closed. Returns True when it asked to restart

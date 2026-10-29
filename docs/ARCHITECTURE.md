@@ -22,7 +22,15 @@ luna_core/
   cli.py                    Command-line options, logging start, restart_app()
   logs.py                   Console + ~/.luna/logs/luna.log, masks API keys, logs crashes
   hardware/                 Pure device layer (section 1b): base.py interfaces, real.py, mock.py
-  app.py                    UI, rendering, input, main loop (class RobotHUD): the adapter
+  app.py                    RobotHUD: the running robot (state, listening, effects, main loop)
+  face_state.py             Pure: FaceState - gaze, blinking, mood, wave level, face actions
+  ui/                       The screen (pygame), used by RobotHUD:
+    theme.py                Colours, FPS, the shared rectangles, nav_rects(page count)
+    draw.py                 Drawing primitives, eyes, smile, waves, background
+    chrome.py               Status bar, navigation bar (one button per page), panels
+    pages.py                Page base class + Chat, Home, Camera, Settings pages
+    settings_page.py        Settings page drawing; returns [(rect, action)] for taps
+    touch.py                TouchInput: mouse/finger events -> one logical tap
   assistant_core/           Pure (no pygame): the conversation logic (section 2a)
     conversation.py         Conversation: routes utterances, AI answer lifecycle, follow-ups
     session.py              Session (id, follow-up window) and Turn (one question)
@@ -275,15 +283,39 @@ home, driving) without growing `app.py`, and is tested without pygame
 - Everything is drawn on a fixed **1280×720 logical canvas** (`CANVAS_WIDTH/HEIGHT` in
   `geometry.py`). `Viewport` letterboxes/scales it to the real screen and maps touch
   coordinates back (`Viewport.to_logical`). Never use raw screen coordinates for UI logic.
-- Layout rectangles are module constants in `app.py` (`NAV_RECTS`, `CHAT_RECT`, `QUIT_RECT`,
-  and for Settings `SIDEBAR_RECT`, `SECTION_RECTS`, `CONTENT_RECT`, `CONTENT_CLIP`). Drawing and
-  hit-testing share them, so change a rect in one place.
+- Layout rectangles are constants in `ui/theme.py` (`CHAT_RECT`, `QUIT_RECT`, and for Settings
+  `SIDEBAR_RECT`, `SECTION_RECTS`, `CONTENT_RECT`, `CONTENT_CLIP`); the navigation buttons come
+  from `nav_rects(page count)`. Drawing and hit-testing share them, so change a rect in one place.
 - Colours: theme accent comes from `COLOR_CHOICES` (`preferences.py`); neutral palette
-  constants (`BACKGROUND`, `TEXT`, `MUTED`) are at the top of `app.py`.
+  constants (`BACKGROUND`, `TEXT`, `MUTED`) are in `ui/theme.py`.
+- Old names such as `app.listening_status` or `app.CHAT_RECT` still work (`app.__getattr__`
+  forwards them to `luna_core.ui`); new code imports from `luna_core.ui`.
 
-### Pages (bottom nav, keys `1`–`4`)
+### Pages (bottom nav, keys `1`–`9`)
 `Chat` (simulated waveform demo), `Home` (the robot), `Camera` (placeholder only),
 `Settings`. Chat/Camera are placeholders: no audio recording, no camera feed.
+
+Each page is a `ui.pages.Page` in `RobotHUD.pages`: `name`, `chrome` (draw the sci-fi frame),
+`draw_icon`, `draw(hud, surface, t)`, `touch(hud, x, y, t)` and `key(hud, event, t)` (return True
+when the page used the key). `RobotHUD.frame` draws the status bar, the current page and the
+navigation bar; `handle_touch` checks the quit button and the navigation bar, then calls the
+page. An app adds a page without editing the core:
+
+```python
+from luna_core import Robot
+from luna_core.ui import Page
+
+class Lights(Page):
+    name = "Lights"
+    def draw(self, hud, surface, t): ...
+    def touch(self, hud, x, y, t): ...
+
+robot = Robot()
+robot.add_page(Lights())   # a fifth navigation button; names must be unique
+robot.run()
+```
+Four pages keep the original button positions; more pages share the bar evenly. The face state
+(gaze, blink, mood, wave) is `face_state.FaceState` in `hud.face`; `hud.mood` etc. still work.
 
 ### Home page: two modes (`prefs['mode']`)
 - **FACE**: two `draw_eye` calls + `smile`. Face layouts live in `LAYOUT_CHOICES`
@@ -323,7 +355,7 @@ Up/Down keys change it). The section list and what each tap changes live in `set
 - Display & Theme: FACE / WAVE mode (which one Home shows), colour, and face or wave layouts.
 - Language (ENGLISH / SVENSKA) changes only the screen text on every page and saves
   `language`. Each on-screen text goes through `i18n.tr()`, which looks it up in the app
-  language's pack (`screen`); a test fails if a `tr('...')` text in `app.py` is missing from a
+  language's pack (`screen`); a test fails if a `tr('...')` text in `app.py` or `ui/` is missing from a
   pack. The buttons come from the packs and wrap onto more rows after four.
   Listening, spoken replies and AI answers follow the voice language instead.
 - Voice: Voice language (one button per language in `voices.json`) and Voice type (one button

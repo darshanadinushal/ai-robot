@@ -14,5 +14,8 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 - Hardware layer `luna_core.hardware`: microphone, speaker, camera and motor interfaces with
   real and mock adapters. `--mock-hardware` / `LUNA_HARDWARE=mock` / `Robot(hardware=...)`, and
   `--headless` / `Robot(display="headless")` run Luna with no devices or screen.
+- `app.py` is split: drawing, pages and touch input are in `luna_core.ui`, the face state in
+  `luna_core.face_state`. Apps add pages with `Robot.add_page(page)` (a `luna_core.ui.Page`);
+  the navigation bar makes room for them and keys `1`-`9` choose pages. Old `app.X` names still work.
 - Includes everything before the package: face, offline voice commands, Piper speech, AI chat
   with web search and memory, wake-word sound-alikes, configurable robot name, Settings.

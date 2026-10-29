@@ -309,7 +309,9 @@ ai-robot/
 │   ├── __init__.py             # Public entry point: Robot, __version__
 │   ├── cli.py / logs.py        # Command line start, restart; log file with masked keys
 │   ├── hardware/               # Microphone, speaker, camera, motors: real and mock adapters
-│   ├── app.py                  # UI, drawing, touch, voice/AI wiring (RobotHUD)
+│   ├── app.py                  # The running robot: listening, speech, AI wiring (RobotHUD)
+│   ├── face_state.py           # Gaze, blinking, mood and wave (no pygame)
+│   ├── ui/                     # Screen: theme, drawing, status/nav bars, pages, Settings, touch
 │   ├── assistant_core/         # Conversation logic without the screen (routing, answers, follow-ups)
 │   ├── commands.py             # Words -> actions, wake-word routing, spoken replies
 │   ├── languages/              # Language packs (en.json, sv.json): add a language here
