@@ -4,7 +4,7 @@ Natural voices are Piper models installed by robot-setup ("Natural voice" featur
 ~/.ai-robot-models/piper. robot-setup reads the same voices.json, so a voice added there is both
 downloaded (checked against its SHA-256) and offered in Settings. Each voice also names a basic
 eSpeak voice of the same language and gender, used when the natural voice is not available.
-The voice's language must have a language pack (robot_hud/languages/<code>.json).
+The voice's language must have a language pack (luna_core/languages/<code>.json).
 """
 import json
 from dataclasses import dataclass

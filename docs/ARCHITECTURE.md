@@ -12,8 +12,15 @@ environment or from `~/.luna.env` outside the repo (see section 5a).
 ## 1. Repository map
 
 ```text
-main.py                     Entry point: calls robot_hud.app.main()
-robot_hud/
+main.py                     Entry point: calls luna_core.cli.main() (also `python -m luna_core`, `luna`)
+pyproject.toml              Package luna-core; extras [voice] [speech] [ai] [all]
+CHANGELOG.md                Versions of Luna Core
+robot_hud/                  Old package name (section 1a)
+luna_core/
+  __init__.py               Public API: Robot, __version__ (importing it does not import pygame)
+  robot.py                  Robot(display=, voice=, speech=, ai=).run() -> True to restart
+  cli.py                    Command-line options, logging start, restart_app()
+  logs.py                   Console + ~/.luna/logs/luna.log, masks API keys, logs crashes
   app.py                    UI, rendering, input, main loop (class RobotHUD): the adapter
   assistant_core/           Pure (no pygame): the conversation logic (section 2a)
     conversation.py         Conversation: routes utterances, AI answer lifecycle, follow-ups
@@ -62,11 +69,26 @@ tests/
   test_swedish.py           Swedish listening, commands, replies and AI language
   test_languages.py         Every language pack and voice is complete; partial packs fall back
   test_visual_smoke.py      Launches the app headless and saves a screenshot
+  test_packaging.py         Version, Robot entry point, robot_hud compatibility, log masking, restart
 docs/ARCHITECTURE.md        This file
 docs/BASELINE.md            Phase 5.0 baseline measurements (simulated and real Pi)
 .github/workflows/tests.yml GitHub Actions: runs the tests headless
 AGENTS.md                   Rules and quick facts for AI coding assistants
 ```
+
+## 1a. Luna Core package and compatibility
+- Luna Core is the package `luna-core` (`pyproject.toml`, version from `luna_core.__version__`,
+  history in `CHANGELOG.md`, releases are git tags `vX.Y.Z`). Apps use `from luna_core import Robot`.
+- Pi installs still use apt pygame; `pygame>=2.1` in `pyproject.toml` lets apt's version count.
+- `robot_hud` is the old name: an import hook makes `robot_hud.X` the same module object as
+  `luna_core.X` (with a DeprecationWarning). robot-setup (not changed) finds Luna by
+  `robot_hud/app.py` and reads `robot_hud/voices.json` and `robot_hud/languages/*.json`, so those
+  are **copies**: after changing `luna_core/voices.json` or a pack, copy it there too
+  (`tests/test_packaging.py` fails until they match). To be removed in 2.0.
+- Logging: modules use `logging.getLogger("luna.<area>")`, never `print`. `cli.main` calls
+  `logs.setup_logging()`: console + rotating `~/.luna/logs/luna.log` (`LUNA_LOG_FILE` = file or
+  `off`); every line passes `logs.redact` (masks `sk-...` and the `OPENAI_API_KEY` value);
+  uncaught crashes, also in threads, are logged.
 
 ## 2. Runtime overview
 
@@ -89,7 +111,7 @@ Main loop (`RobotHUD.run`, 30 FPS): `events(t)` → `frame(t)` → `present()`.
 `Conversation.hear`) and calls `Conversation.poll`, which handles AI answers and opens the
 follow-up window when speech ends. The core returns effects; `run_effects` carries them out.
 
-## 2a. Assistant core (`robot_hud/assistant_core/`, phase 5.0)
+## 2a. Assistant core (`luna_core/assistant_core/`, phase 5.0)
 The conversation logic lives in a pure package so it can grow (context, tools, memory, smart
 home, driving) without growing `app.py`, and is tested without pygame
 (`tests/test_assistant_core.py` checks that it never imports pygame).
@@ -410,7 +432,7 @@ Model `LUNA_TRANSCRIBE_MODEL` (default `gpt-transcribe`). Each question costs AP
 3. Add a case to `CommandTests` in `tests/test_core.py`.
 
 ### Adding a language (no code changes)
-1. Copy `robot_hud/languages/en.json` to `<code>.json` (e.g. `de.json`) and translate it:
+1. Copy `luna_core/languages/en.json` to `<code>.json` (e.g. `de.json`) and translate it:
    `name`, `native_name`, `screen` (English text → translation), `commands`, `controls`,
    `wake_words`, `greetings`, `replies`, `speech`, `memory_words` (`remember`, `forget`,
    `private`, `ignore`, `about`, `yes` phrases for Persistent memory; `controls.stop` for interrupting), `ai_instruction` (language and speaking
@@ -423,7 +445,7 @@ A pack may start partial: missing screen texts, replies and sentences are Englis
 a `listening_model` Luna listens in English. The tests list what is still missing.
 
 ### Adding or replacing a voice (no code changes)
-Add an entry to `robot_hud/voices.json`: `key` (e.g. `DE_FEMALE`), `language` (a pack code),
+Add an entry to `luna_core/voices.json`: `key` (e.g. `DE_FEMALE`), `language` (a pack code),
 `gender`, `name`, `label`, Piper `model`, a basic `espeak` voice, licence notes, and the two
 files (`<model>.onnx`, `<model>.onnx.json`) with their path below `download_base`, size and
 SHA-256. robot-setup reads the same file, so Install/Repair downloads and checks the new voice.
@@ -508,8 +530,8 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
 - Errors are logged by class name only; `friendly_error` turns them into a short spoken sentence (no secrets).
 - Privacy: only recognised text is sent, never audio.
 
-## 6. Command-line options (`main.py`)
-`--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
+## 6. Command-line options (`main.py`, `luna_core/cli.py`)
+`--version`, `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
 `--no-voice`, `--no-speech`, `--no-ai`, `--screenshot FILE` (save first frame and exit; implies
 no voice/speech/AI so no native audio thread is alive at exit — on the Pi that caused a segfault).
 `VoiceListener.stop()` joins the thread (3 s timeout) for the same reason.

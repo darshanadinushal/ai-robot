@@ -1,12 +1,12 @@
 """Phase 5.0D: answer expressions (mood tag), progress feedback and face motion."""
 import unittest
 
-from robot_hud.ai import AIWorker
-from robot_hud.assistant_core.context import ConversationSettings, instructions, settings_from_env
-from robot_hud.assistant_core.conversation import Conversation
-from robot_hud.assistant_core.expression import (LINGER_SECONDS, CitationFilter, MoodTag,
+from luna_core.ai import AIWorker
+from luna_core.assistant_core.context import ConversationSettings, instructions, settings_from_env
+from luna_core.assistant_core.conversation import Conversation
+from luna_core.assistant_core.expression import (LINGER_SECONDS, CitationFilter, MoodTag,
                                                  face_motion)
-from robot_hud.assistant_core.tools import ToolCall
+from luna_core.assistant_core.tools import ToolCall
 from test_assistant_core import FakeAI, spoken
 from test_streaming import StreamBrain, collect
 

@@ -13,6 +13,7 @@ uses the basic voice of the same language and gender and voice_state() says why.
 """
 import atexit
 import itertools
+import logging
 import os
 import queue
 import re
@@ -27,6 +28,8 @@ from pathlib import Path
 
 from . import languages
 from . import voices as catalogue
+
+log = logging.getLogger("luna.speech")
 
 enabled = True
 
@@ -241,8 +244,7 @@ class CommandPlayer:
         if proc is not None:
             _, err = proc.communicate()
             if proc.returncode > 0:
-                print("Luna audio error:", (err or b"").decode(errors="replace").strip()[:160],
-                      flush=True)
+                log.error("Luna audio error: %s", (err or b"").decode(errors="replace").strip()[:160])
 
     def stop(self):
         proc = self._proc
@@ -381,7 +383,7 @@ class SpeechEngine:
             else:
                 self._synth = self._make_basic(voice)
                 self.state, self.status = "basic", "Basic voice: " + problem
-        print("Luna voice:", self.status, flush=True)
+        log.info("Luna voice: %s", self.status)
 
     def _active_synth(self):
         with self._lock:
@@ -395,7 +397,7 @@ class SpeechEngine:
                 self._synth = self._make_basic(synth.voice)
                 self.state = "basic"
                 self.status = "Basic voice: natural voice failed (%s)" % type(error).__name__
-                print("Luna voice:", self.status, flush=True)
+                log.info("Luna voice: %s", self.status)
             return self._synth
 
     def _stale(self, generation):
@@ -439,7 +441,7 @@ class SpeechEngine:
             except Exception as error:
                 _remove(wav)
                 if not getattr(synth, "natural", False):
-                    print("Luna speech error:", error, flush=True)
+                    log.error("Luna speech error: %s", error)
                     return None
                 synth = self._natural_failed(synth, error)  # retry once with the basic voice
         return None
@@ -471,7 +473,7 @@ class SpeechEngine:
                     self._player.start(wav)
                 self._player.wait()
             except Exception as error:  # a playback problem must not end the player thread
-                print("Luna speech error:", error, flush=True)
+                log.error("Luna speech error: %s", error)
             finally:
                 with self._lock:
                     self._quiet_until = max(self._quiet_until, time.monotonic() + TAIL_SECONDS)

@@ -6,15 +6,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from robot_hud import i18n
-from robot_hud.preferences import read_preferences
-from robot_hud.settings import SECTIONS, apply_choice
-from robot_hud.voices import sample_text, get_voice, voice_for
+from luna_core import i18n
+from luna_core.preferences import read_preferences
+from luna_core.settings import SECTIONS, apply_choice
+from luna_core.voices import sample_text, get_voice, voice_for
 
 
 class NameEditorTests(unittest.TestCase):
     def test_typing_checking_and_confirming(self):
-        from robot_hud.settings import NameEditor
+        from luna_core.settings import NameEditor
         editor = NameEditor("Luna")
         for _ in range(4):
             editor.back()
@@ -76,7 +76,7 @@ class ChoiceTests(unittest.TestCase):
 
 
 class FakeSpeech:
-    """Stands in for robot_hud.speech in the touch tests."""
+    """Stands in for luna_core.speech in the touch tests."""
 
     def __init__(self):
         self.enabled = True
@@ -107,7 +107,7 @@ class SettingsTouchTests(unittest.TestCase):
 
     def setUp(self):
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-        from robot_hud import app
+        from luna_core import app
         self.app = app
         self.speech = FakeSpeech()
         folder = tempfile.mkdtemp()
@@ -232,18 +232,18 @@ class TranslationTests(unittest.TestCase):
         i18n.set_language("en")
 
     def test_every_screen_text_is_translated(self):
-        source = Path(__file__).parents[1].joinpath("robot_hud", "app.py").read_text(encoding="utf-8")
+        source = Path(__file__).parents[1].joinpath("luna_core", "app.py").read_text(encoding="utf-8")
         texts = set(re.findall(r"tr\('((?:[^'\\]|\\.)*)'", source))
         texts |= set(re.findall(r"(?:'|\()'([^']+)' if ", source))  # tr('A' if x else 'B')
         texts |= set(re.findall(r" else '([^']+)'\)", source))
-        from robot_hud import languages
+        from luna_core import languages
         names = set(SECTIONS) | {pack.name for pack in languages.PACKS.values()}
         names |= {"Listening", "Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
                                  "FEMALE", "MALE", "Wave layout", "Face layout", "Online listening",
                                  "Hear long questions more accurately",
                                  "What Luna remembers about you"}
-        from robot_hud.preferences import COLOR_CHOICES, LAYOUT_CHOICES, WAVE_LAYOUTS
-        from robot_hud.voices import VOICES
+        from luna_core.preferences import COLOR_CHOICES, LAYOUT_CHOICES, WAVE_LAYOUTS
+        from luna_core.voices import VOICES
         names |= set(COLOR_CHOICES) | set(LAYOUT_CHOICES) | set(WAVE_LAYOUTS)
         names |= {v.license_note for v in VOICES.values()}
         names |= {"LISTENING...", "SPEAKING...", "QUIET...", "THINKING...", "NATURAL",

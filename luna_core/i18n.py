@@ -1,7 +1,7 @@
 """On-screen text in the app language (Settings → Language).
 
 The English text is the key: `tr("Home")` gives "Hem" when the app language is Swedish.
-Translations live in each language pack's "screen" table (robot_hud/languages/<code>.json);
+Translations live in each language pack's "screen" table (luna_core/languages/<code>.json);
 texts a pack does not translate are shown in English. Only screen labels are translated here;
 listening, spoken replies and AI answers follow the voice language.
 """

@@ -6,11 +6,11 @@ import unittest
 from datetime import date, datetime
 from pathlib import Path
 
-from robot_hud.assistant_core.conversation import Conversation
-from robot_hud.assistant_core.events import Log
-from robot_hud.assistant_core.context import Profile, settings_from_env
-from robot_hud.assistant_core.memory import MAX_FACTS, MemoryStore, is_birthday, memory_tools
-from robot_hud.assistant_core.tools import ToolExecutor, ToolRegistry
+from luna_core.assistant_core.conversation import Conversation
+from luna_core.assistant_core.events import Log
+from luna_core.assistant_core.context import Profile, settings_from_env
+from luna_core.assistant_core.memory import MAX_FACTS, MemoryStore, is_birthday, memory_tools
+from luna_core.assistant_core.tools import ToolExecutor, ToolRegistry
 from test_assistant_core import FakeAI
 from test_tools import call
 
@@ -249,7 +249,7 @@ class AboutYouTests(unittest.TestCase):
 
 class DefaultPathTests(unittest.TestCase):
     def test_outside_the_repo_and_configurable(self):
-        from robot_hud.assistant_core.memory import default_path
+        from luna_core.assistant_core.memory import default_path
         self.assertEqual(default_path({}), Path.home() / ".luna-memory.db")
         self.assertEqual(default_path({"LUNA_MEMORY_FILE": "x.db"}), Path("x.db"))
 

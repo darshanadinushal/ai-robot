@@ -1,5 +1,6 @@
 """Offline speech recognition using Vosk and sounddevice (both optional)."""
 import json
+import logging
 import math
 import os
 import queue
@@ -10,6 +11,8 @@ from pathlib import Path
 
 from . import languages
 from .commands import vocabulary
+
+log = logging.getLogger("luna.voice")
 
 # Offline recognition model for each listening language (follows the voice language), from the
 # language packs. Languages without one are heard with the English model.
@@ -122,8 +125,8 @@ class VoiceListener:
             try:
                 return sounddevice.RawInputStream(device=self.device, **options)
             except Exception as exc:
-                print("Luna voice: microphone %r failed (%s); using the default"
-                      % (self.device, type(exc).__name__), flush=True)
+                log.warning("Luna voice: microphone %r failed (%s); using the default",
+                            self.device, type(exc).__name__)
                 self.device = None
         return sounddevice.RawInputStream(**options)
 
@@ -159,8 +162,8 @@ class VoiceListener:
             self.level = 0.0
             if lost and not muted:
                 self.overruns += 1
-                print("Luna listening: microphone audio lost (%d blocks dropped so far), "
-                      "the unfinished question is dropped" % self.dropped_blocks, flush=True)
+                log.warning("Luna listening: microphone audio lost (%d blocks dropped so far), "
+                            "the unfinished question is dropped", self.dropped_blocks)
             return
         samples = struct.unpack("<%dh" % (len(data) // 2), data)
         rms = math.sqrt(sum(s * s for s in samples) / max(len(samples), 1))

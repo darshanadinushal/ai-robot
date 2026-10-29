@@ -1,7 +1,7 @@
 """Map spoken words to robot reactions (pure Python, no audio dependencies).
 
 The words, wake words, greetings and replies of each language come from its language pack
-(robot_hud/languages/<code>.json). Packs map words to the action IDs in ACTIONS below; new
+(luna_core/languages/<code>.json). Packs map words to the action IDs in ACTIONS below; new
 languages need no code changes, new actions do.
 """
 from . import languages, naming

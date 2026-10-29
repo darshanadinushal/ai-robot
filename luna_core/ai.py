@@ -3,6 +3,7 @@
 The API key is read from the OPENAI_API_KEY environment variable, or from the optional
 file ~/.luna.env (outside the repository). Keys are never logged or written anywhere.
 """
+import logging
 import os
 import queue
 import threading
@@ -14,6 +15,8 @@ from .assistant_core.context import BASE_INSTRUCTIONS, instructions
 from .assistant_core.tools import ToolCall
 from .assistant_core.expression import AnswerText, strip_citations
 from .speech import SentenceStream
+
+log = logging.getLogger("luna.ai")
 
 DEFAULT_MODEL = "gpt-6-luna"
 INSTRUCTIONS = BASE_INSTRUCTIONS  # built by assistant_core.context
@@ -68,8 +71,8 @@ def reasoning_effort(env=None):
     """LUNA_AI_REASONING if it is a known effort; empty = the model's default (not sent)."""
     value = (os.environ if env is None else env).get("LUNA_AI_REASONING", "").strip().lower()
     if value and value not in REASONING_EFFORTS:
-        print("Luna AI: ignoring unknown LUNA_AI_REASONING (use one of %s)"
-              % ", ".join(REASONING_EFFORTS), flush=True)
+        log.warning("Luna AI: ignoring unknown LUNA_AI_REASONING (use one of %s)",
+                    ", ".join(REASONING_EFFORTS))
         return None
     return value or None
 
@@ -273,13 +276,13 @@ class AIWorker:
         except Exception as error:  # network, key, model or package problems
             if not self._stopped(request):
                 name = type(error).__name__
-                print("Luna AI error:", name, flush=True)
+                log.error("Luna AI error: %s", name)
                 if name == "BadRequestError" and getattr(brain, "reasoning", None):
-                    print("Luna AI: the model may not support LUNA_AI_REASONING=%s"
-                          % brain.reasoning, flush=True)
+                    log.warning("Luna AI: the model may not support LUNA_AI_REASONING=%s",
+                                brain.reasoning)
                 if name == "BadRequestError" and tools:
-                    print("Luna AI: the model may not support tools; LUNA_AI_TOOLS=off or "
-                          "LUNA_AI_WEB_SEARCH=off turns them off", flush=True)
+                    log.warning("Luna AI: the model may not support tools; LUNA_AI_TOOLS=off or "
+                                "LUNA_AI_WEB_SEARCH=off turns them off")
                 if spoke:
                     self._send(request, "lost")
                 else:
@@ -375,6 +378,5 @@ class AIWorker:
         for sentence in sentences:
             if self._send(request, "sentence", sentence):
                 if not spoke:
-                    print("Luna AI: first sentence after %.1f s" % (time.monotonic() - started),
-                          flush=True)
+                    log.info("Luna AI: first sentence after %.1f s", time.monotonic() - started)
                 spoke.append(sentence)

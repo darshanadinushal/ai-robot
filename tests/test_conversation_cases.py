@@ -7,7 +7,7 @@ import json
 import unittest
 from pathlib import Path
 
-from robot_hud.commands import route, utterance_end
+from luna_core.commands import route, utterance_end
 
 CASES = json.loads((Path(__file__).with_name("conversation_cases.json")).read_text(encoding="utf-8"))["cases"]
 

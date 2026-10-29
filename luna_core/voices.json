@@ -1,0 +1,106 @@
+{
+  "default": "EN_FEMALE",
+  "download_base": "https://huggingface.co/rhasspy/piper-voices/resolve/5041a7a49ae5b3a0f30e6837769eb03fdbb231bd/",
+  "voices": [
+    {
+      "key": "EN_FEMALE",
+      "language": "en",
+      "gender": "female",
+      "name": "Lessac",
+      "label": "English female (Lessac)",
+      "model": "en_US-lessac-medium",
+      "espeak": "en-us+f3",
+      "license_note": "prototype only: non-commercial training data",
+      "license_details": "prototype only: training data is licensed for non-commercial use",
+      "files": [
+        {
+          "name": "en_US-lessac-medium.onnx",
+          "source": "en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+          "size": 63201294,
+          "sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f"
+        },
+        {
+          "name": "en_US-lessac-medium.onnx.json",
+          "source": "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
+          "size": 4885,
+          "sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0"
+        }
+      ]
+    },
+    {
+      "key": "EN_MALE",
+      "language": "en",
+      "gender": "male",
+      "name": "Ryan",
+      "label": "English male (Ryan)",
+      "model": "en_US-ryan-high",
+      "espeak": "en-us+m3",
+      "license_note": "prototype only: CC BY-NC-SA 4.0 training data",
+      "license_details": "prototype only: training data is CC BY-NC-SA 4.0 (non-commercial)",
+      "files": [
+        {
+          "name": "en_US-ryan-high.onnx",
+          "source": "en/en_US/ryan/high/en_US-ryan-high.onnx",
+          "size": 120786792,
+          "sha256": "b3990d7606e183ec8dbfba70a4607074f162de1a0c412e0180d1ff60bb154eca"
+        },
+        {
+          "name": "en_US-ryan-high.onnx.json",
+          "source": "en/en_US/ryan/high/en_US-ryan-high.onnx.json",
+          "size": 4166,
+          "sha256": "c6d3b98f08315cb4bebf0d49d50fc4ff491b503c64b940cd3d5ca28543b48011"
+        }
+      ]
+    },
+    {
+      "key": "SV_FEMALE",
+      "language": "sv",
+      "gender": "female",
+      "name": "Alma",
+      "label": "Svenska kvinna (Alma)",
+      "model": "sv_SE-alma-medium",
+      "espeak": "sv+f3",
+      "license_note": "CC BY 4.0: credit required",
+      "license_details": "model CC BY 4.0: credit the voice when Luna is shared",
+      "files": [
+        {
+          "name": "sv_SE-alma-medium.onnx",
+          "source": "sv/sv_SE/alma/medium/sv_SE-alma-medium.onnx",
+          "size": 63434611,
+          "sha256": "f75455eb6afeb1db9e2905d5bd7e4115afcd3710e0d399b6a40981766d32fedc"
+        },
+        {
+          "name": "sv_SE-alma-medium.onnx.json",
+          "source": "sv/sv_SE/alma/medium/sv_SE-alma-medium.onnx.json",
+          "size": 6059,
+          "sha256": "6924380892f769afa92fc6b28ff91d558690d7fb4e3ef8cbf821cefadc8f38fe"
+        }
+      ]
+    },
+    {
+      "key": "SV_MALE",
+      "language": "sv",
+      "gender": "male",
+      "name": "NST",
+      "label": "Svenska man (NST)",
+      "model": "sv_SE-nst-medium",
+      "espeak": "sv+m3",
+      "license_note": "CC0 training data",
+      "license_details": "training data CC0; confirm the model licence before distribution",
+      "files": [
+        {
+          "name": "sv_SE-nst-medium.onnx",
+          "source": "sv/sv_SE/nst/medium/sv_SE-nst-medium.onnx",
+          "size": 63104526,
+          "sha256": "df011f56825a59dd1efc080c38a65a1ef70407e60f63050e9246f43a3d7e471e"
+        },
+        {
+          "name": "sv_SE-nst-medium.onnx.json",
+          "source": "sv/sv_SE/nst/medium/sv_SE-nst-medium.onnx.json",
+          "size": 4157,
+          "sha256": "d45dd74cbb4eca58694bf04a97e243044092476f28a55ae26424f0653086980a"
+        }
+      ]
+    }
+  ]
+}

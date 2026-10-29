@@ -8,10 +8,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from robot_hud import ai
-from robot_hud.ai import AIWorker, LunaBrain, StreamError
-from robot_hud.preferences import read_preferences
-from robot_hud.speech import SentenceStream
+from luna_core import ai
+from luna_core.ai import AIWorker, LunaBrain, StreamError
+from luna_core.preferences import read_preferences
+from luna_core.speech import SentenceStream
 from test_settings import FakeSpeech
 
 
@@ -307,7 +307,7 @@ class TalkingSpeech(FakeSpeech):
 class StreamingAppTests(unittest.TestCase):
     def setUp(self):
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-        from robot_hud import app
+        from luna_core import app
         self.app = app
         self.speech = TalkingSpeech()
         folder = tempfile.mkdtemp()
@@ -324,7 +324,7 @@ class StreamingAppTests(unittest.TestCase):
         self.ai = self.hud.ai = FakeAI()
 
     def test_tool_look_is_kept_while_luna_answers(self):
-        from robot_hud.assistant_core.tools import ToolCall
+        from luna_core.assistant_core.tools import ToolCall
         self.ai.tool_results = lambda request, outputs: None
         self.hud.ask_ai("look left", 1.0)
         self.ai.send("tools", [ToolCall("c1", "set_gaze_direction", '{"direction": "left"}')])

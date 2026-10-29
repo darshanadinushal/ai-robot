@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from robot_hud.geometry import Viewport, blink_openness, clamp
-from robot_hud.preferences import COLOR_CHOICES, read_preferences, write_preferences
+from luna_core.geometry import Viewport, blink_openness, clamp
+from luna_core.preferences import COLOR_CHOICES, read_preferences, write_preferences
 
 
 class GeometryTests(unittest.TestCase):
@@ -49,7 +49,7 @@ class PreferenceTests(unittest.TestCase):
             self.assertIn('CYAN',COLOR_CHOICES)
 
     def test_voice_interrupt_is_automatic_until_chosen(self):
-        from robot_hud.settings import apply_choice, voice_interrupt_wanted
+        from luna_core.settings import apply_choice, voice_interrupt_wanted
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'prefs.json'
             prefs=read_preferences(p)
@@ -66,7 +66,7 @@ class AudioDeviceTests(unittest.TestCase):
     SOUNDCORE='bluez_output.AC_12_2F_00_11_22.1'
 
     def choose(self,mic,speaker,env=None,inputs=()):
-        from robot_hud.audio_devices import choose
+        from luna_core.audio_devices import choose
         return choose(mic,speaker,env or {},inputs)
 
     def test_array_as_mic_and_speaker_cancels_echo(self):
@@ -91,7 +91,7 @@ class AudioDeviceTests(unittest.TestCase):
         self.assertTrue(audio.echo_cancelling)
 
     def test_the_microphone_falls_back_to_the_default(self):
-        from robot_hud.voice import VoiceListener
+        from luna_core.voice import VoiceListener
         opened=[]
         class FakeSoundDevice:
             def RawInputStream(self,device=None,**options):
@@ -106,12 +106,12 @@ class AudioDeviceTests(unittest.TestCase):
 
 class CommandTests(unittest.TestCase):
     def test_parse(self):
-        from robot_hud.commands import parse_command
+        from luna_core.commands import parse_command
         self.assertEqual(parse_command("be happy"), [("expression", "happy")])
         self.assertEqual(parse_command("look left"), [("look", (-1.0, 0.0))])
         self.assertEqual(parse_command("wave mode"), [("mode", "WAVE")])
         self.assertEqual(parse_command("hello"), [])
-        from robot_hud.commands import reply_for
+        from luna_core.commands import reply_for
         self.assertEqual(reply_for(parse_command("look left")), "Looking left.")
         self.assertIsNone(reply_for([]))
 
@@ -119,7 +119,7 @@ class CommandTests(unittest.TestCase):
 
 class RouteTests(unittest.TestCase):
     def test_routes(self):
-        from robot_hud.commands import route
+        from luna_core.commands import route
         self.assertEqual(route("hey luna tell me about mars"), ("ai", "tell me about mars"))
         self.assertEqual(route("look left")[0], "command")
         self.assertEqual(route("luna")[0], "wake")
@@ -130,7 +130,7 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(route("")[0], "ignore")
 
     def test_names_that_sound_like_luna(self):
-        from robot_hud.commands import route
+        from luna_core.commands import route
         for text, expected in (("hey lena what time is it", ("ai", "what time is it")),
                                ("lou na why is the sky blue", ("ai", "why is the sky blue")),
                                ("what time is it loner", ("ai", "what time is it")),
@@ -145,9 +145,9 @@ class RouteTests(unittest.TestCase):
                 self.assertEqual(route(text)[0], "ignore", "only near the start or end, like a name")
 
     def test_a_new_robot_name(self):
-        from robot_hud import i18n, naming
-        from robot_hud.assistant_core.context import instructions
-        from robot_hud.commands import route, vocabulary
+        from luna_core import i18n, naming
+        from luna_core.assistant_core.context import instructions
+        from luna_core.commands import route, vocabulary
         self.assertEqual([naming.clean_name(n) for n in ('nOVA', 'Åsa', 'R2', 'x', 'Two words')],
                          ['Nova', 'Åsa', None, None, None])
         naming.set_name('Nova')
@@ -168,7 +168,7 @@ class RouteTests(unittest.TestCase):
             naming.set_name('Luna')
 
     def test_clean_for_speech(self):
-        from robot_hud.speech import clean_for_speech
+        from luna_core.speech import clean_for_speech
         self.assertEqual(clean_for_speech("**Hi** `there`\n- one"), "Hi there one")
         self.assertLessEqual(len(clean_for_speech("word " * 500)), 701)
 
@@ -179,7 +179,7 @@ class AIWorkerTests(unittest.TestCase):
         return worker.answers.get(timeout=5)
 
     def test_answer_and_error(self):
-        from robot_hud.ai import AIWorker
+        from luna_core.ai import AIWorker
 
         class Brain:
             def ask(self, q, language="en", instructions=None):

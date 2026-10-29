@@ -7,11 +7,11 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from robot_hud.ai import AIWorker
-from robot_hud.assistant_core.context import ConversationSettings, Profile, settings_from_env
-from robot_hud.assistant_core.conversation import Conversation
-from robot_hud.assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
-from robot_hud.assistant_core.session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS
+from luna_core.ai import AIWorker
+from luna_core.assistant_core.context import ConversationSettings, Profile, settings_from_env
+from luna_core.assistant_core.conversation import Conversation
+from luna_core.assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
+from luna_core.assistant_core.session import FOLLOWUP_SECONDS, QUESTION_FOLLOWUP_SECONDS
 from test_streaming import StreamBrain
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,7 +59,7 @@ class CoreTests(unittest.TestCase):
         self.chat = Conversation(self.ai)
 
     def test_core_does_not_import_pygame(self):
-        code = ("import sys, robot_hud.assistant_core.conversation; "
+        code = ("import sys, luna_core.assistant_core.conversation; "
                 "sys.exit('pygame' in sys.modules)")
         self.assertEqual(subprocess.run([sys.executable, "-c", code], cwd=ROOT).returncode, 0)
 

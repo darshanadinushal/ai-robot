@@ -16,9 +16,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from robot_hud.ai import REASONING_EFFORTS, LunaBrain, ai_configured  # noqa: E402
-from robot_hud.assistant_core.context import instructions  # noqa: E402
-from robot_hud.speech import SentenceStream  # noqa: E402
+from luna_core.ai import REASONING_EFFORTS, LunaBrain, ai_configured  # noqa: E402
+from luna_core.assistant_core.context import instructions  # noqa: E402
+from luna_core.speech import SentenceStream  # noqa: E402
 
 QUESTIONS = (
     ("en", "Why is the sky blue?"),

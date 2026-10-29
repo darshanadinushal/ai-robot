@@ -8,10 +8,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from robot_hud import transcription, voice
-from robot_hud.commands import utterance_end
-from robot_hud.listening import UtteranceAssembler
-from robot_hud.preferences import read_preferences
+from luna_core import transcription, voice
+from luna_core.commands import utterance_end
+from luna_core.listening import UtteranceAssembler
+from luna_core.preferences import read_preferences
 from test_streaming import FakeAI, TalkingSpeech
 
 
@@ -295,7 +295,7 @@ class FakeListener:
 class ListeningAppTests(unittest.TestCase):
     def setUp(self):
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-        from robot_hud import app
+        from luna_core import app
         self.speech = TalkingSpeech()
         folder = tempfile.mkdtemp()
         for patch in (mock.patch.object(app, "speech", self.speech),
@@ -347,7 +347,7 @@ class ListeningAppTests(unittest.TestCase):
         self.assertEqual(self.ai.asked, [("vad är en komet", "sv")])
 
     def test_continue_seconds_per_language(self):
-        from robot_hud.listening import continue_seconds
+        from luna_core.listening import continue_seconds
         self.assertEqual((continue_seconds("en"), continue_seconds("sv")), (0.6, 0.9))
         with mock.patch.dict(os.environ, {"LUNA_CONTINUE_SECONDS": "1.2"}):
             self.assertEqual(continue_seconds("sv"), 1.2)

@@ -1,7 +1,7 @@
 """Download the small offline Vosk models Luna listens with.
 
 Usage: download-voice-model.py [en] [sv] ...   (default: en). Each language pack names its
-model (robot_hud/languages/<code>.json, "listening_model"). Luna listens in the language of the
+model (luna_core/languages/<code>.json, "listening_model"). Luna listens in the language of the
 selected voice; without that language's model she keeps listening in English.
 """
 import sys
@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from robot_hud.voice import MODELS, model_path  # noqa: E402
+from luna_core.voice import MODELS, model_path  # noqa: E402
 
 URL = "https://alphacephei.com/vosk/models/%s.zip"
 

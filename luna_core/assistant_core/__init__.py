@@ -5,7 +5,7 @@
     context.py       what Luna is told with every question (instructions)
     events.py        effects the core asks the app to carry out (speak, act, stop...)
 
-The app (robot_hud/app.py) is the adapter: it feeds the core heard text, the AI worker's
+The app (luna_core/app.py) is the adapter: it feeds the core heard text, the AI worker's
 messages and whether Luna is speaking, and carries out the returned effects on the UI thread.
 Submodules are imported directly (no imports here) to keep this package free of cycles.
 """

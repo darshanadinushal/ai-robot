@@ -272,6 +272,24 @@ bash scripts/run-pi.sh
 Tests never call the real AI. For CI without a display, set `SDL_VIDEODRIVER=dummy` and
 `SDL_AUDIODRIVER=dummy`; GitHub Actions (`.github/workflows/tests.yml`) does this automatically.
 
+### Luna Core as a package (for robot apps)
+The code is the installable package `luna-core` (version in `luna_core.__version__`, history in
+[CHANGELOG.md](CHANGELOG.md)). Apps use one entry point:
+
+```python
+from luna_core import Robot
+Robot(display="auto", voice=True, speech=True, ai=True).run()
+```
+
+```powershell
+pip install -e ".[voice,speech,ai]"   # from this folder; extras are optional
+luna --windowed                       # same as: python main.py / python -m luna_core
+```
+
+Luna logs to the console and to `~/.luna/logs/luna.log` (rotated; `LUNA_LOG_FILE=<file>` or
+`off`). Keys are masked in the log. The old package name `robot_hud` still imports (same
+modules, with a deprecation warning) and will be removed in 2.0.
+
 **For developers and AI assistants:** read [AGENTS.md](AGENTS.md) and
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -279,9 +297,14 @@ Tests never call the real AI. For CI without a display, set `SDL_VIDEODRIVER=dum
 
 ```text
 ai-robot/
-├── main.py                     # App launcher
+├── main.py                     # App launcher (luna_core.cli)
+├── pyproject.toml              # The luna-core package
+├── CHANGELOG.md
 ├── SETUP_WINDOWS.bat / RUN_WINDOWS.bat
-├── robot_hud/
+├── robot_hud/                  # Old name: forwards to luna_core; data copies for robot-setup
+├── luna_core/
+│   ├── __init__.py             # Public entry point: Robot, __version__
+│   ├── cli.py / logs.py        # Command line start, restart; log file with masked keys
 │   ├── app.py                  # UI, drawing, touch, voice/AI wiring (RobotHUD)
 │   ├── assistant_core/         # Conversation logic without the screen (routing, answers, follow-ups)
 │   ├── commands.py             # Words -> actions, wake-word routing, spoken replies

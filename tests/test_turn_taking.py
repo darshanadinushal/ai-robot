@@ -1,9 +1,9 @@
 """Phase 5.3: interrupting Luna by voice while she talks."""
 import unittest
 
-from robot_hud.assistant_core.conversation import Conversation
-from robot_hud.assistant_core.turn_taking import interruption
-from robot_hud.commands import route, vocabulary
+from luna_core.assistant_core.conversation import Conversation
+from luna_core.assistant_core.turn_taking import interruption
+from luna_core.commands import route, vocabulary
 from test_assistant_core import FakeAI
 from test_listening import ListeningAppTests
 
@@ -85,7 +85,7 @@ class BargeInAppTests(unittest.TestCase):
         self.assertEqual(len(self.ai.asked), 1, "nothing else is asked")
 
     def test_automatically_on_with_echo_cancelling_audio(self):
-        from robot_hud.audio_devices import AudioSetup
+        from luna_core.audio_devices import AudioSetup
         self.hud.audio = AudioSetup("reSpeaker XVF3800", "reSpeaker XVF3800", None, True)
         self.talk(1.0)
         self.say(1.5, final="luna stop")

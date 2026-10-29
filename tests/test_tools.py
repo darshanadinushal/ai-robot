@@ -4,12 +4,12 @@ import threading
 import types
 import unittest
 
-from robot_hud import ai
-from robot_hud.ai import AIWorker
-from robot_hud.assistant_core.context import WEB_SEARCH, ConversationSettings, settings_from_env
-from robot_hud.assistant_core.conversation import Conversation
-from robot_hud.assistant_core.events import Act, Log, Speak
-from robot_hud.assistant_core.tools import (MAX_CALLS_PER_TURN, PermissionPolicy, Tool, ToolCall,
+from luna_core import ai
+from luna_core.ai import AIWorker
+from luna_core.assistant_core.context import WEB_SEARCH, ConversationSettings, settings_from_env
+from luna_core.assistant_core.conversation import Conversation
+from luna_core.assistant_core.events import Act, Log, Speak
+from luna_core.assistant_core.tools import (MAX_CALLS_PER_TURN, PermissionPolicy, Tool, ToolCall,
                                             ToolExecutor, ToolRegistry, ToolResult, face_registry)
 from test_assistant_core import FakeAI
 import test_streaming

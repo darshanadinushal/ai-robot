@@ -18,11 +18,13 @@ class VisualTests(unittest.TestCase):
             env=os.environ.copy()
             env['SDL_VIDEODRIVER']='dummy'
             env['SDL_AUDIODRIVER']='dummy'
+            env['LUNA_LOG_FILE']=str(Path(temp)/'luna.log')
             proc=subprocess.run([sys.executable,'main.py','--windowed','--no-voice','--no-speech',
                                  '--no-ai','--screenshot',str(output)],
                                 cwd=root,env=env,capture_output=True,text=True,timeout=35)
             self.assertEqual(proc.returncode,0,proc.stdout+'\n'+proc.stderr)
             self.assertGreater(output.stat().st_size,2000)
+            self.assertIn('Saved screenshot',(Path(temp)/'luna.log').read_text(encoding='utf-8'))
 
 
 if __name__=='__main__':

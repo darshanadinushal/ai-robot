@@ -22,10 +22,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from robot_hud import voice, voices  # noqa: E402
-from robot_hud.commands import route, utterance_end  # noqa: E402
-from robot_hud.listening import UtteranceAssembler, continue_seconds  # noqa: E402
-from robot_hud.speech import PiperSynth  # noqa: E402
+from luna_core import voice, voices  # noqa: E402
+from luna_core.commands import route, utterance_end  # noqa: E402
+from luna_core.listening import UtteranceAssembler, continue_seconds  # noqa: E402
+from luna_core.speech import PiperSynth  # noqa: E402
 
 CASES = [
     ("EN_FEMALE", "command", ["Luna, look left."]),

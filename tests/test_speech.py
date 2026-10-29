@@ -4,9 +4,9 @@ import time
 import unittest
 from pathlib import Path
 
-from robot_hud import speech, voices
-from robot_hud.preferences import read_preferences, write_preferences
-from robot_hud.speech import SpeechEngine, VoiceLoadError, split_sentences
+from luna_core import speech, voices
+from luna_core.preferences import read_preferences, write_preferences
+from luna_core.speech import SpeechEngine, VoiceLoadError, split_sentences
 
 
 def wait_until(condition, timeout=3.0):

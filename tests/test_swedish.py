@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from robot_hud import languages, voice
-from robot_hud.commands import parse_command, reply_for, route, spoken, vocabulary
-from robot_hud.preferences import read_preferences
+from luna_core import languages, voice
+from luna_core.commands import parse_command, reply_for, route, spoken, vocabulary
+from luna_core.preferences import read_preferences
 from test_settings import FakeSpeech
 
 
@@ -46,7 +46,7 @@ class SwedishCommandTests(unittest.TestCase):
         self.assertEqual(spoken("Mars is red.", "sv"), "Mars is red.")
 
     def test_every_ai_error_has_swedish(self):
-        from robot_hud import ai
+        from luna_core import ai
         errors = [ImportError()] + [type(name, (Exception,), {})() for name in (
             "AuthenticationError", "APIConnectionError", "NotFoundError", "RateLimitError",
             "Other")]
@@ -56,7 +56,7 @@ class SwedishCommandTests(unittest.TestCase):
 
 class SwedishAITests(unittest.TestCase):
     def test_brain_is_told_the_answer_language(self):
-        from robot_hud import ai
+        from luna_core import ai
         brain = ai.LunaBrain.__new__(ai.LunaBrain)
         calls = []
         brain.model, brain.previous_id = "m", None
@@ -69,7 +69,7 @@ class SwedishAITests(unittest.TestCase):
         self.assertTrue(calls[1]["instructions"].endswith("Always answer in English."))
 
     def test_worker_passes_the_language(self):
-        from robot_hud.ai import AIWorker
+        from luna_core.ai import AIWorker
         asked = []
 
         class Brain:
@@ -151,7 +151,7 @@ class FakeListener:
 class SwedishAppTests(unittest.TestCase):
     def setUp(self):
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-        from robot_hud import app
+        from luna_core import app
         self.app = app
         self.speech = FakeSpeech()
         folder = tempfile.mkdtemp()

@@ -14,13 +14,16 @@ Luna 1.0: pygame robot face + offline voice commands + offline speech + optional
 # Raspberry Pi (from the desktop session)
 bash scripts/install-pi.sh && bash scripts/run-pi.sh
 ```
+Luna Core is the package `luna-core` (`pyproject.toml`; `pip install -e ".[voice,speech,ai]"`);
+the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md`.
 
 ## Where things go
-- Languages are data: `robot_hud/languages/<code>.json` (screen texts, command words, wake
-  words, replies, AI instruction...). Voices are data: `robot_hud/voices.json` (also read by
-  robot-setup). Never add `if language == "sv"` code; add pack fields instead. Guide:
+- Languages are data: `luna_core/languages/<code>.json` (screen texts, command words, wake
+  words, replies, AI instruction...). Voices are data: `luna_core/voices.json`. robot-setup reads
+  copies in `robot_hud/` (old package name, kept for compatibility): copy changed packs and
+  `voices.json` there too (`tests/test_packaging.py` checks). Never add `if language == "sv"` code; add pack fields instead. Guide:
   "Adding a language" in `docs/ARCHITECTURE.md`; completeness checked by `tests/test_languages.py`.
-- Spoken word -> behaviour: `robot_hud/commands.py` (`ACTIONS`, `route`, `reply_for`; everything
+- Spoken word -> behaviour: `luna_core/commands.py` (`ACTIONS`, `route`, `reply_for`; everything
   takes the voice language) + `RobotHUD.handle_speech` / `apply_actions`.
 - Listening: Vosk final results are pieces; `listening.UtteranceAssembler` (via `RobotHUD.listen`)
   joins them into one utterance (`commands.utterance_end` picks the wait). Route only complete
@@ -35,13 +38,13 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
   on with echo-cancelling audio):
   while Luna talks, heard text goes only to `Conversation.barge_in` (stop phrase or wake word;
   her own words are echo). A spoken "stop" is never a motion safety stop. Tests: `tests/test_turn_taking.py`.
-- Conversation logic: `robot_hud/assistant_core/` (pure, no pygame): `Conversation.hear` / `poll` /
+- Conversation logic: `luna_core/assistant_core/` (pure, no pygame): `Conversation.hear` / `poll` /
   `interrupt` return effects (`events.py`) that `RobotHUD.run_effects` carries out. New
   conversation behaviour goes here, not in `app.py`; tests in `tests/test_assistant_core.py`.
   Baseline sentences: `tests/conversation_cases.json` (update a case's `route` when a phase changes it).
   AI context is built in `assistant_core/context.py`; list an ability there (and remove it from
   `NOT_CONNECTED`) only once it really works. Conversation controls are pack `controls` phrases.
-- AI tools: `robot_hud/assistant_core/tools.py`. A new skill is a `Tool` (strict JSON schema,
+- AI tools: `luna_core/assistant_core/tools.py`. A new skill is a `Tool` (strict JSON schema,
   risk class, pure `run` returning effects + `ToolResult`) in a `ToolRegistry`; validation and
   `PermissionPolicy` are code, never the model. `motion`/`sensitive` are never allowed here.
   Tests: `tests/test_tools.py` (fake brains, never the real API).
@@ -52,11 +55,11 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 - Answer expressions: `assistant_core/expression.py` (`MoodTag` strips the AI's leading "[mood]"
   tag in `AIWorker` before sentences; `Conversation.expression` is drawn above the user's mood,
   never saved). Tests: `tests/test_expression.py`.
-- AI conversation: `robot_hud/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
+- AI conversation: `luna_core/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
   `assistant_core/context.py`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`, via `Conversation.poll`).
-- Drawing and pages: `robot_hud/app.py`. Settings logic in `robot_hud/settings.py` (tested in
-  `tests/test_settings.py`), stored by `robot_hud/preferences.py`.
+- Drawing and pages: `luna_core/app.py`. Settings logic in `luna_core/settings.py` (tested in
+  `tests/test_settings.py`), stored by `luna_core/preferences.py`.
 - Screen text is translated: wrap new on-screen text in `tr()` and add it to `screen` in every
   non-English pack (the tests check this).
 - Pure logic needs tests in `tests/test_core.py`; keep pure modules free of pygame imports.
@@ -65,6 +68,8 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 - **Never commit secrets.** API keys come only from the `OPENAI_API_KEY` environment variable or
   `~/.luna.env` (outside the repo, loaded by `ai.load_env_file`, OPENAI_*/LUNA_* keys only).
   Never log keys or exception messages from the AI client (log the class name only).
+  Log with `logging.getLogger("luna.<area>")`, not `print` (`logs.py` masks keys; tests set
+  `LUNA_LOG_FILE` when they start the app).
   Do not put keys, tokens, personal emails or home paths in code, docs or tests.
   User settings live in `~/.ai-robot-hud.json`, memories in `~/.luna-memory.db`, outside the repo;
   voice models in `~/.ai-robot-models`. Tests must point `LUNA_MEMORY_FILE` at a temp folder.
