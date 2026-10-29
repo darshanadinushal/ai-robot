@@ -28,6 +28,7 @@ robot_hud/
   languages/                Language packs: en.json, sv.json (+ loader in __init__.py)
   voice.py                  Mic capture + Vosk recognition in a background thread
   listening.py              Pure: UtteranceAssembler joins Vosk's pieces into one question
+  audio_devices.py          Microphone + speech speaker by name; echo-cancelling array detection
   transcription.py          Phase 5.1 optional online listening (gpt-transcribe, OFF by default)
   speech.py                 Offline TTS: sentence pipeline, Piper natural voice, basic fallback
   voices.py                 Loads voices.json (the voice catalogue) and model paths
@@ -39,6 +40,7 @@ robot_hud/
   ai.py                     Online AI: env loading, LunaBrain (OpenAI), AIWorker thread
 scripts/
   install-pi.sh             Raspberry Pi OS setup (apt, venv, Vosk, model)
+  setup-audio-pi.sh         Makes the ReSpeaker XVF3800 the default microphone + speaker
   run-pi.sh                 Start fullscreen on the Pi (uses .venv if present)
   download-voice-model.py   Downloads the small Vosk models (en, sv, ...: from the packs)
   setup-windows.ps1, run-windows.ps1   (+ SETUP_WINDOWS.bat / RUN_WINDOWS.bat)
@@ -122,9 +124,22 @@ home, driving) without growing `app.py`, and is tested without pygame
   silences her answer without a word. `route` returns `("control", name)`.
   The microphone is off while Luna speaks unless *Interrupt by voice* is on (below); a tap
   always stops her.
-- **Interrupting by voice (phase 5.3, `turn_taking.py`, OFF by default):** Settings → Listening →
+- **Interrupting by voice (phase 5.3, `turn_taking.py`):** Settings → Listening →
   Interrupt by voice (preference `voice_interrupt`) keeps the microphone on while Luna speaks.
   Only for a headset or an echo-cancelling microphone: otherwise she hears herself.
+  `voice_interrupt` is `null` (automatic) until the user taps it: then it follows
+  `audio_devices.detect()` (`settings.voice_interrupt_wanted`).
+- **Audio devices (`audio_devices.py`):** target hardware is a ReSpeaker XVF3800 USB array as
+  microphone, with the 4 Ω 5 W speaker on the array's amplifier for speech and alerts (the array
+  cancels only what it plays itself); a music speaker (Soundcore Motion+, Bluetooth/AUX) is
+  separate and not echo-cancelled. At start `detect()` reads the default source/sink names
+  (`pactl`, else sounddevice) and `choose()` decides: echo cancelling only if both the
+  microphone and the speaker are the array (name parts `xvf3800`, `respeaker`, plus
+  `LUNA_ECHO_CANCELLING_DEVICES`; `LUNA_ECHO_CANCELLING=on|off` overrides). The default microphone
+  is kept unless `LUNA_MIC` names one or an array is plugged in but not the default;
+  `VoiceListener` falls back to the default microphone if that one cannot be opened. Speech
+  always uses the default speaker (`scripts/setup-audio-pi.sh` makes the array the default).
+  Settings → Listening → Audio shows the result.
   While she is talking (`speech.is_talking()` or an answer streaming), `RobotHUD.listen` sends
   every Vosk final and partial to `Conversation.barge_in` instead of the normal routing;
   `interruption(text, language, saying)` returns:
@@ -428,7 +443,7 @@ File: `~/.ai-robot-hud.json` (outside the repo; its name is gitignored).
 | `language` | a language pack code: `en, sv` — screen text (`i18n.LANGUAGES`) | `en` |
 | `online_listening` | boolean — questions transcribed online (Phase 5.1) | `false` |
 | `memory` | boolean — use and save remembered facts (Phase 5.2) | `true` |
-| `voice_interrupt` | boolean — interrupt Luna by voice while she talks (Phase 5.3) | `false` |
+| `voice_interrupt` | boolean or `null` — interrupt Luna by voice while she talks (Phase 5.3); `null` = on with echo-cancelling audio | `null` |
 
 `read_preferences` validates every field and silently falls back to defaults on any error;
 unknown keys are ignored. Adding a setting means: default in `read_preferences`, validation,

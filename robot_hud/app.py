@@ -22,7 +22,7 @@ except ImportError as exc:
 from .geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H, Viewport, blink_openness, clamp
 from .commands import parse_command, reply_for, route, utterance_end
 from .listening import UtteranceAssembler, continue_seconds
-from . import i18n, languages, speech
+from . import audio_devices, i18n, languages, speech
 from .i18n import tr
 from .ai import AIWorker, ai_configured
 from .assistant_core.conversation import Conversation
@@ -33,7 +33,7 @@ from .assistant_core.memory import ERRORS as MEMORY_ERRORS, MemoryStore
 from .transcription import PREROLL_SECONDS, AudioRing, OnlineListening
 from .voice import VoiceListener
 from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, read_preferences, write_preferences
-from .settings import SECTIONS, apply_choice
+from .settings import SECTIONS, apply_choice, voice_interrupt_wanted
 from .voices import LANGUAGES as VOICE_LANGUAGES, get_voice, sample_text, voices_for
 
 FPS = 30
@@ -582,6 +582,17 @@ def online_status(prefs, ai_on, mic_on):
     return 'natural',tr('On - questions to Luna are transcribed online')
 
 
+def audio_status(audio, mic_on):
+    """(state, translated line) for the microphone/speaker pair in Settings."""
+    if not mic_on:
+        return 'basic',tr('Microphone off')
+    if audio.echo_cancelling:
+        return 'natural',tr('Echo cancelling: {name}',name=audio.mic or tr('headset'))
+    if audio.mic:
+        return 'basic',tr('No echo cancelling: {name}',name=audio.mic)
+    return 'basic',tr('No echo cancelling detected')
+
+
 def toggle(surface, fonts, accent, on, y, hits, action):
     track = pygame.Rect(CONTROL_X,y,76,38)
     pygame.draw.rect(surface,accent if on else (24,52,84),track,border_radius=19)
@@ -649,7 +660,8 @@ def memory_section(surface, fonts, accent, prefs, y, memory, hits):
 
 
 def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic',''),
-                  online=('basic',''), memory=((),0,False,False)):
+                  online=('basic',''), memory=((),0,False,False), interrupt=False,
+                  audio=('basic','')):
     """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
     hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
     settings_sidebar(surface,fonts,accent,active)
@@ -729,11 +741,12 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
             draw_text(surface,wrap_text(fonts['mini'],text,860,1)[0],fonts['mini'],MUTED,
                       topleft=(LABEL_X,y+262+i*28))
         row_label(surface,fonts,'Interrupt by voice',y+375)
-        toggle(surface,fonts,accent,prefs['voice_interrupt'],y+356,hits,('voice_interrupt',None))
+        toggle(surface,fonts,accent,interrupt,y+356,hits,('voice_interrupt',None))
         draw_text(surface,wrap_text(fonts['mini'],
                                     tr('Say "Luna, stop" while she talks. Needs a headset or an echo-cancelling mic.'),
                                     CONTROL_RIGHT-CONTROL_X-170,1)[0],
                   fonts['mini'],MUTED,topleft=(CONTROL_X+170,y+364))
+        status_row(surface,fonts,'Audio',y+440,audio)
     elif name=='Memory':
         section_header(surface,fonts,name,y,'What Luna remembers about you')
         memory_section(surface,fonts,accent,prefs,y,memory,hits)
@@ -807,8 +820,14 @@ class RobotHUD:
         self.ai=AIWorker() if use_ai else None
         if use_ai:  # name, location, turn limit, idle reset (from ~/.luna.env or the environment)
             self.conversation.settings=settings_from_env()
+        # Microphone + speech speaker; an echo-cancelling pair turns on interrupt by voice.
+        self.audio=audio_devices.detect() if not args.no_voice else audio_devices.AudioSetup()
+        if not args.no_voice:
+            print('Luna audio: mic %r, speaker %r, echo cancelling: %s'
+                  %(self.audio.mic or 'default',self.audio.speaker or 'default',
+                    self.audio.echo_cancelling),flush=True)
         self.voice=(VoiceListener(muted=self.mic_muted,free_form=self.ai is not None,
-                                  language=self.talk_language)
+                                  language=self.talk_language,device=self.audio.mic_device)
                     if not args.no_voice else None)
         if self.voice:
             self.voice.start()
@@ -909,7 +928,7 @@ class RobotHUD:
             pages=memory_pages(len(self.memory_view()[0]))
             self.memory_page=max(0,min(pages-1,self.memory_page+value))
         else:
-            changed=apply_choice(self.prefs,kind,value)
+            changed=apply_choice(self.prefs,kind,value,self.audio.echo_cancelling)
             if changed=='color':
                 self.glow=glow_disc(169,self.accent)
             elif changed=='language':
@@ -1070,7 +1089,7 @@ class RobotHUD:
 
     @property
     def voice_interrupt_on(self):
-        return bool(self.prefs['voice_interrupt']) and self.voice is not None
+        return voice_interrupt_wanted(self.prefs,self.audio.echo_cancelling) and self.voice is not None
 
     def luna_talking(self):
         """Sound is playing or an answer is still arriving (not the quiet tail after it)."""
@@ -1288,7 +1307,9 @@ class RobotHUD:
                                              listening_status(self.voice,self.talk_language),
                                              online_status(self.prefs,self.ai is not None,
                                                            self.voice is not None),
-                                             self.memory_view())
+                                             self.memory_view(),
+                                             voice_interrupt_wanted(self.prefs,self.audio.echo_cancelling),
+                                             audio_status(self.audio,self.voice is not None))
         nav_bar(self.canvas,self.page,self.fonts,accent)
 
     def draw_footer(self,t,default):

@@ -46,8 +46,9 @@ class VoiceListener:
     added with their time, and it is cleared while muted (Luna never records herself).
     """
 
-    def __init__(self, muted=None, free_form=False, language="en"):
+    def __init__(self, muted=None, free_form=False, language="en", device=None):
         self._muted = muted or (lambda: False)
+        self.device = device  # sounddevice microphone (audio_devices); None = system default
         self.free_form = free_form
         self.language = language if language in MODELS else languages.DEFAULT
         self.active_language = None
@@ -93,9 +94,7 @@ class VoiceListener:
             def callback(data, frames, time_info, status):
                 self._on_audio(data, status)
 
-            with sounddevice.RawInputStream(
-                    samplerate=SAMPLE_RATE, blocksize=BLOCK_SAMPLES, dtype="int16",
-                    channels=1, callback=callback):
+            with self._open(sounddevice, callback):
                 self.status = "listening"
                 while not self._stop.is_set():
                     try:
@@ -114,6 +113,19 @@ class VoiceListener:
             self.status = "microphone error: " + str(exc)[:60]
         finally:
             self.partial = ""
+
+    def _open(self, sounddevice, callback):
+        """The chosen microphone, or the system default if it cannot be opened."""
+        options = dict(samplerate=SAMPLE_RATE, blocksize=BLOCK_SAMPLES, dtype="int16",
+                       channels=1, callback=callback)
+        if self.device is not None:
+            try:
+                return sounddevice.RawInputStream(device=self.device, **options)
+            except Exception as exc:
+                print("Luna voice: microphone %r failed (%s); using the default"
+                      % (self.device, type(exc).__name__), flush=True)
+                self.device = None
+        return sounddevice.RawInputStream(**options)
 
     def _on_audio(self, data, status=None):
         """Microphone callback (audio thread): queue a block, never block or grow forever."""

@@ -10,7 +10,13 @@ from .voices import VOICES, get_voice, voice_for, voices_for
 SECTIONS = ("Display & Theme", "Language", "Voice", "Animations", "Listening", "Memory", "About")
 
 
-def apply_choice(prefs, kind, value=None):
+def voice_interrupt_wanted(prefs, echo_cancelling=False):
+    """Interrupt by voice: the user's choice, or automatic (on with echo-cancelling audio)."""
+    choice = prefs.get("voice_interrupt")
+    return choice if isinstance(choice, bool) else bool(echo_cancelling)
+
+
+def apply_choice(prefs, kind, value=None, echo_cancelling=False):
     """Apply one Settings choice to prefs. Returns the changed key, or None if nothing changed."""
     if kind == "mode" and value in MODES:
         key, new = "mode", value
@@ -28,7 +34,7 @@ def apply_choice(prefs, kind, value=None):
     elif kind == "memory":
         key, new = "memory", not prefs.get("memory", True)
     elif kind == "voice_interrupt":
-        key, new = "voice_interrupt", not prefs.get("voice_interrupt", False)
+        key, new = "voice_interrupt", not voice_interrupt_wanted(prefs, echo_cancelling)
     elif kind == "language" and value in LANGUAGES:
         key, new = "language", value  # screen texts only, not the voice
     elif kind == "voice" and value in VOICES:

@@ -96,6 +96,22 @@ If a folder with that name already exists, clone into another one
 (`git clone ... ~/ai-robot-github`). **Start from a terminal on the Pi desktop** so pygame
 can open the screen; over SSH use `DISPLAY=:0 bash scripts/run-pi.sh`.
 
+### Microphone array and speakers (planned hardware)
+Recommended: a **ReSpeaker XVF3800** 4-mic USB array (echo cancelling, noise suppression, 360°
+listening) with the **4 Ω 5 W speaker on the array's speaker connector** for Luna's speech and
+alerts. Her voice then plays *through* the array, so it can cancel it and you can interrupt her
+by voice. A music speaker such as a Soundcore Motion+ on Bluetooth/AUX stays separate (music is
+a later phase); the array does not cancel music played elsewhere.
+
+```bash
+bash scripts/setup-audio-pi.sh   # makes the array the default microphone + speaker (remembered)
+```
+Luna finds the array by name at start: Settings → Listening → Audio shows
+`Echo cancelling: … XVF3800 …`, and *Interrupt by voice* then turns on by itself (you can still
+switch it off). Options in `~/.luna.env`: `LUNA_MIC=<index or name part>`,
+`LUNA_ECHO_CANCELLING=on|off` (e.g. `on` for a headset with echo cancelling),
+`LUNA_ECHO_CANCELLING_DEVICES=jabra,...` (more device names that count).
+
 ## Voice commands (offline)
 
 No internet or key needed. Use `--no-voice` to disable the microphone.
@@ -191,10 +207,11 @@ Then talk:
   accurate long questions. Commands and the wake word stay offline; audio is kept in memory only.
   It uses your API key (costs money) and falls back to the offline text on any error.
   Options: `LUNA_TRANSCRIBE_MODEL=gpt-transcribe`, `LUNA_TRANSCRIBE_TIMEOUT=8`.
-- **Interrupt by voice (optional, off):** Settings → Listening → Interrupt by voice keeps the
-  microphone on while Luna speaks, so "Luna, stop" ("Luna, sluta") or a new "Hey Luna, …"
-  question cuts her off. Use it only with a headset or an echo-cancelling microphone; her own
-  words and other talk are ignored.
+- **Interrupt by voice:** Settings → Listening → Interrupt by voice keeps the microphone on
+  while Luna speaks, so "Luna, stop" ("Luna, sluta") or a new "Hey Luna, …" question cuts her
+  off. It is on by itself with an echo-cancelling array (see *Microphone array and speakers*),
+  otherwise off; turn it on only with a headset or an echo-cancelling microphone. Her own words
+  and other talk are ignored.
 - **Memory:** "Hey Luna, remember that I like jazz." / "What do you remember about me?" /
   "Forget that I like jazz." (Swedish: "kom ihåg att ...", "glöm ..."). Luna saves only what you
   ask her to remember, refuses things that look private (numbers, passwords), and never takes a

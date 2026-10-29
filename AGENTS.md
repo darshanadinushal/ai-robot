@@ -28,7 +28,11 @@ bash scripts/install-pi.sh && bash scripts/run-pi.sh
 - Online listening (`transcription.py`, setting `online_listening`, off by default): only
   utterances that Vosk routes to `'ai'` may be uploaded; audio stays in memory; always fall back
   to the Vosk text. Never upload commands, background speech or anything before the wake word.
-- Voice barge-in (`assistant_core/turn_taking.py`, setting `voice_interrupt`, off by default):
+- Audio devices: `audio_devices.py` (pure `choose`, impure `detect`). Echo cancelling only when
+  mic *and* speech speaker are the array (ReSpeaker XVF3800; speech on its 4 Ω speaker; music
+  speaker separate). Tests in `tests/test_core.py` (`AudioDeviceTests`).
+- Voice barge-in (`assistant_core/turn_taking.py`, setting `voice_interrupt`, `null` = automatic:
+  on with echo-cancelling audio):
   while Luna talks, heard text goes only to `Conversation.barge_in` (stop phrase or wake word;
   her own words are echo). A spoken "stop" is never a motion safety stop. Tests: `tests/test_turn_taking.py`.
 - Conversation logic: `robot_hud/assistant_core/` (pure, no pygame): `Conversation.hear` / `poll` /

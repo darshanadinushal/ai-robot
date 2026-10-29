@@ -83,6 +83,13 @@ class BargeInAppTests(unittest.TestCase):
         self.say(3.0)
         self.assertEqual(len(self.ai.asked), 1, "nothing else is asked")
 
+    def test_automatically_on_with_echo_cancelling_audio(self):
+        from robot_hud.audio_devices import AudioSetup
+        self.hud.audio = AudioSetup("reSpeaker XVF3800", "reSpeaker XVF3800", None, True)
+        self.talk(1.0)
+        self.say(1.5, final="luna stop")
+        self.assertEqual(self.speech.stops, 1)
+
     def test_on_a_new_question_cuts_in(self):
         self.hud.settings_choice("voice_interrupt", None)
         self.talk(1.0)

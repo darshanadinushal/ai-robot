@@ -39,14 +39,69 @@ class PreferenceTests(unittest.TestCase):
             p=Path(d)/'preferences.json'
             self.assertEqual(read_preferences(p)['color'],'CYAN')
             write_preferences({'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'memory':False},p)
-            self.assertEqual(read_preferences(p),{'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':False,'voice_interrupt':False})
+            self.assertEqual(read_preferences(p),{'color':'PURPLE','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':False,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':False,'voice_interrupt':None})
 
     def test_invalid_values_are_ignored(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'prefs.json'
             p.write_text('{"color":"NOT_A_COLOR","animations":"no"}')
-            self.assertEqual(read_preferences(p),{'color':'CYAN','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':True,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':True,'voice_interrupt':False})
+            self.assertEqual(read_preferences(p),{'color':'CYAN','mode':'FACE','layout':'CLASSIC','wave_layout':'MESH','animations':True,'voice':'EN_FEMALE','language':'en','online_listening':False,'memory':True,'voice_interrupt':None})
             self.assertIn('CYAN',COLOR_CHOICES)
+
+    def test_voice_interrupt_is_automatic_until_chosen(self):
+        from robot_hud.settings import apply_choice, voice_interrupt_wanted
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'prefs.json'
+            prefs=read_preferences(p)
+            self.assertEqual((voice_interrupt_wanted(prefs,False),voice_interrupt_wanted(prefs,True)),(False,True))
+            apply_choice(prefs,'voice_interrupt',None,echo_cancelling=True)  # was on by itself: off
+            write_preferences(prefs,p)
+            self.assertIs(read_preferences(p)['voice_interrupt'],False)
+            self.assertFalse(voice_interrupt_wanted(read_preferences(p),True),'the choice is kept')
+
+
+class AudioDeviceTests(unittest.TestCase):
+    ARRAY_IN='alsa_input.usb-Seeed_Studio_reSpeaker_XVF3800_4-Mic_Array_101991441-00.analog-stereo'
+    ARRAY_OUT='alsa_output.usb-Seeed_Studio_reSpeaker_XVF3800_4-Mic_Array_101991441-00.analog-stereo'
+    SOUNDCORE='bluez_output.AC_12_2F_00_11_22.1'
+
+    def choose(self,mic,speaker,env=None,inputs=()):
+        from robot_hud.audio_devices import choose
+        return choose(mic,speaker,env or {},inputs)
+
+    def test_array_as_mic_and_speaker_cancels_echo(self):
+        audio=self.choose(self.ARRAY_IN,self.ARRAY_OUT)
+        self.assertTrue(audio.echo_cancelling)
+        self.assertIsNone(audio.mic_device,'already the default microphone')
+        self.assertEqual(audio.mic,'Seeed Studio reSpeaker XVF3800 4-Mic Array')
+
+    def test_speech_on_another_speaker_is_not_cancelled(self):
+        self.assertFalse(self.choose(self.ARRAY_IN,self.SOUNDCORE).echo_cancelling,'Bluetooth music speaker')
+        self.assertFalse(self.choose('Microphone (Realtek)','Speakers (Realtek)').echo_cancelling)
+
+    def test_a_plugged_in_array_is_preferred_and_env_overrides(self):
+        inputs=('Microphone (Realtek)','reSpeaker XVF3800 4-Mic Array: USB Audio (hw:2,0)')
+        audio=self.choose('Microphone (Realtek)','reSpeaker XVF3800 4-Mic Array',inputs=inputs)
+        self.assertEqual(audio.mic_device,inputs[1])
+        self.assertTrue(audio.echo_cancelling)
+        audio=self.choose('Microphone (Realtek)','Speakers',{'LUNA_MIC':'0','LUNA_ECHO_CANCELLING':'on'},inputs)
+        self.assertEqual((audio.mic_device,audio.mic,audio.echo_cancelling),(0,'Microphone (Realtek)',True))
+        self.assertFalse(self.choose(self.ARRAY_IN,self.ARRAY_OUT,{'LUNA_ECHO_CANCELLING':'off'}).echo_cancelling)
+        audio=self.choose('Jabra Evolve','Jabra Evolve',{'LUNA_ECHO_CANCELLING_DEVICES':'jabra'})
+        self.assertTrue(audio.echo_cancelling)
+
+    def test_the_microphone_falls_back_to_the_default(self):
+        from robot_hud.voice import VoiceListener
+        opened=[]
+        class FakeSoundDevice:
+            def RawInputStream(self,device=None,**options):
+                if device is not None:
+                    raise OSError('Invalid number of channels')
+                opened.append(options['channels'])
+                return 'default stream'
+        listener=VoiceListener(device='reSpeaker')
+        self.assertEqual(listener._open(FakeSoundDevice(),None),'default stream')
+        self.assertEqual((opened,listener.device),([1],None))
 
 
 class CommandTests(unittest.TestCase):
