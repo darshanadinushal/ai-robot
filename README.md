@@ -259,6 +259,23 @@ git pull
 bash scripts/run-pi.sh
 ```
 
+## Luna Core extensions (optional)
+
+Luna's AI conversation, face, voice and memory stay in this repository.
+Independent projects such as Luna Home and Luna Education can be installed as
+opt-in Python extensions that contribute AI tools without copying the core.
+
+Start with the standalone Education example:
+
+```bash
+.venv/bin/python -m pip install -e ./examples/luna-education
+# Add LUNA_EXTENSIONS=education to ~/.luna.env, then restart Luna.
+```
+
+By default no extensions are loaded. Home/device/motion tools do not gain
+permission simply by being installed. See [docs/EXTENSIONS.md](docs/EXTENSIONS.md)
+for the API, Windows setup, limitations and separate-repository packaging.
+
 ## Development and tests
 
 ```powershell
