@@ -219,7 +219,11 @@ class ToolExecutor:
         if self._ran >= MAX_CALLS_PER_TURN:
             return [], ToolResult(False, "too many actions in one answer")
         self._ran += 1
-        effects, result = tool.run(arguments)
+        try:
+            effects, result = tool.run(arguments)
+        except Exception as error:
+            # A faulty optional extension must not terminate Luna's UI loop.
+            return [], ToolResult(False, "tool failed (%s)" % type(error).__name__)
         self._by_call[key] = result
         return effects, result
 
