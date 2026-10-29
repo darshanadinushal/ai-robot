@@ -85,7 +85,7 @@ production, use tested package versions instead of moving editable installs.
 
 ## Contract and safety
 
-- `LunaExtension(name, tools=(), abilities=(), connected=())` supplies
+- `LunaExtension(name, tools=(), abilities=(), connected=(), api_version=1)` supplies
   strictly defined `Tool` objects, short verified capability text and names
   from `context.NOT_CONNECTED` that the extension has genuinely connected.
 - `tools`, `abilities` and `connected` must be tuples. The factory's
