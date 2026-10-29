@@ -24,8 +24,9 @@ from .commands import parse_command, reply_for, route, utterance_end
 from .listening import UtteranceAssembler, continue_seconds
 from . import audio_devices, i18n, languages, speech
 from .i18n import tr
-from .ai import AIWorker, ai_configured
+from .ai import AIWorker, ai_configured, load_env_file
 from .assistant_core.conversation import Conversation
+from .assistant_core.extensions import load_extensions
 from .assistant_core.context import settings_from_env
 from .assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .assistant_core.expression import face_motion
@@ -785,7 +786,11 @@ class RobotHUD:
         self.wave_state='listening'
         self.wave_until=0.0
         self.wave_amp=.35
-        self.conversation=Conversation()  # routing, AI answers, follow-ups (assistant core)
+        load_env_file()  # read LUNA_EXTENSIONS even when online AI is disabled
+        self.extensions, extension_errors = load_extensions(os.environ.get('LUNA_EXTENSIONS', ''))
+        for name, reason in extension_errors:
+            print('Luna extension %s: unavailable (%s)' % (name, reason), flush=True)
+        self.conversation=Conversation(extensions=self.extensions)  # shared AI + optional modules
         self.memory=MemoryStore()  # facts the user asked Luna to remember (~/.luna-memory.db)
         self.memory_page=0
         self.forget_all_until=0.0  # "Forget everything" waits for a second tap until then
