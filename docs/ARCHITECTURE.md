@@ -107,7 +107,8 @@ home, driving) without growing `app.py`, and is tested without pygame
 - **Context (phase 5.0B, `context.py`):** every question gets fresh instructions: the global
   personality (warm, brief, more detail when asked, one short clarifying question when unclear,
   never invent readings or actions), what Luna `ABILITIES` really has and what is
-  `NOT_CONNECTED` yet (camera, motors, smart home, music, timers, search, memory), the local
+  `NOT_CONNECTED` yet (camera, motors, smart home, music, timers; internet search unless web
+  search is on), the local
   date and time, the optional `LUNA_USER_NAME` / `LUNA_LOCATION`, and the pack's
   `ai_instruction` (language and its style). Only list an ability once it really works.
   Follow-ups and references ("tell me more", "the second one") use the AI's conversation history.
@@ -171,6 +172,14 @@ home, driving) without growing `app.py`, and is tested without pygame
     permission.
   - `LUNA_AI_TOOLS=off` sends no tools (for a model without function calling; a
     `BadRequestError` logs that hint). Instructions then describe only the offline commands.
+- **Web search (news, scores):** OpenAI's hosted `web_search` tool (`context.WEB_SEARCH`,
+  `search_context_size: low`) is added to the request when `LUNA_AI_WEB_SEARCH` is on (default;
+  works with `LUNA_AI_TOOLS=off` too). The model runs the search itself; `stream()` ignores
+  `web_search_call` items. `WEB_ABILITY` / `WEB_RULES` say: search only for current things,
+  answer in 1-3 spoken sentences, never read links. Answers carry markdown source links, so
+  `expression.CitationFilter` (inside `AnswerText`, after `MoodTag`) removes `([site](url))`,
+  `[name](url)` -> `name`, bare URLs and `【...】` marks from the stream, holding an open bracket
+  until it closes. Each search costs extra on the OpenAI bill.
 - **Persistent memory (phase 5.2, `memory.py`):** facts the user *asked* Luna to keep
   ("remember that I like jazz", "kom ihåg att ..."), never whole conversations.
   - `MemoryStore`: SQLite file `LUNA_MEMORY_FILE` or `~/.luna-memory.db` (outside the repo,

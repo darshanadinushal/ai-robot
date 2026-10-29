@@ -6,7 +6,7 @@ import unittest
 
 from robot_hud import ai
 from robot_hud.ai import AIWorker
-from robot_hud.assistant_core.context import ConversationSettings
+from robot_hud.assistant_core.context import WEB_SEARCH, ConversationSettings, settings_from_env
 from robot_hud.assistant_core.conversation import Conversation
 from robot_hud.assistant_core.events import Act, Log, Speak
 from robot_hud.assistant_core.tools import (MAX_CALLS_PER_TURN, PermissionPolicy, Tool, ToolCall,
@@ -101,12 +101,25 @@ class ConversationToolTests(unittest.TestCase):
 
     def test_tools_are_offered_with_their_rules(self):
         self.chat.ask("you look tired, cheer up", 1.0, "en")
-        self.assertEqual(len(self.ai.tools), 5)
+        self.assertEqual(len(self.ai.tools), 6)
         self.assertIn("When you call a tool, write no other text", self.ai.instructions)
         chat = Conversation(self.ai, ConversationSettings(tools=False))
         chat.ask("hello", 1.0, "en")
-        self.assertIsNone(self.ai.tools)
+        self.assertEqual(self.ai.tools, [WEB_SEARCH], "web search works without Luna's tools")
         self.assertNotIn("call a tool", self.ai.instructions)
+
+    def test_web_search_offered_only_when_on(self):
+        self.chat.ask("what's the news today", 1.0, "en")
+        self.assertIn(WEB_SEARCH, self.ai.tools)
+        self.assertIn("today's news, sports results and live scores", self.ai.instructions)
+        self.assertIn("Never read out links", self.ai.instructions)
+        self.assertNotIn("internet search", self.ai.instructions)
+        chat = Conversation(self.ai, ConversationSettings(tools=False, web_search=False))
+        chat.ask("what's the news today", 1.0, "en")
+        self.assertIsNone(self.ai.tools)
+        self.assertIn("internet search", self.ai.instructions)
+        self.assertNotIn("live scores", self.ai.instructions)
+        self.assertFalse(settings_from_env({"LUNA_AI_WEB_SEARCH": "off"}).web_search)
 
     def test_results_are_sent_after_the_app_applied_the_actions(self):
         self.chat.ask("make your eyes purple", 1.0, "en")

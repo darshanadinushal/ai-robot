@@ -4,7 +4,8 @@ import unittest
 from robot_hud.ai import AIWorker
 from robot_hud.assistant_core.context import ConversationSettings, instructions, settings_from_env
 from robot_hud.assistant_core.conversation import Conversation
-from robot_hud.assistant_core.expression import LINGER_SECONDS, MoodTag, face_motion
+from robot_hud.assistant_core.expression import (LINGER_SECONDS, CitationFilter, MoodTag,
+                                                 face_motion)
 from robot_hud.assistant_core.tools import ToolCall
 from test_assistant_core import FakeAI, spoken
 from test_streaming import StreamBrain, collect
@@ -40,7 +41,45 @@ class MoodTagTests(unittest.TestCase):
         self.assertEqual(run_tag(["[NEUTRAL]", "Ok."])[:2], (["neutral"], "Ok."))
 
 
+class CitationFilterTests(unittest.TestCase):
+    CASES = [
+        ("Arsenal won 2-1 ([bbc.com](https://bbc.com/s?utm_source=openai)). Next is Sunday.",
+         "Arsenal won 2-1. Next is Sunday."),
+        ("According to [SVT](https://svt.se/a) it passed. See https://x.se/y now.",
+         "According to SVT it passed. See now."),
+        ("Two ([a.com](https://a.com), [b.se](https://b.se)) agree.", "Two agree."),
+        ("Malmo leads 3-2\u30104\u2020svt.se\u3011.", "Malmo leads 3-2."),
+        ("Still 1-0 (second half). See step [1] and [x] (y).",
+         "Still 1-0 (second half). See step [1] and [x] (y)."),
+    ]
+
+    def test_links_removed_however_the_text_is_split(self):
+        for text, clean in self.CASES:
+            for size in (1, 2, 5, len(text)):
+                links = CitationFilter()
+                out = "".join(links.feed(text[i:i + size]) for i in range(0, len(text), size))
+                self.assertEqual(out + links.flush(), clean, (text, size))
+
+    def test_plain_text_is_not_held_and_unclosed_text_is_released(self):
+        links = CitationFilter()
+        self.assertEqual(links.feed("Hello there."), "Hello there.")
+        self.assertEqual(links.feed(" A (note"), " A")
+        self.assertEqual(links.flush(), " (note")
+        self.assertEqual(CitationFilter().feed("(" + "x" * 500), "(" + "x" * 500)
+
+
 class WorkerMoodTests(unittest.TestCase):
+    def test_links_never_shown_or_spoken(self):
+        brain = StreamBrain(["[happy] Arsenal won the match 2-1 ([bb", "c.com](https://bbc.com/a",
+                             ")). They play again ", "on Sunday at home."])
+        worker = AIWorker(brain_factory=lambda: brain)
+        worker.ask("q")
+        events = collect(worker)
+        self.assertEqual("".join(v for k, _, v in events if k == "text"),
+                         "Arsenal won the match 2-1. They play again on Sunday at home.")
+        self.assertEqual([v for k, _, v in events if k == "sentence"],
+                         ["Arsenal won the match 2-1.", "They play again on Sunday at home."])
+
     def test_tag_never_shown_or_spoken(self):
         brain = StreamBrain(["[surp", "rised] Wow, that is a big planet. It ", "has two moons."])
         worker = AIWorker(brain_factory=lambda: brain)

@@ -182,6 +182,7 @@ Then talk:
 | "Never mind" / "No thanks" (or "Luna, cancel") | Stops waiting for a follow-up |
 | "Luna, start a new conversation" | Forgets the conversation so far |
 | "Luna, you look tired, cheer up" / "make your eyes purple" | The AI changes her face (expression, colour, mode, gaze, blink), then confirms |
+| "Hey Luna, what's the news today?" / "How did Malmö FF do?" | Searches the web, answers in a few sentences (no links read) |
 | "look left", "happy", … | Still handled offline as commands |
 | Tap the screen or press `S` | Stops her talking |
 | "Luna, stop" / "Hey Luna, …" while she talks | Stops her / asks the new question (only with *Interrupt by voice* on) |
@@ -201,7 +202,8 @@ Then talk:
   after this much quiet), `LUNA_MAX_TURNS=20`, `LUNA_AI_TOOLS=off` (if your model has no
   function calling; Luna then only changes her face through the offline commands),
   `LUNA_AI_EXPRESSIONS=off` (no face expression per answer), `LUNA_PROGRESS_SECONDS=6`
-  (a slow answer: Luna says "One moment." after this; 0 = never).
+  (a slow answer: Luna says "One moment." after this; 0 = never), `LUNA_AI_WEB_SEARCH=off`
+  (no web search for news and scores; each search costs extra, and some models lack it).
 - **Online listening (optional, off):** Settings → Listening → Online listening sends only
   questions to Luna (after "Hey Luna" or in a follow-up) to OpenAI `gpt-transcribe` for more
   accurate long questions. Commands and the wake word stay offline; audio is kept in memory only.

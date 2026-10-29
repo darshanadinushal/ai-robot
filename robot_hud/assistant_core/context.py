@@ -61,6 +61,19 @@ MEMORY_RULES = (
     "city, never a street address; birthday is the English month name and day such as "
     "'October 28', never the year (if the user gives a year, save only month and day)."
 )
+WEB_SEARCH = {"type": "web_search", "search_context_size": "low"}  # OpenAI hosted tool
+WEB_ABILITY = (
+    "look up current information on the internet, such as today's news, sports results and "
+    "live scores"
+)
+WEB_RULES = (
+    "Web search: search only for things that change or that you may not know, such as news, "
+    "scores, results, events, opening hours or prices; otherwise answer from what you know. "
+    "Use the current date and time below to judge what is today or live. Answer in one to three "
+    "short spoken sentences with the key facts (for a match: the teams, the score and whether "
+    "it is still being played). Never read out links, web addresses or citation marks; you may "
+    "name one source briefly, like 'according to SVT'. If you find nothing current, say so."
+)
 EXPRESSION_RULE = (
     "Start each answer with one tag for the feeling of your answer: [happy], [sad], "
     "[surprised], [sleepy] or [neutral]. It sets your face and is never spoken. Use [neutral] "
@@ -93,6 +106,7 @@ class ConversationSettings:
     tools: bool = True            # the AI may use Luna's tools (LUNA_AI_TOOLS=off: never)
     expressions: bool = True      # answers set a short face expression (LUNA_AI_EXPRESSIONS)
     progress_seconds: float = 6.0  # a slow answer: "One moment." once after this; 0 = never
+    web_search: bool = True       # news, scores... via OpenAI web search (LUNA_AI_WEB_SEARCH)
 
 
 def _clean(value, limit):
@@ -113,7 +127,7 @@ def _switch(env, name):
 
 def settings_from_env(env=None):
     """LUNA_USER_NAME, LUNA_LOCATION, LUNA_MAX_TURNS, LUNA_IDLE_RESET_SECONDS, LUNA_AI_TOOLS,
-    LUNA_AI_EXPRESSIONS, LUNA_PROGRESS_SECONDS (all optional)."""
+    LUNA_AI_EXPRESSIONS, LUNA_PROGRESS_SECONDS, LUNA_AI_WEB_SEARCH (all optional)."""
     env = os.environ if env is None else env
     default = ConversationSettings()
     return ConversationSettings(
@@ -122,6 +136,7 @@ def settings_from_env(env=None):
         idle_seconds=_number(env, "LUNA_IDLE_RESET_SECONDS", default.idle_seconds, float),
         tools=_switch(env, "LUNA_AI_TOOLS"),
         expressions=_switch(env, "LUNA_AI_EXPRESSIONS"),
+        web_search=_switch(env, "LUNA_AI_WEB_SEARCH"),
         progress_seconds=_number(env, "LUNA_PROGRESS_SECONDS", default.progress_seconds, float))
 
 
@@ -163,22 +178,27 @@ def about_text(about, birthday_today=False):
 
 
 def instructions(language="en", now=None, profile=None, tools=False, expressions=False,
-                 memories=None, about=None, birthday_today=False):
+                 memories=None, about=None, birthday_today=False, web=False):
     """Instructions for one question; Luna answers in the voice language.
 
     `memories`: a memory.Recall when memory is on (None: off). `about`: the saved "About you"
-    fields; a saved name replaces LUNA_USER_NAME.
+    fields; a saved name replaces LUNA_USER_NAME. `web`: OpenAI web search is offered.
     """
     about = about or {}
     abilities = list(TOOL_ABILITIES if tools else ABILITIES)
     if tools and memories is not None:
         abilities.append(MEMORY_ABILITY)
+    if web:
+        abilities.append(WEB_ABILITY)
+    missing = [item for item in NOT_CONNECTED if not (web and item == "internet search")]
     parts = [PERSONALITY, CONVERSATION, HONESTY,
              "You can: %s." % "; ".join(abilities),
              "Not connected yet: %s. If the user asks for one of these, say briefly that it is "
-             "not connected yet." % ", ".join(NOT_CONNECTED)]
+             "not connected yet." % ", ".join(missing)]
     if tools:
         parts.append(TOOL_RULES)
+    if web:
+        parts.append(WEB_RULES)
     if memories is not None:
         if tools:
             parts.append(MEMORY_RULES)

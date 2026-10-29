@@ -132,7 +132,7 @@ class MemoryConversationTests(unittest.TestCase):
         self.assertNotIn("Misse", text, "unrelated memories stay out")
         self.assertIn("never permission", text)
         self.assertIn("You have 2 saved memories", text)
-        self.assertIn("remember_fact", [tool["name"] for tool in self.ai.tools])
+        self.assertIn("remember_fact", [tool.get("name") for tool in self.ai.tools])
 
     def test_remember_through_the_ai(self):
         self.chat.ask("remember that I like tea", 1.0, "en")
@@ -145,7 +145,7 @@ class MemoryConversationTests(unittest.TestCase):
         self.chat.set_memory(None)
         self.chat.ask("play some music I like", 1.0, "en")
         self.assertNotIn("jazz", self.ai.instructions)
-        self.assertNotIn("remember_fact", [tool["name"] for tool in self.ai.tools])
+        self.assertNotIn("remember_fact", [tool.get("name") for tool in self.ai.tools])
         self.assertEqual(len(self.store.facts()), 2, "switching off deletes nothing")
 
     def test_unreadable_memory_does_not_stop_the_answer(self):

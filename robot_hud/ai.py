@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .assistant_core.context import BASE_INSTRUCTIONS, instructions
 from .assistant_core.tools import ToolCall
-from .assistant_core.expression import MoodTag
+from .assistant_core.expression import AnswerText, strip_citations
 from .speech import SentenceStream
 
 DEFAULT_MODEL = "gpt-6-luna"
@@ -117,7 +117,7 @@ class LunaBrain:
         """The whole answer at once (used by scripts/test_ai.py); remembered straight away."""
         response = self.client.responses.create(**self._args(question, language, instructions_text))
         self.previous_id = response.id
-        return response.output_text.strip()
+        return strip_citations(response.output_text).strip()
 
     def stream(self, question, language="en", instructions_text=None, result=None, tools=None,
                tool_choice=None, previous=None):
@@ -278,8 +278,8 @@ class AIWorker:
                     print("Luna AI: the model may not support LUNA_AI_REASONING=%s"
                           % brain.reasoning, flush=True)
                 if name == "BadRequestError" and tools:
-                    print("Luna AI: the model may not support tools; LUNA_AI_TOOLS=off turns "
-                          "them off", flush=True)
+                    print("Luna AI: the model may not support tools; LUNA_AI_TOOLS=off or "
+                          "LUNA_AI_WEB_SEARCH=off turns them off", flush=True)
                 if spoke:
                     self._send(request, "lost")
                 else:
@@ -293,7 +293,7 @@ class AIWorker:
         started = time.monotonic()
         if not hasattr(brain, "stream"):  # a brain that answers in one piece (no tools)
             self._finish(request, [brain.ask(question, language, instructions_text)], {},
-                         SentenceStream(), spoke, started, MoodTag())
+                         SentenceStream(), spoke, started, AnswerText())
             return
         given, previous = question, None
         for round_ in range(MAX_TOOL_ROUNDS + 1):
@@ -304,7 +304,7 @@ class AIWorker:
                            "tool_choice": "none" if round_ == MAX_TOOL_ROUNDS else "auto"}
             if previous:
                 options["previous"] = previous
-            sentences, tag = SentenceStream(), MoodTag()
+            sentences, tag = SentenceStream(), AnswerText()
             pieces = brain.stream(given, language, instructions_text, result, **options)
             if not self._read(request, pieces, result, sentences, spoke, started, tag):
                 return

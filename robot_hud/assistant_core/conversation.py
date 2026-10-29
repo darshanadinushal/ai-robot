@@ -9,7 +9,7 @@ from datetime import datetime
 
 from ..ai import LOST_CONNECTION
 from ..commands import route, spoken
-from .context import ConversationSettings, instructions
+from .context import WEB_SEARCH, ConversationSettings, instructions
 from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .expression import LINGER_SECONDS
 from .memory import ERRORS as MEMORY_ERRORS, is_birthday, memory_tools
@@ -136,6 +136,7 @@ class Conversation:
         if not self.streaming and self.session.turns >= self.settings.max_turns:
             effects = self._fresh("after %d answers" % self.session.turns)
         use_tools = self.settings.tools
+        web = self.settings.web_search
         memories, about = None, {}
         if self.memory is not None:
             try:
@@ -150,8 +151,9 @@ class Conversation:
         request = self.ai.ask(
             question, language,
             instructions(language, now, self.settings.profile, use_tools,
-                         self.settings.expressions, memories, about, wish),
-            tools=self.tools.registry.schemas() if use_tools else None)
+                         self.settings.expressions, memories, about, wish, web),
+            tools=((self.tools.registry.schemas() if use_tools else [])
+                   + ([WEB_SEARCH] if web else [])) or None)
         if not request:
             return []  # still answering the previous question
         if wish:
