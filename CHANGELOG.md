@@ -3,7 +3,7 @@
 Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
-## 1.0.0 (unreleased: waiting for approval, not tagged yet)
+## 1.0.0 (2026-10-30)
 - Luna Core is an installable package, `luna-core` (`pyproject.toml`), with optional extras
   `[voice]`, `[speech]`, `[ai]` and `[all]`, and a `luna` command (also `python -m luna_core`).
 - The package is renamed from `robot_hud` to `luna_core`. The public entry point is
