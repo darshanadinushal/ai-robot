@@ -52,12 +52,19 @@ install_packages() {
 
 check_start() {
   # The version, then one headless frame with mock hardware (no screen, microphone or AI).
-  local shot
-  shot="$(mktemp -d)/luna-check.png"
-  "$PY" -m luna_core --version &&
+  local folder
+  folder="$(mktemp -d)"
+  if "$PY" -m luna_core --version &&
     SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy LUNA_LOG_FILE=off \
-      "$PY" -m luna_core --headless --mock-hardware --screenshot "$shot" >/dev/null 2>&1 &&
-    [ -s "$shot" ]
+      "$PY" -m luna_core --headless --mock-hardware --screenshot "$folder/luna-check.png" \
+      >"$folder/output.txt" 2>&1 &&
+    [ -s "$folder/luna-check.png" ]; then
+    rm -rf "$folder"
+    return 0
+  fi
+  tail -n 15 "$folder/output.txt" 2>/dev/null || true
+  rm -rf "$folder"
+  return 1
 }
 
 restart_service() {

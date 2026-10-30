@@ -31,7 +31,7 @@ jobs:
       - run: python -m unittest discover -s tests -v
 
   install:
-    # A clean installation: wheel + example plugin in a new venv, `luna`, a headless screenshot.
+    # A clean installation (wheel + example plugin in a new venv) and upgrade/rollback scripts.
     runs-on: ubuntu-latest
     env:
       LUNA_SLOW_TESTS: "1"
@@ -41,4 +41,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
+      # pygame for the upgrade/rollback test (the clean install uses its own venv).
+      - run: python -m pip install "pygame>=2.6,<3"
       - run: python -m unittest discover -s tests -p test_install.py -v
