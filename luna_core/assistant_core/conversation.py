@@ -9,7 +9,7 @@ from datetime import datetime
 
 from ..ai import LOST_CONNECTION
 from ..commands import route, spoken
-from .context import WEB_SEARCH, ConversationSettings, instructions
+from .context import WEB_SEARCH, ConversationSettings, turn_instructions
 from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .expression import LINGER_SECONDS
 from .memory import ERRORS as MEMORY_ERRORS, is_birthday, memory_tools
@@ -158,7 +158,7 @@ class Conversation:
                 and self._birthday_wished != now.date())
         request = self.ai.ask(
             question, language,
-            instructions(language, now, self.settings.profile, use_tools,
+            turn_instructions(language, now, self.settings.profile, use_tools,
                          self.settings.expressions, memories, about, wish, web,
                          self.plugin_instructions),
             tools=((self.tools.registry.schemas() if use_tools else [])

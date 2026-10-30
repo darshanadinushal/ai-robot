@@ -1,5 +1,6 @@
 """Drawing primitives and the face/wave artwork (procedural, no image files)."""
 import math
+from functools import lru_cache
 
 import pygame
 
@@ -53,8 +54,32 @@ def draw_arc(surface, color, cx, cy, radius, start, end, thickness=3):
                     start, end, thickness)
 
 
-def mix(a, b, weight):
+def _mix(a, b, weight):
     return tuple(max(0, min(255, round(i * (1 - weight) + j * weight))) for i, j in zip(a, b))
+
+
+_mix_cached = lru_cache(maxsize=8192)(_mix)
+
+
+def mix(a, b, weight):
+    # Cached: the face and wave ask for the same few hundred colours every frame.
+    try:
+        return _mix_cached(a, b, weight)
+    except TypeError:  # unhashable colours (lists)
+        return _mix(a, b, weight)
+
+
+_layers = {}
+
+
+def _layer(size):
+    """A reused transparent drawing layer (allocating one every frame is slow on the Pi)."""
+    surface = _layers.get(size)
+    if surface is None:
+        surface = _layers[size] = pygame.Surface(size, pygame.SRCALPHA)
+    else:
+        surface.fill((0, 0, 0, 0))
+    return surface
 
 
 def background_surface():
@@ -99,7 +124,7 @@ def glow_disc(radius, color):
 def draw_eye(surface, cx, cy, t, gaze_x, gaze_y, openness, color, glow, scale=1.0, side=-1, mood='neutral'):
     # Eye contents are drawn on a 340px layer, then vertically scaled to blink.
     size = 352
-    eye = pygame.Surface((size, size), pygame.SRCALPHA)
+    eye = _layer((size, size))
     x = y = size // 2
     eye.blit(glow, (x - glow.get_width()//2, y - glow.get_height()//2))
     pygame.draw.circle(eye, (2, 19, 44), (x,y), 144)
@@ -160,11 +185,16 @@ def draw_eye(surface, cx, cy, t, gaze_x, gaze_y, openness, color, glow, scale=1.
                      (cx-sw//2, cy-sh//2))
 
 
-def draw_mic(surface, accent, cx, cy, t):
+@lru_cache(maxsize=8)
+def _mic_glow(accent):
     glow = pygame.Surface((160,160), pygame.SRCALPHA)
     for r in range(70, 0, -3):
         pygame.draw.circle(glow, (*accent, 3 + (70-r)//5), (80,80), r)
-    surface.blit(glow, (cx-80, cy-80))
+    return glow
+
+
+def draw_mic(surface, accent, cx, cy, t):
+    surface.blit(_mic_glow(tuple(accent)), (cx-80, cy-80))
     pygame.draw.rect(surface, accent, (cx-14,cy-34,28,50), 4, border_radius=14)
     pygame.draw.arc(surface, accent, (cx-27,cy-28,54,50), math.pi, math.tau, 4)
     line(surface, accent, (cx,cy+22), (cx,cy+36), 4)
@@ -175,25 +205,27 @@ def draw_wave(surface, t, accent, amp=1.0):
     # Mesh of sine ribbons: many offset curves share lobed envelopes and cross each other.
     other = (226, 70, 255)
     cy, x0, x1, step = 360, 40, 1240, 10
-    layer = pygame.Surface((1280, 420), pygame.SRCALPHA)
+    layer = _layer((1280, 420))
     ly = 210
     xs = list(range(x0, x1 + 1, step))
+    us = [(x - x0) / (x1 - x0) for x in xs]
+    light = mix(accent, (235,250,255), .35)
+    cols = [mix(light, other, i / len(xs)) for i in range(len(xs) - 1)]
+    draw_line = pygame.draw.line
     for wave in range(2):
+        a = 110 if wave == 0 else 170
+        colours = [(*col, a) for col in cols]
+        # The envelope does not depend on the ribbon (k): work it out once per wave.
+        base = [215 * amp * (math.sin(u*math.pi*4 + t*1.3 + wave*1.7)**2
+                             * (.7 + .3*math.sin(u*math.pi*2 - t*.7))) for u in us]
         for k in range(26):
             frac = k / 25 * 2 - 1
-            pts = []
-            for x in xs:
-                u = (x - x0) / (x1 - x0)
-                env = (math.sin(u*math.pi*4 + t*1.3 + wave*1.7)**2
-                       * (.7 + .3*math.sin(u*math.pi*2 - t*.7)))
-                amp_px = 215 * amp * env * math.sin(math.pi*(.5 + .5*frac))
-                y = ly + frac*amp_px*(.6 + .4*wave) * math.sin(u*math.pi*9 + t*2.2 + k*.05)
-                pts.append((x, y))
-            for i in range(len(pts)-1):
-                u = i / len(pts)
-                col = mix(mix(accent, (235,250,255), .35), other, u)
-                a = 110 if wave == 0 else 170
-                pygame.draw.line(layer, (*col, a), pts[i], pts[i+1], 1)
+            lobe = math.sin(math.pi*(.5 + .5*frac))
+            spin, shift = t*2.2, k*.05
+            pts = [(x, ly + frac*(e*lobe)*(.6 + .4*wave) * math.sin(u*math.pi*9 + spin + shift))
+                   for x, u, e in zip(xs, us, base)]
+            for i, col in enumerate(colours):
+                draw_line(layer, col, pts[i], pts[i+1], 1)
     surface.blit(layer, (0, cy - ly))
 
 

@@ -21,7 +21,7 @@ except ImportError as exc:
 from .geometry import Viewport
 from .commands import parse_command, reply_for, route, utterance_end
 from .listening import UtteranceAssembler, continue_seconds
-from . import audio_devices, hardware, i18n, naming, speech
+from . import audio_devices, hardware, i18n, naming, pacing, speech
 from .i18n import tr
 from .ai import AIWorker, ai_configured
 from .assistant_core.conversation import Conversation
@@ -44,7 +44,7 @@ from .ui.draw import (background_surface, draw_eye, draw_mic, draw_scifi_chrome,
 from .ui.pages import Page, default_pages
 from .ui.settings_page import (audio_status, listening_status, memory_pages, mic_status, online_status,
                                plugin_pages, settings_page)
-from .ui.theme import BACKGROUND, FPS, H, MUTED, QUIT_RECT, TEXT, W, nav_rects
+from .ui.theme import BACKGROUND, H, MUTED, QUIT_RECT, TEXT, W, nav_rects
 from .ui.touch import TouchInput
 
 log=logging.getLogger('luna.app')
@@ -93,6 +93,9 @@ class RobotHUD:
             'side':pygame.font.SysFont('dejavusans',22),
         }
         self.clock=pygame.time.Clock()
+        self.frame_rates=pacing.frame_rates()  # (active, idle): LUNA_FPS, LUNA_IDLE_FPS
+        self.last_input=0.0  # when the user last touched, typed or was heard
+        self._scaled=None    # reused surface when the screen is not 1280x720
         self.prefs=read_preferences()
         naming.set_name(self.prefs['robot_name'])  # before any text: tr() and the wake word use it
         pygame.display.set_caption(naming.name+' 1.0')
@@ -135,7 +138,8 @@ class RobotHUD:
         speech.set_voice(self.voice_key)
         use_ai=not getattr(args,'no_ai',False) and ai_configured()
         self.ai=AIWorker() if use_ai else None
-        if use_ai:  # name, location, turn limit, idle reset (from ~/.luna.env or the environment)
+        if use_ai:
+            self.ai.warm_up()  # load the AI client now, not when the first question comes  # name, location, turn limit, idle reset (from ~/.luna.env or the environment)
             self.conversation.settings=settings_from_env()
         # Microphone + speech speaker; an echo-cancelling pair turns on interrupt by voice.
         self.audio=self.hardware.audio or audio_devices.AudioSetup()
@@ -557,6 +561,7 @@ class RobotHUD:
 
         `conversation`: the follow-up window was open when the user started speaking.
         """
+        self.last_input=t
         self.run_effects(self.conversation.hear(text,t,self.heard_language,self.talk_language,
                                                 conversation),t)
         self.plugins.heard(text)
@@ -604,6 +609,8 @@ class RobotHUD:
 
     def events(self,t):
         for event in pygame.event.get():
+            if event.type in (pygame.KEYDOWN,pygame.MOUSEBUTTONDOWN,pygame.FINGERDOWN):
+                self.last_input=t
             if event.type==pygame.QUIT:
                 self.running=False
             elif event.type==pygame.VIDEORESIZE and not self.fullscreen:
@@ -638,6 +645,13 @@ class RobotHUD:
         status_bar(self.canvas,self.fonts,self.accent)
         page.draw(self,self.canvas,t)
         nav_bar(self.canvas,self.pages,page.name,self.fonts,self.accent)
+
+    def frame_rate(self,t):
+        """Frames per second for now: full speed while anything moves, slower when idle."""
+        busy=(self.thinking or self.conversation.streaming or speech.is_talking() or bool(self.preview)
+              or (self.voice is not None and self.utterance.pending))
+        animated=self.prefs['animations'] and self.current_page().animated
+        return pacing.frame_rate(self.frame_rates,busy,animated,t-self.last_input)
 
     def motion_time(self,t):
         """The animation clock (stands still when animations are off)."""
@@ -764,13 +778,17 @@ class RobotHUD:
                   topleft=(60,108))
 
     def present(self):
-        self.screen.fill((0,0,0))
-        vp=Viewport(*self.screen.get_size())
-        x,y,w,h=vp.rectangle
+        size=self.screen.get_size()
+        x,y,w,h=Viewport(*size).rectangle
+        if (w,h)!=size:
+            self.screen.fill((0,0,0))  # black bars around the picture
         if w==W and h==H:
             self.screen.blit(self.canvas,(x,y))
         else:
-            self.screen.blit(pygame.transform.smoothscale(self.canvas,(w,h)),(x,y))
+            if self._scaled is None or self._scaled.get_size()!=(w,h):
+                self._scaled=pygame.Surface((w,h)).convert()
+            pygame.transform.smoothscale(self.canvas,(w,h),self._scaled)
+            self.screen.blit(self._scaled,(x,y))
         pygame.display.flip()
 
     def run(self,screenshot=None):
@@ -784,7 +802,7 @@ class RobotHUD:
                     pygame.image.save(self.screen,str(screenshot))
                     log.info('Saved screenshot to %s',screenshot)
                     break
-                self.clock.tick(FPS)
+                self.clock.tick(self.frame_rate(t))
         finally:
             if self.restart:  # one frame so the screen does not just go black
                 self.canvas.blit(self.background,(0,0))

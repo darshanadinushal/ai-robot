@@ -70,5 +70,68 @@ print("ok")
         self.run_ok([self.luna, "--headless", "--no-plugins", "--screenshot", picture])
 
 
+@unittest.skipUnless(os.environ.get("LUNA_SLOW_TESTS") == "1", "set LUNA_SLOW_TESTS=1 to run")
+@unittest.skipIf(os.name == "nt" or not shutil.which("bash") or not shutil.which("git"), "needs Linux bash and git")
+class UpgradeRollbackTests(unittest.TestCase):
+    """scripts/upgrade-pi.sh and rollback-pi.sh on a copy of this repository."""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="luna-deploy-"))
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.repo = self.home / "ai-robot"
+        self.env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        self.env.update(HOME=str(self.home), LUNA_PYTHON=sys.executable, LUNA_PIP="skip",
+                        GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
+                        GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
+        self.env.pop("LUNA_MEMORY_FILE", None)
+        self.env.pop("LUNA_PLUGINS_FILE", None)
+        self.run_in(["git", "clone", "--quiet", "--no-local", str(ROOT), str(self.repo)], cwd=self.home)
+        self.run_in(["git", "remote", "remove", "origin"])
+        for script in (ROOT / "scripts").glob("*.sh"):  # the scripts as they are now
+            shutil.copy(script, self.repo / "scripts" / script.name)
+        self.commit("good")
+        (self.repo / "NOTE.txt").write_text("a harmless change\n")
+        self.commit("good2")
+        init = self.repo / "luna_core" / "__init__.py"
+        init.write_text(init.read_text() + "\nraise RuntimeError('broken release')\n")
+        self.commit("bad")
+        self.run_in(["git", "checkout", "--quiet", "good"])
+        (self.home / ".ai-robot-hud.json").write_text('{"mode": "face"}')
+
+    def run_in(self, command, cwd=None, check=True):
+        result = subprocess.run(command, cwd=cwd or self.repo, env=self.env, capture_output=True,
+                                text=True, timeout=300)
+        if check and result.returncode:
+            raise AssertionError("%s failed:\n%s\n%s" % (command, result.stdout, result.stderr))
+        return result
+
+    def commit(self, tag):
+        self.run_in(["git", "add", "-A"])
+        self.run_in(["git", "commit", "--quiet", "--allow-empty", "-m", tag])
+        self.run_in(["git", "tag", tag])
+
+    def head(self, ref="HEAD"):
+        return self.run_in(["git", "rev-parse", ref]).stdout.strip()
+
+    def test_upgrade_failed_upgrade_and_rollback(self):
+        self.run_in([shutil.which("bash"), "scripts/upgrade-pi.sh", "good2"])
+        self.assertEqual(self.head(), self.head("good2"))
+        self.assertTrue((self.home / ".luna" / "last-backup").is_file())
+        backup, = (self.home / ".luna" / "backups").iterdir()
+        self.assertEqual((backup / ".ai-robot-hud.json").read_text(), '{"mode": "face"}')
+
+        failed = self.run_in([shutil.which("bash"), "scripts/upgrade-pi.sh", "bad"], check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("did not start", failed.stdout)
+        self.assertEqual(self.head(), self.head("good2"))
+
+        (self.home / ".ai-robot-hud.json").write_text('{"mode": "wave"}')
+        self.run_in([shutil.which("bash"), "scripts/rollback-pi.sh", "--with-data"])
+        self.assertEqual(self.head(), self.head("good"))
+        self.assertEqual((self.home / ".ai-robot-hud.json").read_text(), '{"mode": "face"}')
+        self.run_in([shutil.which("bash"), "scripts/rollback-pi.sh"])  # undo the rollback
+        self.assertEqual(self.head(), self.head("good2"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -87,13 +87,19 @@ On the Raspberry Pi **desktop Terminal**:
 cd ~
 git clone https://github.com/YOUR_USERNAME/ai-robot.git
 cd ai-robot
-bash scripts/install-pi.sh     # apt packages, .venv, Vosk, openai, voice model
-bash scripts/run-pi.sh         # starts Luna fullscreen
+bash scripts/install-pi.sh       # apt packages, .venv, Luna + Vosk + openai, voice model
+bash scripts/run-pi.sh           # starts Luna fullscreen
+bash scripts/install-service.sh  # optional: start Luna with the desktop, restart after a crash
 ```
 
 `install-pi.sh` installs `python3-pygame`, `libportaudio2`, `espeak-ng` and git with apt,
-creates `.venv` (with access to the system pygame), installs `vosk sounddevice openai` and
-downloads the voice model to `~/.ai-robot-models`.
+creates `.venv` (with access to the system pygame), installs Luna with the `[voice]` and `[ai]`
+packages from `pyproject.toml` and downloads the voice model to `~/.ai-robot-models`.
+
+`install-service.sh` adds a systemd user service (`luna.service`) that the desktop starts at
+login; it restarts Luna if she crashes (not when you press Quit). Logs:
+`journalctl --user -u luna` and `~/.luna/logs/luna.log`. Remove it with
+`bash scripts/install-service.sh --remove`.
 
 If a folder with that name already exists, clone into another one
 (`git clone ... ~/ai-robot-github`). **Start from a terminal on the Pi desktop** so pygame
@@ -233,6 +239,21 @@ Then talk:
   music) is not connected yet instead of pretending.
 - Try typed chat without the face: `python scripts/test_ai.py`.
 
+### Keeping the AI cost low
+- The default model `gpt-6-luna` is the cheapest current one (about $0.10 per million input
+  tokens, $0.01 when cached, $0.50 per million output tokens). A typical question costs a
+  small fraction of a cent. Any model works: `LUNA_AI_MODEL=gpt-5.6-luna` (smarter, ~2x the
+  price) or `LUNA_AI_MODEL=gpt-6.1-terra` (~10x).
+- Luna's fixed instructions and tools stay the same for every question, so OpenAI caches them
+  (cached input is 10x cheaper). The date, time and memories are sent as a small note per question.
+- Only "Hey Luna" questions reach the AI: commands, the wake word alone and noise ("um", "the")
+  are handled offline and cost nothing.
+- Optional limits in `~/.luna.env`: `LUNA_AI_MAX_OUTPUT_TOKENS=300` (a hard cap on answer
+  length), `LUNA_MAX_TURNS=10` (shorter history), `LUNA_AI_WEB_SEARCH=off` (searches cost
+  extra), `LUNA_AI_REASONING=low`.
+- The log (`~/.luna/logs/luna.log`) shows the tokens of every answer:
+  `Luna AI: tokens 1850 in (1700 cached), 40 out`.
+
 ## Controls
 
 | Input | Effect |
@@ -256,11 +277,15 @@ Command-line options: `--windowed`, `--fullscreen`, `--no-voice`, `--no-speech`,
 Stop Luna, then on the Pi:
 
 ```bash
-cd ~/ai-robot   # or the folder you cloned into
-git pull
-.venv/bin/pip install vosk sounddevice openai   # only if requirements changed
-bash scripts/run-pi.sh
+cd ~/ai-robot                         # or the folder you cloned into
+bash scripts/upgrade-pi.sh v1.0.1     # a version tag, or: main
+bash scripts/rollback-pi.sh           # if you do not like it: back to the earlier version
 ```
+
+`upgrade-pi.sh` backs up your settings, memories and plugin choices (`~/.luna/backups`),
+installs the packages, checks that Luna starts and restarts the service. If the new version
+does not start it goes straight back. `rollback-pi.sh --with-data` also restores the backup.
+Details: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Development and tests
 
@@ -327,11 +352,14 @@ ai-robot/
 │   ├── voices.json             # Voice catalogue (also used by robot-setup): add voices here
 │   ├── voices.py               # Loads the voice catalogue
 │   ├── settings.py             # Settings sections and choices
+│   ├── pacing.py               # Frame rate: 30 FPS when busy, 15 when idle (saves CPU)
 │   ├── ai.py                   # OpenAI conversation (background thread)
 │   ├── preferences.py          # Settings saved to ~/.ai-robot-hud.json
 │   └── geometry.py             # Screen scaling and blink maths
 ├── scripts/
 │   ├── install-pi.sh / run-pi.sh
+│   ├── install-service.sh      # Start with the desktop (systemd user service)
+│   ├── upgrade-pi.sh / rollback-pi.sh / deploy-common.sh  # Safe upgrades and rollback
 │   ├── setup-windows.ps1 / run-windows.ps1
 │   ├── download-voice-model.py
 │   ├── measure_listening.py    # Listening timing with the real models (--cases: test sentences)

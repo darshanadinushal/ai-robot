@@ -3,7 +3,7 @@
 Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
-## 1.0.0 (in progress)
+## 1.0.0 (unreleased: waiting for approval, not tagged yet)
 - Luna Core is an installable package, `luna-core` (`pyproject.toml`), with optional extras
   `[voice]`, `[speech]`, `[ai]` and `[all]`, and a `luna` command (also `python -m luna_core`).
 - The package is renamed from `robot_hud` to `luna_core`. The public entry point is
@@ -27,5 +27,18 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 - Tests: plugin unit, lifecycle, permission, compatibility and integration tests, an example
   plugin (`examples/hello_plugin`), an opt-in clean-install test (`LUNA_SLOW_TESTS=1`), and CI on
   Linux, Windows and ARM Linux with Python 3.11-3.13.
+- Raspberry Pi 5 performance: drawing reuses its surfaces and caches colours (wave mode
+  21.9 → 6.5 ms per frame, face 5.5 → 4.3 ms, pixels unchanged); 30 FPS while busy, 15 FPS when
+  idle or on still pages (`LUNA_FPS`, `LUNA_IDLE_FPS`); no scaling work on a 1280×720 screen;
+  the AI client is prepared in the background at start; faster microphone level.
+- AI cost: the fixed instructions and tools are sent unchanged every question so OpenAI caches
+  them (cached input is 10x cheaper); time and memories go in a small per-question note.
+  Noise utterances ("um", "the": new pack field `noise_words`) never reach the AI. Optional
+  `LUNA_AI_MAX_OUTPUT_TOKENS`; token use of each answer is logged. Default model `gpt-6-luna`.
+- Deployment: `scripts/install-service.sh` (systemd user service started with the desktop,
+  restarts after a crash), `scripts/upgrade-pi.sh <version>` (backs up settings, memories and
+  plugin choices, checks that Luna starts, goes back automatically if not) and
+  `scripts/rollback-pi.sh [--with-data]`. `install-pi.sh` installs Luna from `pyproject.toml`.
+  Release steps in `docs/RELEASING.md`; upgrade/rollback test in `tests/test_install.py`.
 - Includes everything before the package: face, offline voice commands, Piper speech, AI chat
   with web search and memory, wake-word sound-alikes, configurable robot name, Settings.

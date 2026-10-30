@@ -168,6 +168,8 @@ def route(text, conversation=False, language="en"):
         words = [w for i, w in enumerate(words) if i not in wake]
         while words and words[0] in pack.greetings:
             words = words[1:]
+    if all(w in pack.noise_words for w in words):
+        words = []  # "the", "huh": noise, not a question (and not worth an AI call)
     if not words:
         return ("wake", "") if woke else ("ignore", "")
     if woke or conversation:

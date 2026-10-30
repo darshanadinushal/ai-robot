@@ -28,6 +28,7 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
 - Listening: Vosk final results are pieces; `listening.UtteranceAssembler` (via `RobotHUD.listen`)
   joins them into one utterance (`commands.utterance_end` picks the wait). Route only complete
   utterances; never call `handle_speech` per Vosk result. Tests: `tests/test_listening.py`.
+  Utterances of only pack `noise_words` ("um", "the") never reach the AI (`commands.route`).
 - Online listening (`transcription.py`, setting `online_listening`, off by default): only
   utterances that Vosk routes to `'ai'` may be uploaded; audio stays in memory; always fall back
   to the Vosk text. Never upload commands, background speech or anything before the wake word.
@@ -58,10 +59,15 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
 - AI conversation: `luna_core/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
   `assistant_core/context.py`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`, via `Conversation.poll`).
+  Cost: `context.turn_instructions` splits the instructions into `.fixed` (sent as
+  `instructions`, cached by OpenAI) and `.notes` (time, memories: a developer message). Never put
+  changing text in the fixed part; the language line stays last in it.
 - Drawing and pages: `luna_core/ui/` (theme, draw, chrome, `pages.Page`, settings_page, touch);
   face state in `face_state.py`; the robot itself (`RobotHUD`) in `luna_core/app.py`. Apps add
   pages with `Robot.add_page(Page)`; never add `if page == ...` branches to `RobotHUD`. Settings logic in `luna_core/settings.py` (tested in
   `tests/test_settings.py`), stored by `luna_core/preferences.py`.
+- Performance (Pi 5): `pacing.py` picks 30 FPS when busy, 15 when idle; set `Page.animated = False`
+  on still pages. Drawing must not allocate surfaces per frame (reuse `draw._layer`, cached `mix`).
 - Plugins: `luna_core/plugins/` (guide `docs/PLUGINS.md`). Apps add features as plugins, not by
   editing Core. Every call into plugin code must go through `PluginManager.call`/`guard`; a plugin
   reaches Luna only through `PluginContext` and its declared permissions (sensitive ones are off
@@ -96,14 +102,20 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
 - Changing a setting means updating `read_preferences`, `write_preferences`, the Settings UI,
   `handle_touch`, and the preference tests (they compare the whole dict).
 - Raspberry Pi uses apt `python3-pygame`; do not "fix" this by pinning pygame there.
-- Shell scripts must keep LF line endings.
+- Shell scripts must keep LF line endings (`.gitattributes`).
+- Deployment: `scripts/install-service.sh` (systemd user service), `upgrade-pi.sh <tag>` (backup,
+  start check, automatic rollback) and `rollback-pi.sh`, sharing `deploy-common.sh`; tested by
+  `UpgradeRollbackTests` in `tests/test_install.py` (Linux, `LUNA_SLOW_TESTS=1`). Release steps:
+  `docs/RELEASING.md`; never tag a release without the owner's approval.
 - Chat waveform and Camera page are intentional placeholders, not real features.
-- The default AI model name in `ai.py` is unverified; users override it with `LUNA_AI_MODEL`.
+- The default AI model `gpt-6-luna` in `ai.py` is the cheapest current one; users override it
+  with `LUNA_AI_MODEL`.
   Tests must use a fake `brain_factory` and never call the real API.
 - Keep user-facing text short; the UI is a small touchscreen.
 
 ## Status snapshot
 Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expressions,
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
-follow-ups and tap-to-stop, date/time-aware answers, plugins (Settings > Plugins), web search (news, live scores), configurable robot name, optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, tests.
-Planned: AI-model setting, autostart, camera/motors/smart home.
+follow-ups and tap-to-stop, date/time-aware answers, plugins (Settings > Plugins), web search (news, live scores), configurable robot name, optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, autostart service, safe upgrade/rollback, adaptive frame
+rate, prompt caching, tests.
+Planned: AI-model setting, camera/motors/smart home.

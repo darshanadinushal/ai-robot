@@ -29,6 +29,13 @@ except ValueError:
     BUFFER_SECONDS = 10.0
 
 
+def _square_sum(samples):
+    """Sum of the squared samples (math.sumprod is much faster on the Pi; Python 3.12+)."""
+    if hasattr(math, "sumprod"):
+        return math.sumprod(samples, samples)
+    return sum(s * s for s in samples)
+
+
 def model_path(language="en"):
     return Path.home() / ".ai-robot-models" / MODELS.get(language, MODEL_NAME)
 
@@ -159,7 +166,7 @@ class VoiceListener:
                             "the unfinished question is dropped", self.dropped_blocks)
             return
         samples = struct.unpack("<%dh" % (len(data) // 2), data)
-        rms = math.sqrt(sum(s * s for s in samples) / max(len(samples), 1))
+        rms = math.sqrt(_square_sum(samples) / max(len(samples), 1))
         self.level = min(1.0, rms / 6000.0)
         capture = self.capture
         if capture is not None:

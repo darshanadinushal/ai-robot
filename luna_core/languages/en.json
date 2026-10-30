@@ -118,6 +118,23 @@
     "uh",
     "erm"
   ],
+  "noise_words": [
+    "the",
+    "a",
+    "an",
+    "uh",
+    "um",
+    "umm",
+    "hmm",
+    "hm",
+    "huh",
+    "mm",
+    "mhm",
+    "ah",
+    "eh",
+    "er",
+    "oh"
+  ],
   "continue_seconds": 0.6,
   "replies": {
     "blink": "Done.",

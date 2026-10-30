@@ -16,6 +16,8 @@ Fields:
                   like commands, not taken from English
   continuation_words  words that rarely end a question ("and", "the", "och", "att"): when
                   speech stops on one, Luna waits longer for the rest (not taken from English)
+  noise_words     words noise is often heard as ("the", "huh", "öh"): an utterance of only
+                  these is ignored, so it never becomes an AI question (not taken from English)
   continue_seconds  pause after an apparently complete question before Luna answers; slower
                   listening models need more (they show resumed speech later); 0 = default
   replies         action ID -> Luna's spoken confirmation
@@ -58,6 +60,7 @@ class LanguagePack:
     warm_up: str
     windows_culture: str
     continuation_words: tuple = ()
+    noise_words: tuple = ()
     continue_seconds: float = 0.0
     controls: dict = field(default_factory=dict)
     transcription_prompt: str = ""
@@ -104,6 +107,7 @@ def _build(data, english):
         sample=field("sample", ""), warm_up=field("warm_up", "Hello."),
         windows_culture=str(data.get("windows_culture") or ""),
         continuation_words=tuple(w.lower() for w in data.get("continuation_words") or ()),
+        noise_words=tuple(w.lower() for w in data.get("noise_words") or ()),
         continue_seconds=float(data.get("continue_seconds") or 0.0),
         controls={name: tuple(" ".join(p.lower().split()) for p in phrases)
                   for name, phrases in (data.get("controls") or {}).items()},

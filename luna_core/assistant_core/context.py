@@ -178,6 +178,28 @@ def about_text(about, birthday_today=False):
     return " ".join(parts)
 
 
+class TurnInstructions(str):
+    """The whole instructions for one question (a str, as before), split for prompt caching.
+
+    `fixed` stays the same for the whole conversation (personality, rules, the user's saved
+    "About you", the language) and is sent as the model's instructions; `notes` change with
+    every question (date and time, related memories, a birthday wish) and are sent next to the
+    question. An unchanged prefix lets the AI provider reuse it at a much lower price.
+    """
+
+    fixed = ""
+    notes = ""
+
+
+def turn_instructions(*args, **kwargs):
+    """Like instructions(), as TurnInstructions (same arguments)."""
+    parts = _parts(*args, **kwargs)
+    text = TurnInstructions(" ".join(text for text, _ in parts))
+    text.fixed = " ".join(text for text, changes in parts if not changes)
+    text.notes = " ".join(text for text, changes in parts if changes)
+    return text
+
+
 def instructions(language="en", now=None, profile=None, tools=False, expressions=False,
                  memories=None, about=None, birthday_today=False, web=False, extra=()):
     """Instructions for one question; Luna answers in the voice language.
@@ -186,6 +208,13 @@ def instructions(language="en", now=None, profile=None, tools=False, expressions
     fields; a saved name replaces LUNA_USER_NAME. `web`: OpenAI web search is offered.
     `extra`: sentences added by plugins (their personality and abilities).
     """
+    return " ".join(text for text, _ in _parts(language, now, profile, tools, expressions,
+                                               memories, about, birthday_today, web, extra))
+
+
+def _parts(language="en", now=None, profile=None, tools=False, expressions=False,
+           memories=None, about=None, birthday_today=False, web=False, extra=()):
+    """[(text, changes with every question)] in the order they are given to the AI."""
     about = about or {}
     abilities = list(TOOL_ABILITIES if tools else ABILITIES)
     if tools and memories is not None:
@@ -197,27 +226,30 @@ def instructions(language="en", now=None, profile=None, tools=False, expressions
              personalise("You can: %s." % "; ".join(abilities)),
              "Not connected yet: %s. If the user asks for one of these, say briefly that it is "
              "not connected yet." % ", ".join(missing)]
-    parts.extend(personalise(text) for text in extra)
+    parts = [(text, False) for text in parts]
+    parts.extend((personalise(text), False) for text in extra)
     if tools:
-        parts.append(TOOL_RULES)
+        parts.append((TOOL_RULES, False))
     if web:
-        parts.append(WEB_RULES)
+        parts.append((WEB_RULES, False))
     if memories is not None:
         if tools:
-            parts.append(MEMORY_RULES)
+            parts.append((MEMORY_RULES, False))
         text = memory_text(memories, tools)
         if text:
-            parts.append(text)
-        text = about_text(about, birthday_today)
+            parts.append((text, True))
+        text = about_text(about)
         if text:
-            parts.append(text)
+            parts.append((text, False))
+        if birthday_today:
+            parts.append((about_text({}, True), True))
     if expressions:
-        parts.append(EXPRESSION_RULE)
+        parts.append((EXPRESSION_RULE, False))
     if now is not None:
-        parts.append("Current local date and time: %s." % date_text(now))
+        parts.append(("Current local date and time: %s." % date_text(now), True))
     if profile is not None and profile.user_name and not about.get("name"):
-        parts.append("The user likes to be called %s." % profile.user_name)
+        parts.append(("The user likes to be called %s." % profile.user_name, False))
     if profile is not None and profile.location:
-        parts.append("You are located in: %s." % profile.location)
-    parts.append(languages.get(language).ai_instruction)
-    return " ".join(parts)
+        parts.append(("You are located in: %s." % profile.location, False))
+    parts.append((languages.get(language).ai_instruction, False))
+    return parts

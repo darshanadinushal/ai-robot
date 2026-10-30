@@ -22,6 +22,7 @@ class Page:
     name = 'Page'  # unique; shown on the navigation button (translated with tr if known)
     chrome = True  # draw the sci-fi frame behind the page
     plugin = None  # the id of the plugin that added it (set by Luna)
+    animated = True  # it moves on its own (False: Luna may redraw it less often when idle)
 
     def draw_icon(self, surface, x, y, color):
         """The navigation-button icon, centred on (x, y)."""
@@ -69,6 +70,7 @@ class CameraPage(Page):
 class SettingsPage(Page):
     name = 'Settings'
     chrome = False
+    animated = False
 
     def draw(self, hud, surface, t):
         hud.draw_settings()

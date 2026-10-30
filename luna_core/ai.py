@@ -67,6 +67,29 @@ def friendly_error(error):
     return "Sorry, my AI brain had a problem."
 
 
+def max_output_tokens(env=None):
+    """LUNA_AI_MAX_OUTPUT_TOKENS: an optional cap on each answer (reasoning included); None = no cap."""
+    value = (os.environ if env is None else env).get("LUNA_AI_MAX_OUTPUT_TOKENS", "").strip()
+    try:
+        number = int(value) if value else 0
+    except ValueError:
+        number = 0
+    if value and number < 16:  # the API minimum
+        log.warning("Luna AI: ignoring LUNA_AI_MAX_OUTPUT_TOKENS (use a number of 16 or more)")
+        return None
+    return number or None
+
+
+def usage_text(usage):
+    """Token counts of one response for the log (numbers only), or '' if unknown."""
+    try:
+        details = getattr(usage, "input_tokens_details", None)
+        cached = getattr(details, "cached_tokens", 0) or 0
+        return "%d in (%d cached), %d out" % (usage.input_tokens, cached, usage.output_tokens)
+    except (AttributeError, TypeError, ValueError):
+        return ""
+
+
 def reasoning_effort(env=None):
     """LUNA_AI_REASONING if it is a known effort; empty = the model's default (not sent)."""
     value = (os.environ if env is None else env).get("LUNA_AI_REASONING", "").strip().lower()
@@ -89,6 +112,9 @@ class LunaBrain:
     failed answer is never part of the history.
     `reasoning` (LUNA_AI_REASONING) is sent only when configured; a model that does not support
     it fails with BadRequestError, which is logged, not hidden.
+    Instructions given as context.TurnInstructions are sent in two parts: the fixed part as
+    `instructions` (the same for the whole conversation, so the provider's prompt cache can
+    reuse it) and the per-question notes as a developer message before the question.
     """
 
     def __init__(self, model=None):
@@ -98,19 +124,28 @@ class LunaBrain:
         self.model = model or os.environ.get("LUNA_AI_MODEL", DEFAULT_MODEL)
         self.client = OpenAI(timeout=30.0, max_retries=1)
         self.reasoning = reasoning_effort()
+        self.max_output_tokens = max_output_tokens()
         self.previous_id = None
         self.completed_id = None
 
     def _args(self, question, language, instructions_text=None, tools=None, tool_choice=None,
               previous=None):
         # Luna answers in the language she listens and speaks in (the voice language).
+        text = instructions_text or instructions(language, datetime.now())
+        notes = getattr(text, "notes", "")
+        if notes and isinstance(question, str):
+            question = [{"role": "developer",
+                         "content": "Notes for this question (they replace earlier notes): " + notes},
+                        {"role": "user", "content": question}]
         args = {"model": self.model, "input": question,
-                "instructions": instructions_text or instructions(language, datetime.now())}
+                "instructions": getattr(text, "fixed", "") or str(text)}
         previous = previous or self.previous_id
         if previous:
             args["previous_response_id"] = previous
         if getattr(self, "reasoning", None):
             args["reasoning"] = {"effort": self.reasoning}
+        if getattr(self, "max_output_tokens", None):
+            args["max_output_tokens"] = self.max_output_tokens
         if tools:
             args["tools"] = tools
             args["tool_choice"] = tool_choice or "auto"
@@ -154,6 +189,9 @@ class LunaBrain:
                 elif kind == "response.completed":
                     self.completed_id = event.response.id
                     result["id"] = event.response.id
+                    used = usage_text(getattr(event.response, "usage", None))
+                    if used:
+                        log.info("Luna AI: tokens %s", used)
                 elif kind in ("response.failed", "response.incomplete", "error"):
                     raise StreamError(kind)
         finally:
@@ -217,6 +255,16 @@ class AIWorker:
                          args=(request, question, language, instructions_text, tools),
                          daemon=True).start()
         return request
+
+    def warm_up(self):
+        """Create the AI client in the background now (importing it takes a moment on a Pi), so
+        the first question is answered sooner. No request is sent; errors show on the first ask."""
+        def load():
+            try:
+                self._get_brain()
+            except Exception as error:  # reported when the user asks
+                log.info("Luna AI: not ready yet (%s)", type(error).__name__)
+        threading.Thread(target=load, name="luna-ai-warm-up", daemon=True).start()
 
     def tool_results(self, request, outputs):
         """The app ran the tools of a "tools" message: [(call_id, output text)]."""

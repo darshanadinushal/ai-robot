@@ -114,6 +114,53 @@ class LunaBrainStreamTests(unittest.TestCase):
         self.assertEqual(self.calls[1]["instructions"], "Be brief.")
         self.assertIsNone(ai.reasoning_effort({"LUNA_AI_REASONING": "turbo"}))
 
+    def test_fixed_instructions_stay_the_same_so_the_prompt_cache_is_reused(self):
+        from datetime import datetime
+        from luna_core.assistant_core.context import instructions, turn_instructions
+        from luna_core.assistant_core.memory import Recall
+        brain = self.brain([event("response.completed", response=types.SimpleNamespace(id="r1"))])
+        memories = Recall(relevant=(types.SimpleNamespace(id=3, text="You like jazz."),), total=1)
+        texts = [turn_instructions("en", datetime(2026, 10, 30, hour, minute), memories=memories,
+                                   about={"name": "Sam"}, birthday_today=hour == 9)
+                 for hour, minute in ((9, 5), (10, 41))]
+        self.assertEqual(texts[0], instructions("en", datetime(2026, 10, 30, 9, 5),
+                                                memories=memories, about={"name": "Sam"},
+                                                birthday_today=True), "same text as before")
+        for text in texts:
+            list(brain.stream("Any music tips?", "en", text))
+        sent = [call["instructions"] for call in self.calls]
+        self.assertEqual(sent[0], sent[1], "unchanged between questions")
+        self.assertIn("The user's name is Sam.", sent[0])
+        self.assertTrue(sent[0].endswith("Always answer in English."))
+        for changing in ("09:05", "jazz", "happy birthday"):
+            self.assertNotIn(changing, sent[0])
+        notes, question = self.calls[0]["input"]
+        self.assertEqual(question, {"role": "user", "content": "Any music tips?"})
+        self.assertEqual(notes["role"], "developer")
+        for part in ("09:05", "You like jazz.", "happy birthday"):
+            self.assertIn(part, notes["content"])
+        self.assertNotIn("birthday", self.calls[1]["input"][0]["content"])
+        list(brain.stream("q", "en", "Be brief."))
+        self.assertEqual(self.calls[2]["input"], "q", "plain instructions: question as before")
+
+    def test_output_token_cap_and_usage_log(self):
+        self.assertEqual(ai.max_output_tokens({"LUNA_AI_MAX_OUTPUT_TOKENS": "400"}), 400)
+        for value in ("", "lots", "5"):
+            self.assertIsNone(ai.max_output_tokens({"LUNA_AI_MAX_OUTPUT_TOKENS": value}))
+        usage = types.SimpleNamespace(input_tokens=1900, output_tokens=42,
+                                      input_tokens_details=types.SimpleNamespace(cached_tokens=1792))
+        brain = self.brain([event("response.completed",
+                                  response=types.SimpleNamespace(id="r1", usage=usage))])
+        brain.max_output_tokens = None
+        list(brain.stream("q"))
+        self.assertNotIn("max_output_tokens", self.calls[0])
+        brain.max_output_tokens = 400
+        with self.assertLogs("luna.ai", "INFO") as logged:
+            list(brain.stream("q"))
+        self.assertEqual(self.calls[1]["max_output_tokens"], 400)
+        self.assertIn("1900 in (1792 cached), 42 out", logged.output[0])
+        self.assertEqual(ai.usage_text(None), "")
+
     def test_failed_or_unfinished_stream_raises(self):
         for events in ([event("response.output_text.delta", delta="Hi."), event("response.failed")],
                        [event("error")],

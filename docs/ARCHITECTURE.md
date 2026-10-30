@@ -54,12 +54,17 @@ luna_core/
   voices.py                 Loads voices.json (the voice catalogue) and model paths
   voices.json               Voice catalogue: Piper model, eSpeak voice, files with SHA-256
   settings.py               Settings page model: sections and applying choices
+  pacing.py                 Frame rate: active / idle FPS (LUNA_FPS, LUNA_IDLE_FPS)
   i18n.py                   tr(): screen text in the app language (from the packs)
   preferences.py            User settings stored as JSON in the home folder
   geometry.py               Pure maths: viewport scaling, blink curve, clamp
   ai.py                     Online AI: env loading, LunaBrain (OpenAI), AIWorker thread
 scripts/
-  install-pi.sh             Raspberry Pi OS setup (apt, venv, Vosk, model)
+  install-pi.sh             Raspberry Pi OS setup (apt, venv, Luna + [voice,ai], model)
+  install-service.sh        systemd user service luna.service, started by the desktop login
+  upgrade-pi.sh             Upgrade to a tag/branch: backup, install, start check, auto-rollback
+  rollback-pi.sh            Back to the version before the last upgrade (--with-data: backup)
+  deploy-common.sh          Shared by the upgrade and rollback scripts (sourced)
   setup-audio-pi.sh         Makes the ReSpeaker XVF3800 the default microphone + speaker
   run-pi.sh                 Start fullscreen on the Pi (uses .venv if present)
   download-voice-model.py   Downloads the small Vosk models (en, sv, ...: from the packs)
@@ -317,6 +322,14 @@ home, driving) without growing `app.py`, and is tested without pygame
   constants (`BACKGROUND`, `TEXT`, `MUTED`) are in `ui/theme.py`.
 - Old names such as `app.listening_status` or `app.CHAT_RECT` still work (`app.__getattr__`
   forwards them to `luna_core.ui`); new code imports from `luna_core.ui`.
+- **Performance (Pi 5):** `ui/draw.py` caches colour mixes (`mix`), reuses its transparent
+  layers (`_layer`) and the mic glow, so a frame allocates almost nothing (wave mode 21.9 → 6.5 ms,
+  face 5.5 → 4.3 ms per frame on the dev laptop; pixels unchanged). `present()` reuses the scaled
+  surface and skips scaling when the screen is 1280×720. `pacing.frame_rate` picks the FPS:
+  30 while busy (listening to a question, thinking, talking, a touch or words in the last 3 s),
+  15 when idle, and the idle rate on still pages (`Page.animated = False`, e.g. Settings) or with
+  animations off. `LUNA_FPS` / `LUNA_IDLE_FPS` change them. Keep new pages and drawing free of
+  per-frame allocations, and set `animated = False` on pages that do not move.
 
 ### Pages (bottom nav, keys `1`–`9`)
 `Chat` (simulated waveform demo), `Home` (the robot), `Camera` (placeholder only),
@@ -450,6 +463,9 @@ confirmed text and the live partial as "still talking":
   the user has paused inside this utterance; `wake` (only "Luna") and `unfinished` (ends on a
   pack `continuation_words` word: and, the, of, och, att, som...) → 1.8 s. So "Luna" alone
   says "Yes?" only if no question follows.
+- An utterance of only pack `noise_words` ("um", "the", "öh": what Vosk makes of a cough or
+  background talk) is never an AI question: `commands.route` treats it as the wake word alone
+  (if heard) or ignores it, so noise costs no API call.
 - Exactly one utterance is routed; the follow-up window is checked at the time the user
   **started** speaking (`Utterance.conversation`).
 - Limits: 45 s or 1,000 characters (`LUNA_MAX_UTTERANCE_SECONDS`, `LUNA_MAX_UTTERANCE_CHARS`);
@@ -576,9 +592,20 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
   `AIWorker` only if it is configured and `--no-ai` is not given.
 - `LunaBrain` lazily imports `openai`, uses the Responses API with `previous_response_id`
   for conversation memory, timeout 30 s, 1 retry. Model: `LUNA_AI_MODEL` or `DEFAULT_MODEL`
-  (unverified default). The instructions are built by the assistant core
+  (`gpt-6-luna`, the cheapest current model). The instructions are built by the assistant core
   (`context.instructions`, section 2a) and passed with each question: 1–3 short plain sentences,
   up to 5 when asked for detail (well under the 700-character spoken limit of `SentenceStream`).
+  `AIWorker.warm_up()` creates the client in the background at start, so the first question
+  does not wait for the `openai` import.
+- **Cost (prompt caching):** `Conversation.ask` builds `context.turn_instructions(...)`, a
+  `TurnInstructions` string (the full text, used by tests and fakes) with `.fixed` (personality,
+  rules, abilities, profile, language: the same every question) and `.notes` (date and time,
+  memories, a birthday wish). `LunaBrain` sends `.fixed` as `instructions` and the notes as a
+  `developer` message before the question, so the long fixed prefix plus the tools (~1,800
+  tokens) is cached by OpenAI (cached input costs 10%). Never put changing text (time,
+  counters, random choices) into the fixed part. `LUNA_AI_MAX_OUTPUT_TOKENS` caps answer
+  tokens (off by default; at least 16). Each completed answer logs
+  `Luna AI: tokens N in (C cached), M out` (numbers only).
 - **Reasoning effort:** `LUNA_AI_REASONING` (`none`, `minimal`, `low`, `medium`, `high`,
   `xhigh`) is sent as `reasoning.effort` only when set. Not every model supports every value; the
   API then fails with `BadRequestError`, which is logged with a hint, never silently changed.
@@ -609,6 +636,8 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
 - Privacy: only recognised text is sent, never audio.
 
 ## 6. Command-line options (`main.py`, `luna_core/cli.py`)
+Environment: `LUNA_FPS` (active frame rate, 30), `LUNA_IDLE_FPS` (15),
+`LUNA_AI_MODEL`, `LUNA_AI_MAX_OUTPUT_TOKENS`, `LUNA_HARDWARE=mock`, `LUNA_LOG_FILE`.
 `--version`, `--headless`, `--mock-hardware`, `--no-plugins` (safe mode), `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
 `--no-voice`, `--no-speech`, `--no-ai`, `--screenshot FILE` (save first frame and exit; implies
 no voice/speech/AI so no native audio thread is alive at exit — on the Pi that caused a segfault).
@@ -630,7 +659,8 @@ rendering to PNG (`--screenshot`) or by building `RobotHUD` with a dummy driver 
 To preview AI states, assign a fake object with an `answers` queue to `hud.ai` and set
 `hud.conversation.thinking`, `answer`, `answer_until`.
 CI (`.github/workflows/tests.yml`) runs the suite on Ubuntu and Windows with Python 3.11-3.13 and
-on ARM Linux (like the Pi), plus `tests/test_install.py` (a clean install, `LUNA_SLOW_TESTS=1`).
+on ARM Linux (like the Pi), plus `tests/test_install.py` (a clean install and an
+upgrade / failed upgrade / rollback with the deploy scripts on Linux, `LUNA_SLOW_TESTS=1`).
 Plugin tests use `UnsavedStore` (no `~/.luna/plugins.json` writes) and a fake host.
 Baseline sentences: `tests/conversation_cases.json` (route expected today, and the phase meant
 to change a case); `scripts/measure_listening.py --cases` speaks them through the real models.
@@ -646,12 +676,12 @@ to change a case); `scripts/measure_listening.py --cases` speaks them through th
 
 ## 10. Planned work (not implemented)
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
-2. **Autostart on Pi boot** (desktop autostart entry + auto-login).
-3. Real camera, motors, smart-home control (UI placeholders exist).
-4. Timers and reminders, music (Soundcore speaker), smart home and driving, each as its own
+2. Real camera, motors, smart-home control (UI placeholders exist).
+3. Timers and reminders, music (Soundcore speaker), smart home and driving, each as its own
    phase, reusing the tool registry and permission policy.
 
 ## 11. Known gaps
+- Autostart (`install-service.sh`) is not yet tried on a real Pi desktop.
 - Wi-Fi, audio and battery icons are decorative, not live readings.
 - The small Vosk model may mishear "Luna"; variants are accepted in `commands.route`.
 - Free-form recognition (AI on) is less accurate for one-word commands than grammar mode.

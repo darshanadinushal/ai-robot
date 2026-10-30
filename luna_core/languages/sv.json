@@ -118,6 +118,20 @@
     "eh",
     "ehm"
   ],
+  "noise_words": [
+    "eh",
+    "ehm",
+    "öh",
+    "äh",
+    "hm",
+    "hmm",
+    "mm",
+    "mhm",
+    "och",
+    "en",
+    "ett",
+    "att"
+  ],
   "continue_seconds": 0.9,
   "replies": {
     "blink": "Klart.",

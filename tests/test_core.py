@@ -167,10 +167,33 @@ class RouteTests(unittest.TestCase):
         finally:
             naming.set_name('Luna')
 
+    def test_noise_is_never_an_ai_question(self):
+        from luna_core.commands import route
+        for text, language in (("the", "en"), ("huh", "en"), ("um the", "en"), ("öh", "sv")):
+            with self.subTest(text):
+                self.assertEqual(route(text, conversation=True, language=language), ("ignore", ""))
+        self.assertEqual(route("hey luna um"), ("wake", ""))
+        self.assertEqual(route("yes", conversation=True), ("ai", "yes"))
+        self.assertEqual(route("the moon", conversation=True), ("ai", "the moon"))
+
     def test_clean_for_speech(self):
         from luna_core.speech import clean_for_speech
         self.assertEqual(clean_for_speech("**Hi** `there`\n- one"), "Hi there one")
         self.assertLessEqual(len(clean_for_speech("word " * 500)), 701)
+
+
+class FramePacingTests(unittest.TestCase):
+    def test_rates_and_idle_frames(self):
+        from luna_core.pacing import frame_rate, frame_rates
+        self.assertEqual(frame_rates({}), (30, 15))
+        self.assertEqual(frame_rates({"LUNA_FPS": "24", "LUNA_IDLE_FPS": "50"}), (24, 24))
+        self.assertEqual(frame_rates({"LUNA_FPS": "fast", "LUNA_IDLE_FPS": "0"}), (30, 1))
+        self.assertEqual(frame_rates({"LUNA_FPS": "8"}), (8, 8))
+        rates = (30, 15)
+        self.assertEqual(frame_rate(rates, False, False, 60.0), 15, "nothing moves")
+        self.assertEqual(frame_rate(rates, False, True, 60.0), 30, "the face moves")
+        self.assertEqual(frame_rate(rates, True, False, 60.0), 30, "listening or talking")
+        self.assertEqual(frame_rate(rates, False, False, 1.0), 30, "just touched")
 
 
 class AIWorkerTests(unittest.TestCase):
