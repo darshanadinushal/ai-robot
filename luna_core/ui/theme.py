@@ -2,8 +2,6 @@
 
 Drawing and touch handling use the same rectangles, so a tap always matches what is shown.
 """
-import os
-
 import pygame
 
 from ..geometry import CANVAS_WIDTH as W, CANVAS_HEIGHT as H
@@ -39,20 +37,6 @@ def nav_rects(count):
             for i in range(count)]
 
 
-# The DejaVu fonts on Raspberry Pi OS / Debian. Opening them directly gives the same font as
-# SysFont('dejavusans') without pygame's font search, which runs `fc-list` over every installed
-# font when Luna starts on Linux. Elsewhere (Windows) the search is used.
-DEJAVU_FILES = {False: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                True: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"}
-
-
-def load_font(size, bold=False):
-    path = DEJAVU_FILES[bool(bold)]
-    if os.path.isfile(path):
-        return pygame.font.Font(path, size)
-    return pygame.font.SysFont("dejavusans", size, bold=bold)
-
-
 __all__ = ["W", "H", "FPS", "BACKGROUND", "TEXT", "MUTED", "FAINT", "WARNING", "QUIT_RECT",
            "SIDEBAR_RECT", "SECTION_RECTS", "CONTENT_RECT", "CONTENT_CLIP", "LABEL_X", "CONTROL_X",
-           "CONTROL_RIGHT", "CHAT_RECT", "NAV_TOP", "NAV_HEIGHT", "nav_rects", "load_font"]
+           "CONTROL_RIGHT", "CHAT_RECT", "NAV_TOP", "NAV_HEIGHT", "nav_rects"]

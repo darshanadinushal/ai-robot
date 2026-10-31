@@ -43,33 +43,6 @@ class StartupCostTests(unittest.TestCase):
         hud.frame(1.0)  # draws, events and the clock work without pygame.init()
 
 
-class FontTests(unittest.TestCase):
-    def setUp(self):
-        import pygame
-        pygame.font.init()
-        self.pygame = pygame
-
-    def test_falls_back_to_the_font_search_without_dejavu_files(self):
-        from luna_core.ui import theme
-        with mock.patch.dict(theme.DEJAVU_FILES, {False: "/no/such.ttf", True: "/no/such-bold.ttf"}):
-            font = theme.load_font(20, bold=True)
-        self.assertGreater(font.size("Luna")[0], 0)
-
-    @unittest.skipUnless(os.path.isfile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-                         and os.path.isfile("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-                         "needs the DejaVu fonts (Raspberry Pi OS, Debian, Ubuntu)")
-    def test_direct_fonts_draw_exactly_like_sysfont(self):
-        from luna_core.ui import theme
-        text = "Hej! Luna lyssnar — 12:34 ÅÄÖ"
-        for size, bold in ((17, False), (25, False), (27, True), (46, True)):
-            direct = theme.load_font(size, bold=bold).render(text, True, (255, 255, 255))
-            searched = self.pygame.font.SysFont("dejavusans", size, bold=bold).render(
-                text, True, (255, 255, 255))
-            self.assertEqual(direct.get_size(), searched.get_size(), (size, bold))
-            to_bytes = getattr(self.pygame.image, "tobytes", None) or self.pygame.image.tostring
-            self.assertEqual(to_bytes(direct, "RGBA"), to_bytes(searched, "RGBA"), (size, bold))
-
-
 @unittest.skipIf(os.name == "nt" or not shutil.which("bash"), "needs Linux bash")
 class InstallServiceTests(unittest.TestCase):
     """scripts/install-service.sh with a fake systemctl and a temporary home."""

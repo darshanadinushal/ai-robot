@@ -10,8 +10,7 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 - `install-service.sh`: quoted `ExecStart` (folders with spaces) and no `Nice=-2`, which a
   systemd user service may not set.
 - Raspberry Pi: faster start and less memory. Pygame starts only the display and fonts (not the
-  unused mixer, which opened the sound device, or joysticks); the DejaVu fonts are opened directly
-  instead of searching all fonts with `fc-list` (same text); `run-pi.sh` sets `MALLOC_ARENA_MAX=2`.
+  unused mixer, which opened the sound device, or joysticks); `run-pi.sh` sets `MALLOC_ARENA_MAX=2`.
 - `scripts/measure_startup.py`: start-up time, peak memory and idle CPU/memory (docs/BASELINE.md).
 
 ## 1.0.0 (2026-10-30)
