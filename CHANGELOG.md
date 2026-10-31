@@ -4,6 +4,14 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
 ## Unreleased
+- **Background tasks, core** (task service step 3, `luna_core/tasks/`): task model, SQLite
+  store (`tasks`, `steps`, `approvals` in `~/.luna/tasks.db`), service protocol, `TaskClient`
+  (limits, budget, crash recovery) and `Announcer` (when Luna tells you a result; quiet hours).
+  The AI can start, check and cancel tasks; "Luna, what are you working on?" / "Luna, cancel
+  the task" (Swedish too). New Tasks page and Settings > AI: Background tasks, Quiet hours,
+  Task history (7/30/90 days). No real helper yet: try it with `LUNA_TASKS=demo`
+  (a fake research helper). New preferences `tasks`, `quiet_hours`, `task_history_days`;
+  new pack controls `task_status`, `cancel_task`.
 - **Yes/No confirmation** (`luna_core/tasks/confirm.py`): when Luna asks "Shall I remember
   that?", a Yes/No box appears. Say "yes"/"no" (pack `answers`, English and Swedish) or tap;
   Yes saves exactly what is shown, without another AI call. No answer in 60 s, or talking about

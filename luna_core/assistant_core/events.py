@@ -38,3 +38,17 @@ class Mood:
 class Log:
     """A diagnostic line for the log (never contains keys or API error messages)."""
     message: str
+
+
+@dataclass(frozen=True)
+class TaskStarted:
+    """The AI handed work to a background task (see tasks/client.py)."""
+    task_id: str
+    goal: str
+
+
+@dataclass(frozen=True)
+class Announce:
+    """Luna tells the user about a background task on her own (result, failure, progress)."""
+    text: str
+    task_id: str

@@ -172,7 +172,8 @@ class SettingsTouchTests(unittest.TestCase):
         self.assertEqual(actions(), {"mode", "color", "layout", "language", "animations"})
         expected = {1: {"voice_language", "voice", "preview"},
                     2: {"online_listening", "voice_interrupt"}, 3: {"memory"},
-                    SECTIONS.index("AI"): {"ai_daily_budget"},
+                    SECTIONS.index("AI"): {"ai_daily_budget", "tasks", "quiet_hours",
+                                           "task_history_days"},
                     SECTIONS.index("Plugins"): set(), SECTIONS.index("About"): {"name_edit"}}
         for index, kinds in expected.items():
             self.tap(("section", index))
@@ -257,7 +258,15 @@ class TranslationTests(unittest.TestCase):
                                  "FEMALE", "MALE", "Wave layout", "Face layout", "Online listening",
                                  "Hear long questions more accurately",
                                  "What Luna remembers about you", "Apps that add to Luna",
-                                 "Daily limit for paid AI use", "Daily budget", "Used today"}
+                                 "Daily budget", "Used today",
+                                 "Paid AI use and background tasks", "Background tasks",
+                                 "Quiet hours", "Task history", "Tasks",
+                                 "Luna hands longer research to helpers.",
+                                 "Not set up on this robot yet.",
+                                 "No task news 22:00-07:00 unless you talk to Luna."}
+        from luna_core.ui import tasks_page
+        names |= set(tasks_page.STATES.values()) | set(tasks_page.ERRORS.values())
+        names |= {"Something went wrong"}
         from luna_core.plugins import PERMISSIONS
         from luna_core.plugins.manager import STATUS_TEXT
         names |= {text for _, text in PERMISSIONS.values()} | set(STATUS_TEXT.values())

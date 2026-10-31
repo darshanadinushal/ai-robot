@@ -26,10 +26,13 @@ from .i18n import tr
 from .ai import AIWorker, ai_configured
 from .assistant_core.conversation import Conversation
 from .assistant_core.context import settings_from_env
-from .assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
+from .assistant_core.events import Accepted, Act, Announce, Log, Mood, Speak, StopSpeech, TaskStarted
 from .assistant_core.expression import face_motion
 from .assistant_core.memory import ERRORS as MEMORY_ERRORS, MemoryStore
+from .tasks.announce import Announcer
 from .tasks.budget import CostGuard, UsageMeter
+from .tasks.client import demo_client
+from .tasks.store import TaskStore
 from .transcription import PREROLL_SECONDS, AudioRing, OnlineListening
 from .voice import VoiceListener
 from .face_state import FaceState
@@ -43,6 +46,7 @@ from .ui.chrome import confirm_dialog, nav_bar, status_bar
 from .ui.draw import (background_surface, draw_eye, draw_mic, draw_scifi_chrome, draw_text, draw_wave,
                       draw_wave_bars, draw_wave_circle, glow_disc, mix, smile, wrap_text)
 from .ui.pages import Page, default_pages
+from .ui.tasks_page import TasksPage
 from .ui.settings_page import (audio_status, listening_status, memory_pages, mic_status, online_status,
                                plugin_pages, settings_page)
 from .ui.theme import (BACKGROUND, CONFIRM_NO_RECT, CONFIRM_RECT, CONFIRM_YES_RECT, H, MUTED, QUIT_RECT,
@@ -120,6 +124,15 @@ class RobotHUD:
         # AI cost: usage of every paid call (~/.luna/tasks.db) and the daily budget (Settings > AI).
         self.usage=UsageMeter()
         self.budget=self.conversation.budget=CostGuard(self.usage,self.prefs['ai_daily_budget'])
+        self.core_pages=4  # Chat, Home, Camera, Settings (and Tasks) cannot be removed
+        self.tasks=None    # background tasks (tasks/client.py); step 3: only LUNA_TASKS=demo
+        if os.environ.get('LUNA_TASKS','').strip().lower()=='demo':
+            self.tasks=demo_client(TaskStore(),self.usage,self.budget,enabled=self.prefs['tasks'],
+                                   history_days=self.prefs['task_history_days'])
+            self.conversation.set_tasks(self.tasks,Announcer(quiet=self.prefs['quiet_hours']))
+            self.pages.insert(self.core_pages,TasksPage())
+            self.core_pages+=1
+            log.info('Luna tasks: demo mode (a pretend helper finishes every task after 8 s)')
         self.memory=MemoryStore()  # facts the user asked Luna to remember (~/.luna-memory.db)
         self.memory_page=0
         self.forget_all_until=0.0  # "Forget everything" waits for a second tap until then
@@ -216,7 +229,7 @@ class RobotHUD:
 
     def remove_page(self,page):
         """Remove an added page (a plugin stopped); Home is shown if it was on screen."""
-        if page in self.pages and self.pages.index(page)>=4:
+        if page in self.pages and self.pages.index(page)>=self.core_pages:
             self.pages.remove(page)
             if self.page==page.name:
                 self.page='Home'
@@ -264,6 +277,7 @@ class RobotHUD:
     def handle_touch(self,x,y,t):
         """A tap on the logical canvas: Luna's Yes/No question, quit, a navigation button, or the
         shown page."""
+        self.conversation.touched(t)
         if self.conversation.confirmation is not None and CONFIRM_RECT.collidepoint(x,y):
             for rect,yes in ((CONFIRM_YES_RECT,True),(CONFIRM_NO_RECT,False)):
                 if rect.collidepoint(x,y):
@@ -349,6 +363,12 @@ class RobotHUD:
                     self.voice.set_language(self.talk_language)
             elif changed=='ai_daily_budget':
                 self.budget.daily_usd=self.prefs['ai_daily_budget']
+            elif changed=='tasks' and self.tasks is not None:
+                self.tasks.set_enabled(self.prefs['tasks'])
+            elif changed=='quiet_hours' and self.conversation.announcer is not None:
+                self.conversation.announcer.quiet=self.prefs['quiet_hours']
+            elif changed=='task_history_days' and self.tasks is not None:
+                self.tasks.set_history(self.prefs['task_history_days'])
             elif changed=='memory':
                 self.conversation.set_memory(self.memory if self.prefs['memory'] else None)
             elif changed=='online_listening' and not self.prefs['online_listening']:
@@ -596,7 +616,7 @@ class RobotHUD:
     def run_effects(self,effects,t):
         """Carry out what the assistant core decided (UI thread)."""
         for effect in effects:
-            if isinstance(effect,Speak):
+            if isinstance(effect,(Speak,Announce)):
                 speech.speak_async(effect.text)
             elif isinstance(effect,Act):
                 self.apply_actions(list(effect.actions),t,effect.quiet)
@@ -610,6 +630,8 @@ class RobotHUD:
                 self.mood_until=t+effect.seconds
             elif isinstance(effect,Log):
                 log.info('%s',effect.message)
+            elif isinstance(effect,TaskStarted):
+                log.info('Luna tasks: %s started by the AI',effect.task_id)
 
     def mic_muted(self):
         # Stay deaf between streamed sentences too, so Luna never hears herself; with interrupt
@@ -733,7 +755,8 @@ class RobotHUD:
                                          self.name_editor,
                                          speech.voice_state() if speech.enabled else None,
                                          (self.plugins.view(),self.plugin_page,self.plugin_open),
-                                         (self.usage.spent(),self.ai is not None))
+                                         (self.usage.spent(),self.ai is not None),
+                                         self.tasks is not None)
 
     def draw_footer(self,t,default):
         """Bottom text: Luna's answer while relevant, otherwise the hint."""
@@ -832,6 +855,8 @@ class RobotHUD:
             if self.voice:
                 self.voice.stop()
             self.plugins.stop_all()
+            if self.tasks is not None:
+                self.tasks.close()
             self.hardware.close()
             pygame.quit()
 
