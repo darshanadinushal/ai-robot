@@ -118,4 +118,6 @@ Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expr
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
 follow-ups and tap-to-stop, date/time-aware answers, plugins (Settings > Plugins), web search (news, live scores), configurable robot name, optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, autostart service, safe upgrade/rollback, adaptive frame
 rate, prompt caching, tests.
-Planned: AI-model setting, camera/motors/smart home.
+Planned (see `docs/ROADMAP.md`, decisions in `docs/adr/`): multi-agent task service
+(design `docs/design/TASK_SERVICE.md`, not implemented), Home Assistant on a separate device,
+reminders, music, motors, camera. Follow the approved design; don't start a phase before approval.

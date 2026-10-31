@@ -677,6 +677,9 @@ to change a case); `scripts/measure_listening.py --cases` speaks them through th
 - Threads never touch pygame; they communicate through a queue, a float (`level`) and a status string.
 
 ## 10. Planned work (not implemented)
+The full plan is in [ROADMAP.md](ROADMAP.md); decisions in [adr/](adr/); the multi-agent
+task service design in [design/TASK_SERVICE.md](design/TASK_SERVICE.md).
+
 1. **Settings tab to pick the AI model** (saved as a preference; today use `LUNA_AI_MODEL`).
 2. Real camera, motors, smart-home control (UI placeholders exist).
 3. Timers and reminders, music (Soundcore speaker), smart home and driving, each as its own

@@ -3,6 +3,11 @@
 Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
+## Unreleased
+- Docs: `docs/ROADMAP.md`, decision records in `docs/adr/` (Home Assistant on a separate
+  device; hybrid multi-agent task service) and the task service design
+  `docs/design/TASK_SERVICE.md` (proposed, not implemented).
+
 ## 1.0.1 (2026-10-31)
 - Startup works with [robot-setup](https://github.com/darshanadinushal/robot-setup): there is
   one `luna.service`. `scripts/install-service.sh` marks its files and refuses (also with
