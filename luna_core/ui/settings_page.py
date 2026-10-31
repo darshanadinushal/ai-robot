@@ -12,6 +12,7 @@ from ..i18n import tr
 from ..preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS
 from ..settings import KEYBOARD_ROWS, SECTIONS
 from ..tasks.budget import BUDGET_CHOICES, WARN_AT
+from ..tasks.store import HISTORY_CHOICES
 from ..voices import LANGUAGES as VOICE_LANGUAGES, get_voice, voices_for
 from .draw import draw_arc, draw_text, line, mix, wrap_text
 from .theme import (BACKGROUND, CONTENT_CLIP, CONTENT_RECT, CONTROL_RIGHT, CONTROL_X, LABEL_X,
@@ -403,8 +404,10 @@ def name_keyboard(surface, fonts, accent, editor, y, hits):
 def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic',''),
                   online=('basic',''), memory=((),0,False,False), interrupt=False,
                   audio=('basic',''), editor=None, speech_state=None, plugins=((),0,None),
-                  budget=(0.0,False)):
-    """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
+                  budget=(0.0,False), tasks=False):
+    """Draw the Settings page (only the selected section) and return [(rect, action)] for taps.
+
+    `tasks`: background tasks are set up on this robot (else their switches say so)."""
     hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
     settings_sidebar(surface,fonts,accent,active)
     pygame.draw.rect(surface,(6,26,52),CONTENT_RECT,border_radius=18)
@@ -492,18 +495,32 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
         section_header(surface,fonts,name,y,'What Luna remembers about you')
         memory_section(surface,fonts,accent,prefs,y,memory,hits)
     elif name=='AI':
-        section_header(surface,fonts,name,y,'Daily limit for paid AI use')
+        section_header(surface,fonts,name,y,'Paid AI use and background tasks')
         row_label(surface,fonts,'Daily budget',y+122)
         for amount,rect in zip(BUDGET_CHOICES,control_rects(y+99,len(BUDGET_CHOICES),46,120)):
             choice_button(surface,fonts,accent,rect,'$%.2f'%amount,
                           abs(prefs['ai_daily_budget']-amount)<1e-6,hits,('ai_daily_budget',amount))
         spent,ai_on = budget
-        status_row(surface,fonts,'Used today',y+200,budget_status(spent,prefs['ai_daily_budget'],ai_on))
-        notes = (tr('Counts answers, web searches and online listening (an estimate from list prices).'),
+        status_row(surface,fonts,'Used today',y+180,budget_status(spent,prefs['ai_daily_budget'],ai_on))
+        notes = (tr('Counts answers, web searches, online listening and tasks (an estimate from list prices).'),
                  tr('When it is used up, Luna still does offline commands until midnight.'))
         for i,text in enumerate(notes):
             draw_text(surface,wrap_text(fonts['mini'],text,860,1)[0],fonts['mini'],MUTED,
-                      topleft=(LABEL_X,y+262+i*28))
+                      topleft=(LABEL_X,y+208+i*24))
+        side = CONTROL_RIGHT-CONTROL_X-170
+        rows = (('Background tasks','tasks',
+                 'Luna hands longer research to helpers.' if tasks else 'Not set up on this robot yet.'),
+                ('Quiet hours','quiet_hours','No task news 22:00-07:00 unless you talk to Luna.'))
+        for i,(label,kind,note) in enumerate(rows):
+            top = y+266+i*62
+            row_label(surface,fonts,label,top+19)
+            toggle(surface,fonts,accent,prefs[kind],top,hits,(kind,None))
+            draw_text(surface,wrap_text(fonts['mini'],tr(note),side,1)[0],fonts['mini'],MUTED,
+                      topleft=(CONTROL_X+170,top+8))
+        row_label(surface,fonts,'Task history',y+413)
+        for days,rect in zip(HISTORY_CHOICES,control_rects(y+390,len(HISTORY_CHOICES),46,160)):
+            choice_button(surface,fonts,accent,rect,tr('{days} DAYS',days=days),
+                          prefs['task_history_days']==days,hits,('task_history_days',days))
     elif name=='Plugins':
         plugins_section(surface,fonts,accent,y,plugins,hits)
     else:

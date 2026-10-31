@@ -92,6 +92,21 @@
       "ok stop",
       "please stop",
       "wait"
+    ],
+    "task_status": [
+      "what are you working on",
+      "what are you working on now",
+      "how is the task going",
+      "how's the task going",
+      "is the task done",
+      "task status"
+    ],
+    "cancel_task": [
+      "cancel the task",
+      "stop the task",
+      "cancel task",
+      "stop task",
+      "cancel your task"
     ]
   },
   "filler_words": [

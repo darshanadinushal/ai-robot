@@ -321,6 +321,37 @@ home, driving) without growing `app.py`, and is tested without pygame
 - `RobotHUD` (the adapter) keeps the microphone (`listen`), the face (`apply_actions`), touch and
   drawing. `hud.ai` is a property that sets `conversation.ai`.
 
+## 2b. Background tasks (`luna_core/tasks/`, task service step 3)
+Design: `docs/design/TASK_SERVICE.md`. Luna can hand a longer job to a specialist helper and keep
+talking. Step 3 is the core **without** the real service: production has no task client (the
+Settings toggles say "Not set up on this robot yet."); `LUNA_TASKS=demo` wires a
+`FakeTaskService` (a "research" helper that answers after 8 s) for trying the flow.
+- `model.py`: `Task` (frozen), states `queued -> running -> waiting/done/failed/cancelled/
+  interrupted` (`MOVES`, `can_move`), `Limits` (8 turns, 120 s, $0.05 per task), `Specialist`.
+- `store.py`: `TaskStore` (tables `tasks`, `steps`, `approvals` in the budget file
+  `~/.luna/tasks.db` / `LUNA_TASKS_FILE`; in memory if the file fails). `move` refuses illegal
+  changes; `recover()` at start turns queued/running into `interrupted`; `purge(days)` keeps the
+  history the user chose (7/30/90 days).
+- `protocol.py`: JSON lines to and from the service (`encode`/`decode` check every field; 64 KB
+  per line; `PROTOCOL_VERSION` 1.0, major must match).
+- `client.py`: `TaskClient` (UI thread, no threads of its own) owns the service connection:
+  `begin` (refuses when unavailable, over budget, at most 3 active), `cancel`, `poll(t)` (ready
+  timeout, per-task time and cost limits, usage to `UsageMeter` as `task`, budget stop, lost
+  service -> interrupted, restart backoff 2/10/60 s, 3 crashes in 10 min -> off). Approvals,
+  `check` and `tool_call` are refused until step 4.
+- `announce.py`: `Announcer` decides **when** Luna speaks about a task: never while she is busy,
+  20 s gap, results wait while the user talks to her, quiet hours 22:00-07:00 (setting) only
+  when nobody has spoken to her for 10 min; order approval > result > failure > progress.
+- Conversation: `assistant_core/task_tools.py` gives the AI `start_task`, `task_status` and
+  `cancel_task` (risk `local`, only while the client is available; `context.TASK_RULES`).
+  `Conversation.poll` announces finished tasks (`Announce` effect) and opens the follow-up
+  window; the result is given to the AI as a note for 15 min so "tell me more" works. Pack
+  `controls` `task_status` / `cancel_task` ("Luna, what are you working on?", "Luna, cancel the
+  task") are answered in code. Unannounced results survive a restart (older than 12 h: dropped).
+- `ui/tasks_page.py`: the Tasks page (5 newest tasks, Stop task button `STOP_RECT`), added only
+  when a client exists. Settings > AI: Background tasks, Quiet hours, Task history.
+- Tests: `tests/test_tasks.py` (fake service and clock; never the real API).
+
 ### Rendering model
 - Everything is drawn on a fixed **1280×720 logical canvas** (`CANVAS_WIDTH/HEIGHT` in
   `geometry.py`). `Viewport` letterboxes/scales it to the real screen and maps touch
@@ -343,7 +374,8 @@ home, driving) without growing `app.py`, and is tested without pygame
 
 ### Pages (bottom nav, keys `1`–`9`)
 `Chat` (simulated waveform demo), `Home` (the robot), `Camera` (placeholder only),
-`Settings`. Chat/Camera are placeholders: no audio recording, no camera feed.
+`Settings`, plus `Tasks` when background tasks are set up (§2b). Chat/Camera are placeholders:
+no audio recording, no camera feed.
 
 Each page is a `ui.pages.Page` in `RobotHUD.pages`: `name`, `chrome` (draw the sci-fi frame),
 `draw_icon`, `draw(hud, surface, t)`, `touch(hud, x, y, t)` and `key(hud, event, t)` (return True
@@ -386,7 +418,7 @@ Four pages keep the original button positions; more pages share the bar evenly. 
   `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
-A section menu on the left (Display & Theme with App language and Animations, Voice, Listening, Memory, AI (daily budget), Plugins, About) works like
+A section menu on the left (Display & Theme with App language and Animations, Voice, Listening, Memory, AI (daily budget, background tasks), Plugins, About) works like
 tabs: the panel on the right shows **only the selected section** (`self.settings_section`;
 Up/Down keys change it). The section list and what each tap changes live in `settings.py`
 (no pygame, unit-tested).

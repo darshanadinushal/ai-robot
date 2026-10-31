@@ -241,6 +241,10 @@ Then talk:
 - Luna knows today's date and time, and says so when something (camera, motors, smart home,
   music) is not connected yet instead of pretending.
 - Try typed chat without the face: `python scripts/test_ai.py`.
+- **Background tasks (preview):** Luna will hand longer jobs to helpers and tell you the result
+  later. The helpers are not connected yet; to try the flow with a pretend helper, start with
+  `LUNA_TASKS=demo` and ask "Hey Luna, research the best robot vacuums in the background".
+  "Luna, what are you working on?" / "Luna, cancel the task", or the Tasks page.
 
 ### Keeping the AI cost low
 - The default model `gpt-6-luna` is the cheapest current one (about $0.10 per million input

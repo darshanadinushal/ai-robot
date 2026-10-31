@@ -23,6 +23,8 @@
     {"id": "en-never-mind", "language": "en", "say": "Never mind.", "conversation": true, "route": "control", "ending": "command"},
     {"id": "en-background-never-mind", "language": "en", "say": "Never mind.", "route": "ignore"},
     {"id": "en-new-conversation", "language": "en", "say": "Luna, start a new conversation.", "route": "control", "ending": "command"},
+    {"id": "en-task-status", "language": "en", "say": "Luna, what are you working on?", "route": "control"},
+    {"id": "en-cancel-task", "language": "en", "say": "Luna, cancel the task.", "route": "control"},
     {"id": "sv-command-look", "language": "sv", "say": "Hej Luna, titta åt vänster.", "route": "command", "ending": "command"},
     {"id": "sv-command-mood", "language": "sv", "say": "Luna, glad.", "route": "command", "ending": "command"},
     {"id": "sv-command-colour", "language": "sv", "say": "Luna, lila.", "route": "command", "ending": "command"},
@@ -36,6 +38,8 @@
     {"id": "sv-ambiguous-dark", "language": "sv", "say": "Luna, det börjar bli mörkt här inne.", "route": "ai", "later": "5.0C/5.3: hint, never an action without permission"},
     {"id": "sv-smart-home", "language": "sv", "say": "Hej Luna, tänd lamporna i vardagsrummet.", "route": "ai", "later": "5.3: home control"},
     {"id": "sv-never-mind", "language": "sv", "say": "Strunt samma.", "conversation": true, "route": "control", "ending": "command"},
-    {"id": "sv-new-conversation", "language": "sv", "say": "Luna, starta ett nytt samtal.", "route": "control"}
+    {"id": "sv-new-conversation", "language": "sv", "say": "Luna, starta ett nytt samtal.", "route": "control"},
+    {"id": "sv-task-status", "language": "sv", "say": "Luna, vad jobbar du med?", "route": "control"},
+    {"id": "sv-cancel-task", "language": "sv", "say": "Luna, avbryt uppgiften.", "route": "control"}
   ]
 }

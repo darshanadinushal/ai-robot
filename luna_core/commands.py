@@ -43,8 +43,9 @@ def remove_action(action_id):
         ACTION_IDS.pop(action, None)
 
 # Conversation controls (phrases in the packs' "controls"): stop the follow-up, start afresh,
-# or stop Luna talking ("stop" also works while she talks, see assistant_core/turn_taking.py).
-CONTROLS = ("cancel", "new_conversation", "stop")
+# or stop Luna talking ("stop" also works while she talks, see assistant_core/turn_taking.py);
+# ask about or stop background tasks (answered in code, see assistant_core/conversation.py).
+CONTROLS = ("cancel", "new_conversation", "stop", "task_status", "cancel_task")
 
 # Without the wake word, only short phrases count as commands (ignores background talk).
 MAX_COMMAND_WORDS = 4
