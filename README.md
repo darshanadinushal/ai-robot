@@ -8,6 +8,10 @@ Luna shows animated eyes or a voice wave, obeys **offline voice commands**, answ
 with **offline text-to-speech**, and — with an OpenAI API key — holds **"Hey Luna" conversations**
 with an online AI. Camera video, motors and home control are future work.
 
+## Luna project cost tracker
+
+Track hardware purchases, upcoming parts, and ongoing AI/API costs in SEK in [Luna Cost Tracker](docs/LUNA_COST_TRACKER.md). Prices marked `TBD` are not yet confirmed; record receipt totals as purchases occur.
+
 ## Features
 
 - Two animated glowing HUD eyes with moving iris, automatic blinking and a small smile
