@@ -44,7 +44,7 @@ from .ui.draw import (background_surface, draw_eye, draw_mic, draw_scifi_chrome,
 from .ui.pages import Page, default_pages
 from .ui.settings_page import (audio_status, listening_status, memory_pages, mic_status, online_status,
                                plugin_pages, settings_page)
-from .ui.theme import BACKGROUND, H, MUTED, QUIT_RECT, TEXT, W, nav_rects
+from .ui.theme import BACKGROUND, H, MUTED, QUIT_RECT, TEXT, W, load_font, nav_rects
 from .ui.touch import TouchInput
 
 log=logging.getLogger('luna.app')
@@ -76,21 +76,24 @@ class RobotHUD:
     mood,mood_until,look_held,wave_state,wave_until,wave_amp=(_Face() for _ in range(6))
 
     def __init__(self, args):
-        pygame.init()
+        # Only the parts Luna uses: pygame.init() would also open the sound device for the
+        # unused mixer (Luna plays speech with pw-play/aplay) and start joystick scanning,
+        # which costs start time, memory and threads on the Pi.
+        pygame.display.init()
         pygame.font.init()
         self.fullscreen = args.fullscreen or (not args.windowed and os.name != 'nt')
         self.screen = self.make_screen()
         self.canvas=pygame.Surface((W,H)).convert()
         self.background=background_surface()
         self.fonts={
-            'header':pygame.font.SysFont('dejavusans',25),
-            'mini':pygame.font.SysFont('dejavusans',17),
-            'nav':pygame.font.SysFont('dejavusans',23),
-            'small':pygame.font.SysFont('dejavusans',20),
-            'body':pygame.font.SysFont('dejavusans',25),
-            'title':pygame.font.SysFont('dejavusans',46,bold=True),
-            'heading':pygame.font.SysFont('dejavusans',27,bold=True),
-            'side':pygame.font.SysFont('dejavusans',22),
+            'header':load_font(25),
+            'mini':load_font(17),
+            'nav':load_font(23),
+            'small':load_font(20),
+            'body':load_font(25),
+            'title':load_font(46,bold=True),
+            'heading':load_font(27,bold=True),
+            'side':load_font(22),
         }
         self.clock=pygame.time.Clock()
         self.frame_rates=pacing.frame_rates()  # (active, idle): LUNA_FPS, LUNA_IDLE_FPS

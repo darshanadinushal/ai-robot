@@ -39,3 +39,14 @@ Fix candidates: add the common mishearings as Swedish wake words, or online tran
 ## Raspberry Pi 5 (real microphone)
 To be filled in after testing on the Pi: the same tables, plus `Luna heard` → `first spoken reply`
 times, CPU (`top`), RAM and any `input overflow` (dropped microphone blocks) lines.
+
+Start-up and idle cost (also to fill in on the Pi):
+```bash
+.venv/bin/python scripts/measure_startup.py                       # mock hardware, 5 starts + 30 s idle
+.venv/bin/python scripts/measure_startup.py --real-hardware --idle 60
+```
+| Measurement | v1.0.0 | unreleased (display/font-only pygame, direct DejaVu fonts, 2 malloc arenas) |
+|---|---|---|
+| Start to first frame, laptop (`--no-voice --no-speech`) | 0.54 s | 0.42 s |
+| Start to first frame, Pi 5 | | |
+| Idle CPU / memory / threads, Pi 5 | | |

@@ -62,6 +62,7 @@ luna_core/
 scripts/
   install-pi.sh             Raspberry Pi OS setup (apt, venv, Luna + [voice,ai], model)
   install-service.sh        systemd user service luna.service, started by the desktop login
+                            (leaves it alone when robot-setup manages luna.service)
   upgrade-pi.sh             Upgrade to a tag/branch: backup, install, start check, auto-rollback
   rollback-pi.sh            Back to the version before the last upgrade (--with-data: backup)
   deploy-common.sh          Shared by the upgrade and rollback scripts (sourced)
@@ -72,6 +73,7 @@ scripts/
   test_ai.py                Typed chat with LunaBrain (needs OPENAI_API_KEY)
   measure_listening.py      Real Vosk + Piper timing of the smart listening (laptop or Pi);
                             --cases speaks the baseline sentences through Vosk
+  measure_startup.py        Start to first frame, peak memory, idle CPU/memory (Pi baseline)
 tests/
   test_core.py              Unit tests: geometry, preferences, commands, routing, speech text, AIWorker
   test_assistant_core.py    Phase 5.0A: Conversation without pygame, stale/stalled answers, sessions

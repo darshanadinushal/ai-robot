@@ -47,5 +47,18 @@ It restarts Luna 3 s after a crash, at most 5 times in 2 minutes; Quit in Luna s
 session. For a robot that starts by itself, turn on desktop auto-login (`sudo raspi-config` >
 System Options > Boot / Auto Login).
 
+**With Robot Setup**: [robot-setup](https://github.com/darshanadinushal/robot-setup) uses the
+same `luna.service` name. Only one of them owns Luna's startup at a time:
+- Robot Setup (0.4.0 or later) backs up and replaces the files written by `install-service.sh`
+  for the same Luna folder, and puts them back on `robot-setup remove`.
+- `install-service.sh` (and `--remove`) refuses to touch Robot Setup's files; use
+  `robot-setup repair` or `robot-setup remove` there.
+- `robot-setup upgrade-luna vX.Y.Z` and `robot-setup rollback-luna` run `upgrade-pi.sh` and
+  `rollback-pi.sh` above; `restart_service` restarts whichever `luna.service` is running.
+
+**Performance on the Pi**: measure with `scripts/measure_startup.py` (start to first frame, peak
+memory, idle CPU and memory) and `scripts/measure_listening.py`; record results in
+`docs/BASELINE.md`. `run-pi.sh` sets `MALLOC_ARENA_MAX=2` (set it yourself to change it).
+
 Environment for the scripts: `LUNA_PYTHON` (Python to use), `LUNA_PIP=skip` (do not reinstall
 packages), `LUNA_STATE_DIR` (default `~/.luna`, for versions and backups).

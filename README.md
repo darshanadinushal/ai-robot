@@ -99,7 +99,8 @@ packages from `pyproject.toml` and downloads the voice model to `~/.ai-robot-mod
 `install-service.sh` adds a systemd user service (`luna.service`) that the desktop starts at
 login; it restarts Luna if she crashes (not when you press Quit). Logs:
 `journalctl --user -u luna` and `~/.luna/logs/luna.log`. Remove it with
-`bash scripts/install-service.sh --remove`.
+`bash scripts/install-service.sh --remove`. If robot-setup manages Luna's startup, the script
+changes nothing; use `robot-setup repair` or `robot-setup remove` instead (docs/RELEASING.md).
 
 If a folder with that name already exists, clone into another one
 (`git clone ... ~/ai-robot-github`). **Start from a terminal on the Pi desktop** so pygame
@@ -363,6 +364,7 @@ ai-robot/
 │   ├── setup-windows.ps1 / run-windows.ps1
 │   ├── download-voice-model.py
 │   ├── measure_listening.py    # Listening timing with the real models (--cases: test sentences)
+│   ├── measure_startup.py      # Start-up time, memory and idle CPU (Pi baseline)
 │   └── test_ai.py              # Typed chat test for the AI
 ├── tests/                      # Unit tests + headless visual smoke test
 ├── docs/ARCHITECTURE.md        # How the code works

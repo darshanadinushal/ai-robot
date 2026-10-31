@@ -3,6 +3,17 @@
 Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
+## Unreleased
+- Startup works with [robot-setup](https://github.com/darshanadinushal/robot-setup): there is
+  one `luna.service`. `scripts/install-service.sh` marks its files and refuses (also with
+  `--remove`) when Robot Setup manages the service; Robot Setup replaces and later restores them.
+- `install-service.sh`: quoted `ExecStart` (folders with spaces) and no `Nice=-2`, which a
+  systemd user service may not set.
+- Raspberry Pi: faster start and less memory. Pygame starts only the display and fonts (not the
+  unused mixer, which opened the sound device, or joysticks); the DejaVu fonts are opened directly
+  instead of searching all fonts with `fc-list` (same text); `run-pi.sh` sets `MALLOC_ARENA_MAX=2`.
+- `scripts/measure_startup.py`: start-up time, peak memory and idle CPU/memory (docs/BASELINE.md).
+
 ## 1.0.0 (2026-10-30)
 - Luna Core is an installable package, `luna-core` (`pyproject.toml`), with optional extras
   `[voice]`, `[speech]`, `[ai]` and `[all]`, and a `luna` command (also `python -m luna_core`).
