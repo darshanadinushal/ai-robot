@@ -157,6 +157,10 @@
     "wave.speaking": "Jag pratar."
   },
   "speech": {
+    "Okay, done.": "Okej, klart.",
+    "Okay, I won't.": "Okej, då låter jag bli.",
+    "Please tap Yes on the screen.": "Tryck på Ja på skärmen.",
+    "Sorry, that didn't work.": "Förlåt, det gick inte.",
     "Yes?": "Ja?",
     "My AI brain is not set up yet.": "Min AI-hjärna är inte installerad än.",
     "I am not sure what to say.": "Jag vet inte riktigt vad jag ska säga.",
@@ -175,6 +179,10 @@
   },
   "transcription_prompt": "Någon pratar med Luna, en vänlig hemrobot, och ställer en fråga på svenska.",
   "transcription_keywords": ["Luna", "cyan", "bärnsten", "lila"],
+  "answers": {
+    "yes": ["ja", "japp", "jo", "ja tack", "ja gör det", "gärna", "visst", "javisst", "okej", "ok", "absolut", "gör det", "självklart", "precis", "det stämmer"],
+    "no": ["nej", "nä", "nää", "nej gör inte det", "gör inte det", "låt bli", "inte nu", "nej inte nu", "nej låt bli"]
+  },
   "memory_words": {
     "remember": ["kalla mig", "kom ihåg", "spara att", "anteckna", "notera", "lägg på minnet"],
     "forget": ["glöm", "radera", "ta bort", "släng"],
@@ -188,6 +196,19 @@
   "warm_up": "Hej.",
   "windows_culture": "sv-SE",
   "screen": {
+    "Please confirm": "Bekräfta",
+    "Yes": "Ja",
+    "No": "Nej",
+    "Tap Yes to confirm.": "Tryck på Ja för att bekräfta.",
+    "Say yes or no, or tap.": "Säg ja eller nej, eller tryck.",
+    "Remember": "Kom ihåg",
+    "Forget": "Glöm",
+    "Save your name": "Spara ditt namn",
+    "Save your home town": "Spara din hemort",
+    "Save your birthday": "Spara din födelsedag",
+    "Forget your name": "Glöm ditt namn",
+    "Forget your home town": "Glöm din hemort",
+    "Forget your birthday": "Glöm din födelsedag",
     "Chat": "Chatt",
     "Home": "Hem",
     "Camera": "Kamera",

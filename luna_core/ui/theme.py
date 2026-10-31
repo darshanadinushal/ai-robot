@@ -25,6 +25,10 @@ CHAT_RECT = pygame.Rect(485, 460, 310, 63)
 WARNING = (255, 185, 67)
 NAV_TOP = 597
 NAV_HEIGHT = 93
+# Yes/No question (tasks/confirm.py), drawn over any page.
+CONFIRM_RECT = pygame.Rect(340, 150, 600, 360)
+CONFIRM_YES_RECT = pygame.Rect(380, 424, 250, 62)
+CONFIRM_NO_RECT = pygame.Rect(650, 424, 250, 62)
 
 
 def nav_rects(count):
@@ -39,4 +43,5 @@ def nav_rects(count):
 
 __all__ = ["W", "H", "FPS", "BACKGROUND", "TEXT", "MUTED", "FAINT", "WARNING", "QUIT_RECT",
            "SIDEBAR_RECT", "SECTION_RECTS", "CONTENT_RECT", "CONTENT_CLIP", "LABEL_X", "CONTROL_X",
-           "CONTROL_RIGHT", "CHAT_RECT", "NAV_TOP", "NAV_HEIGHT", "nav_rects"]
+           "CONTROL_RIGHT", "CHAT_RECT", "NAV_TOP", "NAV_HEIGHT", "CONFIRM_RECT", "CONFIRM_YES_RECT",
+           "CONFIRM_NO_RECT", "nav_rects"]

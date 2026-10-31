@@ -12,6 +12,10 @@ Risk classes (future skills reuse the same interfaces):
   device     controlling smart-home devices: planned, needs user permission settings
   motion     driving the robot: only through a MotionManager with a hardware stop; never here
   sensitive  locks, cameras, purchases, deleting things: extra confirmation; never automatic
+
+A refused call the user may still want (not asked in their own words, or `sensitive`) is kept
+in `ToolExecutor.confirmable`; the conversation asks the user (tasks/confirm.py) and, on Yes,
+runs exactly that call with `ToolExecutor.approve`.
 """
 import json
 import re
@@ -52,6 +56,7 @@ class Tool:
     risk: str
     run: object                # function(arguments) -> (effects, ToolResult); no pygame
     asked_with: str = ""       # memory_words kind the user's own words must contain
+    confirm: object = None     # function(arguments) -> (label, detail) for the Yes/No screen
 
     def schema(self):
         """The tool in the Responses API function-calling format."""
@@ -108,10 +113,13 @@ def validate(schema, arguments):
 class Decision:
     allowed: bool
     reason: str = ""
+    confirm: str = ""  # refused, but the user may approve it: "voice" or "touch" (a tap only)
 
 
 NOT_ASKED = ("the user did not ask for this in their own words; ask them briefly whether "
              "you should, and call it again only if they say yes")
+NEEDS_TOUCH = ("this needs the user's confirmation on the screen; say briefly what you want "
+               "to do and ask them to tap Yes; do not call it again")
 
 
 class PermissionPolicy:
@@ -119,22 +127,26 @@ class PermissionPolicy:
 
     `local` and `memory` tools are allowed; a tool with `asked_with` also needs the user's own
     words for it in this turn. Later phases add user-configured autonomy levels for
-    `info`/`device`; `motion` and `sensitive` are never allowed through this path.
+    `info`/`device`; `motion` is never allowed through this path, `sensitive` only after a tap
+    on Yes (`confirmed`).
     """
 
     def __init__(self, allowed=("local", "memory")):
         self.allowed = frozenset(allowed) - {"motion", "sensitive"}
 
-    def decide(self, tool, arguments, heard="", language="en", granted=()):
-        """`granted`: asked_with kinds the user agreed to with "yes" (see ToolExecutor)."""
+    def decide(self, tool, arguments, heard="", language="en", granted=(), confirmed=False):
+        """`granted`: asked_with kinds the user agreed to with "yes" (see ToolExecutor).
+        `confirmed`: the user approved this exact call on the Yes/No screen."""
         kinds = (tool.asked_with,) if isinstance(tool.asked_with, str) else tool.asked_with
-        if (tool.asked_with and not set(kinds) & set(granted)
+        if (tool.asked_with and not confirmed and not set(kinds) & set(granted)
                 and not any(said(heard, language, kind) for kind in kinds)):
-            return Decision(False, NOT_ASKED)
+            asked = self.decide(tool, arguments, confirmed=True)
+            return Decision(False, NOT_ASKED, ("voice" if tool.risk != "sensitive" else "touch")
+                            if asked.allowed else "")
         if tool.risk == "motion":
             return Decision(False, "movement is only possible through the motion system")
         if tool.risk == "sensitive":
-            return Decision(False, "this needs the user's confirmation")
+            return Decision(True) if confirmed else Decision(False, NEEDS_TOUCH, "touch")
         if tool.risk not in self.allowed:
             return Decision(False, "not allowed by the user's settings")
         return Decision(True)
@@ -185,6 +197,7 @@ class ToolExecutor:
         refused = getattr(self, "_refused", set())
         self._granted = refused if said(heard, language, "yes") else set()
         self._refused = set()
+        self.confirmable = []  # [(tool, arguments, touch)] refused calls the user may approve
         self._heard, self._language = heard, language
         self._by_id = {}
         self._by_call = {}
@@ -214,6 +227,9 @@ class ToolExecutor:
         if decision.reason == NOT_ASKED:
             kinds = (tool.asked_with,) if isinstance(tool.asked_with, str) else tool.asked_with
             self._refused.update(kinds)
+        if decision.confirm and all(key != (t.name, json.dumps(a, sort_keys=True))
+                                    for t, a, _ in self.confirmable):
+            self.confirmable.append((tool, arguments, decision.confirm == "touch"))
         if not decision.allowed:
             return [], ToolResult(False, "not allowed: " + decision.reason)
         if self._ran >= MAX_CALLS_PER_TURN:
@@ -222,6 +238,18 @@ class ToolExecutor:
         effects, result = tool.run(arguments)
         self._by_call[key] = result
         return effects, result
+
+    def forget_refused(self):
+        """The user answered on the Yes/No screen: a later "yes" grants nothing."""
+        self._refused = set()
+
+    def approve(self, tool, arguments):
+        """Run one call the user approved with Yes: (effects, ToolResult). The policy still
+        applies (`motion` never, risks the settings do not allow stay refused)."""
+        decision = self.policy.decide(tool, arguments, confirmed=True)
+        if not decision.allowed:
+            return [], ToolResult(False, "not allowed: " + decision.reason)
+        return tool.run(arguments)
 
 
 # --- Luna's face (phase 5.0C) -------------------------------------------------------------

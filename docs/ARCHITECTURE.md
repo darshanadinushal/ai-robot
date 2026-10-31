@@ -275,10 +275,18 @@ home, driving) without growing `app.py`, and is tested without pygame
     unless the user's **own words** this turn contain a pack `memory_words.remember` /
     `forget` phrase (checked in code, whole words). Recall is always allowed. "Forget
     everything" exists only in Settings (two taps), never by voice.
-  - Consent by "yes": the AI may also try to save a lasting detail the user only *told* her
-    ("my wife's birthday is 4 November"). That is refused (`NOT_ASKED`), and she asks "Shall I
-    remember that?". If the user's next utterance contains a pack `memory_words.yes` phrase,
-    `ToolExecutor.new_turn` grants the refused kind for that one turn only.
+  - Consent by "yes" (general confirmation, `luna_core/tasks/confirm.py`): the AI may also try
+    to save a lasting detail the user only *told* her ("my wife's birthday is 4 November").
+    That is refused (`NOT_ASKED`, `Decision.confirm="voice"`) and kept in
+    `ToolExecutor.confirmable`; she asks "Shall I remember that?". Once she has finished
+    speaking, `Conversation` opens a `Confirmation` (Yes/No box over any page, `Tool.confirm`
+    gives its text). A pack `answers.yes`/`no` phrase said *to Luna* (follow-up window or wake
+    word) or a tap settles it in code without an AI call: Yes runs exactly the shown call
+    (`ToolExecutor.approve`; key = tool + argument hash), No / 60 s without an answer /
+    talking about something else does nothing. The AI hears the outcome as a note with the
+    next question. A `sensitive` call (none yet) is asked the same way but only a tap on Yes
+    approves it; `motion` is never asked. (`ToolExecutor.new_turn` still grants a refused kind
+    after a `memory_words.yes` for one turn; the conversation no longer relies on it.)
   - Each question: `MemoryStore.relevant` picks up to `RELEVANT` (5) facts sharing a word stem
     with it (minus the pack's `memory_words.ignore` words) and `context.instructions` lists them
     as notes, "never permission"; with more facts saved the AI may call `recall_memories`.
@@ -531,7 +539,8 @@ Model `LUNA_TRANSCRIBE_MODEL` (default `gpt-transcribe`). Each question costs AP
 1. Copy `luna_core/languages/en.json` to `<code>.json` (e.g. `de.json`) and translate it:
    `name`, `native_name`, `screen` (English text → translation), `commands`, `controls`,
    `wake_words`, `greetings`, `replies`, `speech`, `memory_words` (`remember`, `forget`,
-   `private`, `ignore`, `about`, `yes` phrases for Persistent memory; `controls.stop` for interrupting), `ai_instruction` (language and speaking
+   `private`, `ignore`, `about`, `yes` phrases for Persistent memory; `controls.stop` for interrupting),
+   `answers` (`yes`/`no` whole phrases for Luna's Yes/No questions), `ai_instruction` (language and speaking
    style), `transcription_prompt` and `transcription_keywords` (online listening hints),
    `sample`, `warm_up`, `windows_culture`.
 2. Set `listening_model` (and `listening_model_mb`) to a small Vosk model from

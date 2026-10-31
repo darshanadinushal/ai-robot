@@ -191,6 +191,14 @@ class TurnInstructions(str):
     notes = ""
 
 
+def with_note(text, note):
+    """`text` (TurnInstructions) with one more note for this question; `fixed` is unchanged."""
+    out = TurnInstructions((str(text) + " " + note).strip())
+    out.fixed = getattr(text, "fixed", "")
+    out.notes = (getattr(text, "notes", "") + " " + note).strip()
+    return out
+
+
 def turn_instructions(*args, **kwargs):
     """Like instructions(), as TurnInstructions (same arguments)."""
     parts = _parts(*args, **kwargs)

@@ -32,6 +32,8 @@ Fields:
                   enough to save the About-you fields), "yes" (agrees after Luna asked to save), "private" (never saved, checked in
                   every language), "ignore" (common words not used to find related memories);
                   not taken from English
+  answers         "yes" / "no" -> whole phrases that answer one of Luna's yes/no questions
+                  ("yes please", "nej"); see tasks/confirm.py; not taken from English
 """
 import json
 import re
@@ -66,6 +68,7 @@ class LanguagePack:
     transcription_prompt: str = ""
     transcription_keywords: tuple = ()
     memory_words: dict = field(default_factory=dict)
+    answers: dict = field(default_factory=dict)
 
     def reply(self, action_id):
         return self.replies.get(action_id)
@@ -73,6 +76,11 @@ class LanguagePack:
     def say(self, text):
         """One of Luna's fixed English sentences in this language."""
         return self.speech.get(text, text)
+
+
+def phrase(text):
+    """Lower-case words of `text` joined by single spaces (apostrophes kept: "don't")."""
+    return " ".join("".join(c if c.isalnum() or c == "'" else " " for c in str(text).lower()).split())
 
 
 def _read(path):
@@ -114,7 +122,9 @@ def _build(data, english):
         transcription_prompt=str(data.get("transcription_prompt") or ""),
         transcription_keywords=tuple(str(k) for k in data.get("transcription_keywords") or ()),
         memory_words={kind: tuple(" ".join(re.findall(r"\w+", p.lower())) for p in phrases)
-                      for kind, phrases in (data.get("memory_words") or {}).items()})
+                      for kind, phrases in (data.get("memory_words") or {}).items()},
+        answers={kind: tuple(phrase(p) for p in phrases)
+                 for kind, phrases in (data.get("answers") or {}).items()})
 
 
 def load(folder=FOLDER):

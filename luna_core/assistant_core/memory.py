@@ -28,6 +28,11 @@ RELEVANT = 5           # at most this many memories go into one question's instr
 ERRORS = (sqlite3.Error, OSError)
 _DIGITS = re.compile(r"\d(?:[\s-]?\d){3,}")  # phone, card, PIN and other numbers
 PROFILE_FIELDS = ("name", "home", "birthday")
+SAVE_ABOUT = {"name": "Save your name", "home": "Save your home town",
+              "birthday": "Save your birthday"}
+FORGET_ABOUT = {"name": "Forget your name", "home": "Forget your home town",
+                "birthday": "Forget your birthday"}
+CONFIRM_LABELS = ("Remember", "Forget") + tuple(SAVE_ABOUT.values()) + tuple(FORGET_ABOUT.values())
 _BIRTHDAY = re.compile(r"(\d{1,2})-(\d{1,2})")  # MM-DD
 
 
@@ -325,6 +330,18 @@ def memory_tools(store):
 
     field = {"type": "string", "enum": list(PROFILE_FIELDS)}
 
+    def fact_text(arguments):
+        try:
+            return next((f.text for f in store.facts() if f.id == arguments["id"]), "")
+        except ERRORS:
+            return ""
+
+    # Yes/No screen texts (translated when drawn; listed in CONFIRM_LABELS).
+    remember_label = lambda a: ("Remember", a["fact"])
+    forget_label = lambda a: ("Forget", fact_text(a))
+    about_label = lambda a: (SAVE_ABOUT[a["field"]], a["value"])
+    forget_about_label = lambda a: (FORGET_ABOUT[a["field"]], "")
+
     return (
         Tool("remember_fact",
              "Save one short fact about the user. Only when the user explicitly asked you to "
@@ -334,13 +351,13 @@ def memory_tools(store):
                                               "the user, e.g. 'You like jazz.'"},
                       "replaces": {"type": "integer",
                                    "description": "id of the memory this corrects, or 0"}}),
-             "memory", remember, asked_with="remember"),
+             "memory", remember, asked_with="remember", confirm=remember_label),
         Tool("recall_memories", "List everything the user asked you to remember, with ids.",
              _object(), "memory", recall),
         Tool("forget_memory",
              "Delete one memory by its id. Only when the user asked you to forget it.",
              _object({"id": {"type": "integer", "description": "the memory's id"}}),
-             "memory", forget, asked_with="forget"),
+             "memory", forget, asked_with="forget", confirm=forget_label),
         Tool("set_about_user",
              "Save the user's name, home town or birthday when the user tells you it (\"my "
              "name is\", \"I live in\", \"my birthday is\") or asks you to remember it.",
@@ -349,8 +366,9 @@ def memory_tools(store):
                                 "description": "name: what to call the user; home: town or "
                                                "city only; birthday: English month name and "
                                                "day, e.g. 'October 28', never the year"}}),
-             "memory", set_about, asked_with=("remember", "about")),
+             "memory", set_about, asked_with=("remember", "about"), confirm=about_label),
         Tool("forget_about_user",
              "Delete the user's saved name, home town or birthday. Only when asked to forget it.",
-             _object({"field": field}), "memory", forget_about, asked_with="forget"),
+             _object({"field": field}), "memory", forget_about, asked_with="forget",
+             confirm=forget_about_label),
     )

@@ -9,7 +9,8 @@ from datetime import datetime
 
 from ..ai import LOST_CONNECTION
 from ..commands import route, spoken
-from .context import WEB_SEARCH, ConversationSettings, turn_instructions
+from ..tasks.confirm import Confirmation, Item, MAX_ITEMS, answer as yes_or_no, call_key
+from .context import WEB_SEARCH, ConversationSettings, turn_instructions, with_note
 from .events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .expression import LINGER_SECONDS
 from .memory import ERRORS as MEMORY_ERRORS, is_birthday, memory_tools
@@ -21,6 +22,10 @@ HEARD_SECONDS = 8.0    # how long the screen shows what Luna heard
 ANSWER_SECONDS = 20.0  # how long it shows her answer after the last piece arrived
 BUDGET_SPENT = "I've reached today's AI budget. My offline commands still work."
 BUDGET_LOW = "I've used most of today's AI budget."
+CONFIRM_DONE = "Okay, done."
+CONFIRM_DECLINED = "Okay, I won't."
+CONFIRM_TAP = "Please tap Yes on the screen."
+CONFIRM_FAILED = "Sorry, that didn't work."
 
 
 class Conversation:
@@ -42,6 +47,11 @@ class Conversation:
     and its tools join the face tools (see set_memory).
     Budget: `budget` is a tasks.budget.CostGuard (None: no limit). Once the day's AI budget is
     used up, questions get BUDGET_SPENT instead of an AI call; offline commands still work.
+    Confirmation: calls the policy refused but the user may approve (a memory from a passing
+    remark; `sensitive` tools by touch) are asked about once Luna has spoken her answer:
+    `confirmation` (tasks.confirm.Confirmation) is open with Yes/No on screen. "yes"/"no" said
+    to Luna or a tap (`answer_touch`) settles it in code, without an AI call; the AI hears the
+    outcome as a note with the next question. No answer in 60 s means no.
     """
 
     def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None, memory=None):
@@ -54,6 +64,9 @@ class Conversation:
         self.memory = None
         self.set_memory(memory)
         self.budget = None
+        self.confirmation = None  # an open Yes/No question (see tasks/confirm.py)
+        self._to_confirm = ()     # [(tool, arguments, touch)] to ask about once Luna is silent
+        self._confirm_note = ""   # the outcome, told to the AI with the next question
         self._tool_outputs = None  # (request, [(call_id, output)]) to send on the next poll
         self.session = Session()
         self.turn = None               # the question being answered or spoken
@@ -106,6 +119,10 @@ class Conversation:
         self.heard_kind = kind
         if kind != "ignore":
             self.session.touch(t)
+        if self.confirmation is not None and kind in ("ai", "control", "command"):
+            effects = self._voice_answer(kind, value, heard_language, talk_language)
+            if effects is not None:
+                return effects
         if kind == "control":
             return self.control(value, talk_language)
         if kind == "command":
@@ -142,7 +159,20 @@ class Conversation:
             return None, []
         return kind, self.interrupt() + [Log("Luna: interrupted by voice (%s)" % kind)]
 
+    def is_answer(self, text, language):
+        """`text` (said to Luna) answers the open Yes/No question: no need to upload it."""
+        return self.confirmation is not None and yes_or_no(text, language) is not None
+
+    def answer_touch(self, yes, t):
+        """A tap on Yes or No."""
+        if self.confirmation is None:
+            return []
+        language = self.confirmation.language
+        return self._approve(language, "tap") if yes else self._decline(language, "tap")
+
     def ask(self, question, t, language):
+        if self.confirmation is not None:
+            self._settle("did not answer it and asked something else")
         if self.ai is None:
             return [Speak(spoken("My AI brain is not set up yet.", language))]
         if self.budget is not None and not self.budget.allows():
@@ -164,17 +194,20 @@ class Conversation:
         now = self.clock()
         wish = (is_birthday(about.get("birthday"), now.date())
                 and self._birthday_wished != now.date())
+        text = turn_instructions(language, now, self.settings.profile, use_tools,
+                                 self.settings.expressions, memories, about, wish, web,
+                                 self.plugin_instructions)
+        if self._confirm_note:
+            text = with_note(text, self._confirm_note)
         request = self.ai.ask(
-            question, language,
-            turn_instructions(language, now, self.settings.profile, use_tools,
-                         self.settings.expressions, memories, about, wish, web,
-                         self.plugin_instructions),
+            question, language, text,
             tools=((self.tools.registry.schemas() if use_tools else [])
                    + ([WEB_SEARCH] if web else [])) or None)
         if not request:
             return []  # still answering the previous question
         if wish:
             self._birthday_wished = now.date()
+        self._confirm_note = ""
         self.tools.new_turn(question, language)
         self._tool_outputs = None
         self.session.touch(t)
@@ -235,6 +268,9 @@ class Conversation:
             self.session.open_followup(
                 t, QUESTION_FOLLOWUP_SECONDS if self._asked_back else FOLLOWUP_SECONDS)
             self._asked_back = False
+            effects += self._open_confirmation(t)
+        elif self.confirmation is not None and self.confirmation.expired(t):
+            effects += self._settle("did not answer in time")
         elif self._idle(t, speaking, listening):
             effects += self._fresh("after %.0f s without talking" % self.session.idle_for(t))
         return effects
@@ -242,6 +278,7 @@ class Conversation:
     def interrupt(self):
         """The user stopped Luna: silence her and drop the unfinished answer (not remembered)."""
         self.followup_pending = False
+        self._to_confirm = ()
         if self.turn is not None or self.streaming:
             if self.ai is not None and self.turn is not None:
                 self.ai.cancel(self.turn.request)
@@ -254,7 +291,8 @@ class Conversation:
 
     def new_session(self):
         """Start a fresh conversation: stop the current answer and forget the history."""
-        effects = self.interrupt()
+        effects = self.interrupt() + self._settle("started a new conversation")
+        self._confirm_note = ""  # the AI forgets the conversation anyway
         self.session.renew()
         if self.ai is not None:
             self.ai.forget()
@@ -298,12 +336,14 @@ class Conversation:
 
     def _fresh(self, reason):
         """Start a new session quietly (nothing is playing or being answered)."""
+        closed = self._settle("did not answer")
+        self._confirm_note = ""
         self.turn = None
         self._clear_expression()
         self.session.renew()
         if self.ai is not None:
             self.ai.forget()
-        return [Log("Luna: new conversation " + reason)]
+        return closed + [Log("Luna: new conversation " + reason)]
 
     def _current(self, request):
         turn = self.turn
@@ -336,6 +376,7 @@ class Conversation:
         elif kind == "done":
             self.streaming = False
             self.followup_pending = True
+            self._to_confirm = tuple(self.tools.confirmable[:MAX_ITEMS])
             self._asked_back = self.answer.rstrip().endswith(("?", "\uff1f"))
         elif kind in ("error", "lost"):
             self.streaming = False
@@ -344,3 +385,61 @@ class Conversation:
             self._clear_expression()
             return [Mood("sad", 4.0), Speak(text)]
         return []
+
+    # --- Yes/No confirmation (tasks/confirm.py) -------------------------------------------
+    def _open_confirmation(self, t):
+        calls, self._to_confirm = self._to_confirm, ()
+        if not calls or self.turn is None:
+            return []
+        items = []
+        for tool, arguments, touch in calls:
+            label, detail = tool.confirm(arguments) if tool.confirm else (tool.name, "")
+            items.append(Item(call_key(tool.name, arguments), label, detail, touch))
+        self.confirmation = Confirmation(items, t, self.turn.language,
+                                         payload=[(tool, arguments) for tool, arguments, _ in calls])
+        self.tools.forget_refused()  # the answer comes through the confirmation only
+        return [Log("Luna: asks the user to confirm %d action(s)%s"
+                    % (len(items), " (tap only)" if self.confirmation.touch else ""))]
+
+    def _voice_answer(self, kind, value, heard_language, talk_language):
+        """Effects for an utterance said while a question is open, or None to route it as usual
+        (it was not an answer, so the question is closed as a no)."""
+        if kind == "ai":
+            said = self.confirmation.by_voice(value, heard_language)
+            if said == "yes":
+                return self._approve(talk_language, "voice")
+            if said == "no":
+                return self._decline(talk_language, "voice")
+            if said == "tap":
+                return [Speak(spoken(CONFIRM_TAP, talk_language))]
+        self._settle("said something else instead")
+        return None
+
+    def _approve(self, language, how):
+        confirmation, self.confirmation = self.confirmation, None
+        effects, ok = [Log("Luna: the user said yes (%s)" % how)], True
+        for tool, arguments in confirmation.payload:
+            done, result = self.tools.approve(tool, arguments)
+            effects += done
+            ok = ok and result.ok
+            effects.append(Log("Luna tool: %s -> %s (approved)"
+                               % (tool.name, "ok" if result.ok else result.message)))
+        self._confirm_note = ("You asked the user to confirm (%s). They said yes, and %s."
+                              % (confirmation.summary(), "it is done" if ok else "it failed"))
+        self.followup_pending = True  # keep the conversation going
+        return effects + [Speak(spoken(CONFIRM_DONE if ok else CONFIRM_FAILED, language))]
+
+    def _decline(self, language, how):
+        effects = self._settle("said no")
+        return effects + [Log("Luna: the user said no (%s)" % how),
+                          Speak(spoken(CONFIRM_DECLINED, language))]
+
+    def _settle(self, why):
+        """Close the open question without doing anything (no, timeout, moved on)."""
+        confirmation, self.confirmation = self.confirmation, None
+        self._to_confirm = ()
+        if confirmation is None:
+            return []
+        self._confirm_note = ("You asked the user to confirm (%s). They %s, so it was not done."
+                              % (confirmation.summary(), why))
+        return [Log("Luna: confirmation closed (%s)" % why)]

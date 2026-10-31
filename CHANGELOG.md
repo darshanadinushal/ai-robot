@@ -4,6 +4,11 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
 ## Unreleased
+- **Yes/No confirmation** (`luna_core/tasks/confirm.py`): when Luna asks "Shall I remember
+  that?", a Yes/No box appears. Say "yes"/"no" (pack `answers`, English and Swedish) or tap;
+  Yes saves exactly what is shown, without another AI call. No answer in 60 s, or talking about
+  something else, means no. `sensitive` tools (none yet) need a tap on Yes; `motion` is never
+  asked. New tool field `Tool.confirm`, pack field `answers`.
 - **Daily AI budget** (Settings > AI, default $0.30): Luna counts the estimated cost of answers,
   web searches and online listening (`luna_core/tasks/budget.py`, list prices in
   `tasks/prices.json`, override with `LUNA_AI_PRICES`). At 80 % she mentions it once; when it is

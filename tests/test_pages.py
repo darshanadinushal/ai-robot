@@ -85,6 +85,25 @@ class AppPageTests(unittest.TestCase):
         self.hud.handle_touch(640, 300, 1.0)
         self.assertEqual((self.page.drawn, self.page.taps), (1, [(640, 300)]))
 
+    def test_a_yes_no_question_takes_taps_on_its_box_only(self):
+        from luna_core.assistant_core.tools import FACE_TOOLS
+        from luna_core.tasks.confirm import Confirmation, Item
+        from luna_core.ui.theme import CONFIRM_NO_RECT, CONFIRM_YES_RECT
+        self.hud.page = "Lights"
+        chat = self.hud.conversation
+        chat.confirmation = Confirmation([Item("blink:1", "Remember", "You like tea.")], 1.0,
+                                         payload=[(FACE_TOOLS[-1], {})])
+        self.hud.frame(1.0)  # draws the question over the page
+        self.hud.handle_touch(640, 200, 1.0)
+        self.assertEqual((self.page.taps, chat.confirmation is not None), ([], True))
+        self.hud.handle_touch(*CONFIRM_NO_RECT.center, 1.0)
+        self.assertIsNone(chat.confirmation)
+        chat.confirmation = Confirmation([Item("blink:1", "Remember")], 1.0, payload=[(FACE_TOOLS[-1], {})])
+        self.hud.handle_touch(*CONFIRM_YES_RECT.center, 1.0)
+        self.assertIsNone(chat.confirmation)
+        self.hud.handle_touch(640, 200, 1.0)
+        self.assertEqual(self.page.taps, [(640, 200)], "taps reach the page again")
+
     def test_number_keys_choose_pages(self):
         event = types.SimpleNamespace(type=self.app.pygame.KEYDOWN, key=self.app.pygame.K_5, unicode="5")
         with mock.patch.object(self.app.pygame.event, "get", return_value=[event]):

@@ -162,6 +162,10 @@
   "speech": {},
   "transcription_prompt": "Someone talks to Luna, a friendly home robot, and asks her a question.",
   "transcription_keywords": ["Luna", "cyan", "amber", "purple"],
+  "answers": {
+    "yes": ["yes", "yeah", "yep", "yes please", "yes do it", "yes go ahead", "sure", "ok", "okay", "of course", "go ahead", "do it", "please do", "absolutely", "that's right", "correct"],
+    "no": ["no", "nope", "no don't", "don't", "do not", "please don't", "not now", "no not now", "no way"]
+  },
   "memory_words": {
     "remember": ["call me", "remember", "note that", "make a note", "save that", "keep in mind"],
     "forget": ["forget", "delete", "remove", "erase"],

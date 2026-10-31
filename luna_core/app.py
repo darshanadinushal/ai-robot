@@ -39,13 +39,14 @@ from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, read_preferences, write_
 from .settings import SECTIONS, NameEditor, apply_choice, voice_interrupt_wanted
 from .voices import get_voice, sample_text
 from .ui import chrome, draw, pages as ui_pages, settings_page as ui_settings, theme
-from .ui.chrome import nav_bar, status_bar
+from .ui.chrome import confirm_dialog, nav_bar, status_bar
 from .ui.draw import (background_surface, draw_eye, draw_mic, draw_scifi_chrome, draw_text, draw_wave,
                       draw_wave_bars, draw_wave_circle, glow_disc, mix, smile, wrap_text)
 from .ui.pages import Page, default_pages
 from .ui.settings_page import (audio_status, listening_status, memory_pages, mic_status, online_status,
                                plugin_pages, settings_page)
-from .ui.theme import BACKGROUND, H, MUTED, QUIT_RECT, TEXT, W, nav_rects
+from .ui.theme import (BACKGROUND, CONFIRM_NO_RECT, CONFIRM_RECT, CONFIRM_YES_RECT, H, MUTED, QUIT_RECT,
+                       TEXT, W, nav_rects)
 from .ui.touch import TouchInput
 
 log=logging.getLogger('luna.app')
@@ -261,7 +262,13 @@ class RobotHUD:
             log.warning('Could not save face settings: %s',exc)
 
     def handle_touch(self,x,y,t):
-        """A tap on the logical canvas: quit, a navigation button, or the shown page."""
+        """A tap on the logical canvas: Luna's Yes/No question, quit, a navigation button, or the
+        shown page."""
+        if self.conversation.confirmation is not None and CONFIRM_RECT.collidepoint(x,y):
+            for rect,yes in ((CONFIRM_YES_RECT,True),(CONFIRM_NO_RECT,False)):
+                if rect.collidepoint(x,y):
+                    self.run_effects(self.conversation.answer_touch(yes,t),t)
+            return
         if QUIT_RECT.collidepoint(x,y):
             self.running=False
             return
@@ -508,8 +515,9 @@ class RobotHUD:
         done=self.utterance.poll(t)
         if done:
             self.log_utterance(done)
-            kind=route(done.text,conversation=done.conversation,language=self.heard_language)[0]
-            if online and kind=='ai' and self.budget.allows():  # wake word or follow-up: may be sent
+            kind,value=route(done.text,conversation=done.conversation,language=self.heard_language)
+            if (online and kind=='ai' and self.budget.allows()  # wake word or follow-up: may be sent
+                    and not self.conversation.is_answer(value,self.heard_language)):
                 audio=self.ring.since(self.start_time+done.started-PREROLL_SECONDS)
                 self.ring.clear()
                 self.conversation.heard,self.conversation.heard_kind=done.text,kind
@@ -654,6 +662,8 @@ class RobotHUD:
         status_bar(self.canvas,self.fonts,self.accent)
         page.draw(self,self.canvas,t)
         nav_bar(self.canvas,self.pages,page.name,self.fonts,self.accent)
+        if self.conversation.confirmation is not None:
+            confirm_dialog(self.canvas,self.fonts,self.accent,self.conversation.confirmation)
 
     def frame_rate(self,t):
         """Frames per second for now: full speed while anything moves, slower when idle."""

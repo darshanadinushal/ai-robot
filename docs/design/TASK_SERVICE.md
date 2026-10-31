@@ -157,7 +157,9 @@ quiet hours, pending events. At most one announcement per free moment:
   - `allow` → the SDK runs the proxy → `tool_call` → `ToolExecutor` in Luna (plugins guarded);
   - `refuse` → the agent gets the reason;
   - `confirm` → the SDK's `needs_approval` pauses the run → `paused` → Luna asks the user.
-- **Confirmation (step 2):** spoken question plus Yes/No on screen; no answer in 60 s = no.
+- **Confirmation (step 2, implemented):** spoken question plus Yes/No on screen; no answer in
+  60 s = no. Voice answers are whole pack `answers` phrases said to Luna (wake word or
+  follow-up window); anything else said to her closes the question as a no.
   `sensitive` tools need a **touch** (voice alone could be a TV or a visitor). `motion` is never
   allowed through this path. An approval covers that one call (tool + argument hash) only.
 - **Taint rule:** once a task has read untrusted content (web search, web pages, later
@@ -204,7 +206,7 @@ tagged only after approval.
 |---|---|---|---|
 | 0 | Design and baseline | This document, ROADMAP, ADRs; Pi numbers in BASELINE.md | Design approved; Pi measured |
 | 1 ✅ | Usage meter and cost guard | `tasks/budget.py`, `prices.json`, `usage` table; talk path counted and refused over budget; Settings: daily budget | Tests: over-budget refusal, day rollover, unknown model price |
-| 2 | General confirmation | `tasks/confirm.py`; pack `controls.yes/no`; Yes/No overlay; touch-only; timeout = no; memory grants moved onto it | Memory tests unchanged and green; new confirmation tests |
+| 2 ✅ | General confirmation | `tasks/confirm.py`; pack `answers.yes/no`; Yes/No overlay; touch-only; timeout = no; memory grants moved onto it | Memory tests unchanged and green; new confirmation tests |
 | 3 | Task core without the SDK | model, store, protocol, Announcer, `TaskClient` + `FakeTaskService`; talk tools; voice controls; Tasks page; Settings (tasks on/off, quiet hours, history days) | End-to-end with the fake service: delegate, announce, follow-up, cancel, restart recovery, quiet hours |
 | 4 | Task service | `[agents]` extra; `luna_core/agents/`; bridge; hooks; local tracing; paused runs stored | Fake-model tests: approval, refusal, cancel, budget cut, turn/time limits, service crash |
 | 5 | Research specialist | Specialist, taint rule, summaries | Prompt-injection test; manual run on the laptop with a real key |

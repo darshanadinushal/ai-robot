@@ -47,8 +47,14 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
   `NOT_CONNECTED`) only once it really works. Conversation controls are pack `controls` phrases.
 - AI tools: `luna_core/assistant_core/tools.py`. A new skill is a `Tool` (strict JSON schema,
   risk class, pure `run` returning effects + `ToolResult`) in a `ToolRegistry`; validation and
-  `PermissionPolicy` are code, never the model. `motion`/`sensitive` are never allowed here.
-  Tests: `tests/test_tools.py` (fake brains, never the real API).
+  `PermissionPolicy` are code, never the model. `motion` is never allowed here; `sensitive` only
+  after a tap on Yes. Tests: `tests/test_tools.py` (fake brains, never the real API).
+- Confirmation: `luna_core/tasks/confirm.py` (`Confirmation`, `Item`, pack `answers`). Refused
+  calls the user may approve (`Decision.confirm`, `ToolExecutor.confirmable`) become a Yes/No
+  question after Luna's answer (`Conversation.confirmation`, overlay `ui/chrome.confirm_dialog`,
+  `CONFIRM_*_RECT`); Yes runs exactly that call (`ToolExecutor.approve`), timeout = no, a spoken
+  yes never approves a `touch` item. Give new tools a `confirm` label (translated in the packs).
+  Tests: `tests/test_confirm.py`.
 - Persistent memory: `assistant_core/memory.py` (`MemoryStore`, SQLite `~/.luna-memory.db` or
   `LUNA_MEMORY_FILE`; memory tools). Save only facts the user asked to keep: saving/forgetting is
   gated in code by the user's own `memory_words` phrases (`Tool.asked_with`); never save whole

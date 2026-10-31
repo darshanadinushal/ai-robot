@@ -6,8 +6,9 @@ import pygame
 
 from .. import naming
 from ..i18n import tr
-from .draw import draw_arc, draw_text, line, mix
-from .theme import BACKGROUND, MUTED, QUIT_RECT, TEXT, nav_rects
+from .draw import draw_arc, draw_text, line, mix, wrap_text
+from .theme import (BACKGROUND, CONFIRM_NO_RECT, CONFIRM_RECT, CONFIRM_YES_RECT, H, MUTED,
+                    QUIT_RECT, TEXT, W, nav_rects)
 
 
 def nav_icon(surface, name, x, y, color=TEXT):
@@ -85,3 +86,33 @@ def panel_base(surface, accent):
     box = pygame.Rect(169,131,942,405)
     pygame.draw.rect(surface,(6,26,52),box,border_radius=24)
     pygame.draw.rect(surface,mix(accent,BACKGROUND,.38),box,2,border_radius=24)
+
+
+_SHADE = []
+
+
+def confirm_dialog(surface, fonts, accent, confirmation):
+    """Luna's open Yes/No question over the page (taps: CONFIRM_YES_RECT / CONFIRM_NO_RECT)."""
+    if not _SHADE:
+        shade = pygame.Surface((W, H), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, 150))
+        _SHADE.append(shade)
+    surface.blit(_SHADE[0], (0, 0))
+    box = CONFIRM_RECT
+    pygame.draw.rect(surface, (6, 22, 46), box, border_radius=18)
+    pygame.draw.rect(surface, accent, box, 2, border_radius=18)
+    draw_text(surface, tr("Please confirm"), fonts["heading"], TEXT, center=(box.centerx, box.top + 42))
+    y = box.top + 92
+    for item in confirmation.items:
+        text = tr(item.label) + (": " + item.detail if item.detail else "")
+        for row in wrap_text(fonts["body"], text, box.width - 80, 2 if len(confirmation.items) < 3 else 1):
+            draw_text(surface, row, fonts["body"], TEXT, center=(box.centerx, y))
+            y += 32
+        y += 6
+    hint = "Tap Yes to confirm." if confirmation.touch else "Say yes or no, or tap."
+    draw_text(surface, tr(hint), fonts["small"], MUTED, center=(box.centerx, CONFIRM_YES_RECT.top - 24))
+    for rect, label, strong in ((CONFIRM_YES_RECT, "Yes", True), (CONFIRM_NO_RECT, "No", False)):
+        pygame.draw.rect(surface, (10, 48, 86) if strong else (8, 30, 58), rect, border_radius=12)
+        pygame.draw.rect(surface, accent if strong else mix(accent, BACKGROUND, .45), rect,
+                         2, border_radius=12)
+        draw_text(surface, tr(label), fonts["heading"], TEXT, center=rect.center)

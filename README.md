@@ -229,7 +229,9 @@ Then talk:
 - **Memory:** "Hey Luna, remember that I like jazz." / "What do you remember about me?" /
   "Forget that I like jazz." (Swedish: "kom ihåg att ...", "glöm ..."). Luna saves only what you
   ask her to remember, refuses things that look private (numbers, passwords), and never takes a
-  memory as permission for anything. See, delete or switch it off in Settings → Memory. Stored in
+  memory as permission for anything. If you only mention something ("my wife's birthday is 4
+  November"), she asks first and shows a Yes/No box: say "yes"/"no" or tap (no answer in 60 s
+  means no). See, delete or switch it off in Settings → Memory. Stored in
   `~/.luna-memory.db` (or `LUNA_MEMORY_FILE`), outside the repo. Needs the AI.
   About you: "Remember that my name is ...", "Call me ...", "Remember that I live in Gothenburg",
   "Remember my birthday is 12 May" (day and month only). Luna uses your name and wishes you a
