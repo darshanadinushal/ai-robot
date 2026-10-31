@@ -56,6 +56,9 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
 - Answer expressions: `assistant_core/expression.py` (`MoodTag` strips the AI's leading "[mood]"
   tag in `AIWorker` before sentences; `Conversation.expression` is drawn above the user's mood,
   never saved). Tests: `tests/test_expression.py`.
+- AI cost: `luna_core/tasks/budget.py` (`UsageMeter`, `CostGuard`, prices in `tasks/prices.json`).
+  Every new paid API call must report to the meter and respect the guard (checked in code, before
+  the call). Tests: `tests/test_budget.py`; app tests set `LUNA_TASKS_FILE` to a temp folder.
 - AI conversation: `luna_core/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
   `assistant_core/context.py`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`, via `Conversation.poll`).

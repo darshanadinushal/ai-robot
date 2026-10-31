@@ -4,6 +4,11 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
 ## Unreleased
+- **Daily AI budget** (Settings > AI, default $0.30): Luna counts the estimated cost of answers,
+  web searches and online listening (`luna_core/tasks/budget.py`, list prices in
+  `tasks/prices.json`, override with `LUNA_AI_PRICES`). At 80 % she mentions it once; when it is
+  used up she says so and keeps doing offline commands until midnight. Daily totals (numbers
+  only) are kept in `~/.luna/tasks.db` (`LUNA_TASKS_FILE`). New preference `ai_daily_budget`.
 - Docs: `docs/ROADMAP.md`, decision records in `docs/adr/` (Home Assistant on a separate
   device; hybrid multi-agent task service) and the task service design
   `docs/design/TASK_SERVICE.md` (proposed, not implemented).

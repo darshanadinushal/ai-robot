@@ -112,7 +112,8 @@ class AppWithMockHardwareTests(unittest.TestCase):
                    mock.patch.object(app, "read_preferences",
                                      lambda: read_preferences(Path(folder) / "prefs.json")),
                    mock.patch.object(app, "write_preferences", lambda prefs: None),
-                   mock.patch.dict(os.environ, {"LUNA_MEMORY_FILE": str(Path(folder) / "m.db")})]
+                   mock.patch.dict(os.environ, {"LUNA_MEMORY_FILE": str(Path(folder) / "m.db"),
+                                    "LUNA_TASKS_FILE": str(Path(folder) / "t.db")})]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)

@@ -169,8 +169,8 @@ quiet hours, pending events. At most one announcement per free moment:
   processor sends `step` messages. `LUNA_AGENT_TRACING=openai` enables upload for debugging.
 
 ## 11. Budget (`UsageMeter`, `CostGuard`)
-- One daily budget for the talk and task paths: **USD 0.30** by default
-  (`LUNA_AI_DAILY_BUDGET`, Settings). The day starts at local midnight.
+- One daily budget for the talk path, online listening and tasks: **USD 0.30** by default
+  (Settings > AI). The day starts at local midnight. *Implemented in step 1.*
 - Cost = tokens × `prices.json` (input, cached input, output per 1M tokens). An unknown model
   is priced at the most expensive known model (logged once). Hosted tool fees (web search) are
   added per call from the same file. Prices change: the file is data, updated with releases.
@@ -203,7 +203,7 @@ tagged only after approval.
 | # | Step | Delivers | Done when |
 |---|---|---|---|
 | 0 | Design and baseline | This document, ROADMAP, ADRs; Pi numbers in BASELINE.md | Design approved; Pi measured |
-| 1 | Usage meter and cost guard | `tasks/budget.py`, `prices.json`, `usage` table; talk path counted and refused over budget; Settings: daily budget | Tests: over-budget refusal, day rollover, unknown model price |
+| 1 ✅ | Usage meter and cost guard | `tasks/budget.py`, `prices.json`, `usage` table; talk path counted and refused over budget; Settings: daily budget | Tests: over-budget refusal, day rollover, unknown model price |
 | 2 | General confirmation | `tasks/confirm.py`; pack `controls.yes/no`; Yes/No overlay; touch-only; timeout = no; memory grants moved onto it | Memory tests unchanged and green; new confirmation tests |
 | 3 | Task core without the SDK | model, store, protocol, Announcer, `TaskClient` + `FakeTaskService`; talk tools; voice controls; Tasks page; Settings (tasks on/off, quiet hours, history days) | End-to-end with the fake service: delegate, announce, follow-up, cancel, restart recovery, quiet hours |
 | 4 | Task service | `[agents]` extra; `luna_core/agents/`; bridge; hooks; local tracing; paused runs stored | Fake-model tests: approval, refusal, cancel, budget cut, turn/time limits, service crash |

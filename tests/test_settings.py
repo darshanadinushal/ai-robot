@@ -120,7 +120,8 @@ class SettingsTouchTests(unittest.TestCase):
                                      lambda: read_preferences(Path(folder) / "prefs.json")),
                    mock.patch.object(app, "write_preferences",
                                      lambda prefs: self.saved.append(dict(prefs))),
-                   mock.patch.dict(os.environ, {"LUNA_MEMORY_FILE": str(Path(folder) / "m.db")})]
+                   mock.patch.dict(os.environ, {"LUNA_MEMORY_FILE": str(Path(folder) / "m.db"),
+                                    "LUNA_TASKS_FILE": str(Path(folder) / "t.db")})]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
@@ -171,6 +172,7 @@ class SettingsTouchTests(unittest.TestCase):
         self.assertEqual(actions(), {"mode", "color", "layout", "language", "animations"})
         expected = {1: {"voice_language", "voice", "preview"},
                     2: {"online_listening", "voice_interrupt"}, 3: {"memory"},
+                    SECTIONS.index("AI"): {"ai_daily_budget"},
                     SECTIONS.index("Plugins"): set(), SECTIONS.index("About"): {"name_edit"}}
         for index, kinds in expected.items():
             self.tap(("section", index))
@@ -205,6 +207,13 @@ class SettingsTouchTests(unittest.TestCase):
         self.assertEqual((self.saved[-1]["memory"], self.hud.conversation.memory), (False, None))
         self.tap(("memory", None))
         self.assertIs(self.hud.conversation.memory, memory)
+
+    def test_daily_ai_budget(self):
+        self.tap(("section", SECTIONS.index("AI")))
+        self.tap(("ai_daily_budget", 1.0))
+        self.assertEqual(self.saved[-1]["ai_daily_budget"], 1.0)
+        self.assertEqual(self.hud.budget.daily_usd, 1.0)
+        self.assertIs(self.hud.conversation.budget, self.hud.budget)
 
     def test_new_robot_name_on_the_keyboard_restarts(self):
         self.tap(("section", SECTIONS.index("About")))
@@ -247,7 +256,8 @@ class TranslationTests(unittest.TestCase):
         names |= {"Listening", "Chat", "Home", "Camera", "Settings", "FACE MODE", "WAVE MODE",
                                  "FEMALE", "MALE", "Wave layout", "Face layout", "Online listening",
                                  "Hear long questions more accurately",
-                                 "What Luna remembers about you", "Apps that add to Luna"}
+                                 "What Luna remembers about you", "Apps that add to Luna",
+                                 "Daily limit for paid AI use", "Daily budget", "Used today"}
         from luna_core.plugins import PERMISSIONS
         from luna_core.plugins.manager import STATUS_TEXT
         names |= {text for _, text in PERMISSIONS.values()} | set(STATUS_TEXT.values())

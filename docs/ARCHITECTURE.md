@@ -378,7 +378,7 @@ Four pages keep the original button positions; more pages share the bar evenly. 
   `draw_caption` (top left) shows THINKING / follow-up / mic status plus `AI: ON|OFF`.
 
 ### Settings page
-A section menu on the left (Display & Theme with App language and Animations, Voice, Listening, Memory, Plugins, About) works like
+A section menu on the left (Display & Theme with App language and Animations, Voice, Listening, Memory, AI (daily budget), Plugins, About) works like
 tabs: the panel on the right shows **only the selected section** (`self.settings_section`;
 Up/Down keys change it). The section list and what each tap changes live in `settings.py`
 (no pygame, unit-tested).
@@ -608,6 +608,16 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
   counters, random choices) into the fixed part. `LUNA_AI_MAX_OUTPUT_TOKENS` caps answer
   tokens (off by default; at least 16). Each completed answer logs
   `Luna AI: tokens N in (C cached), M out` (numbers only).
+- **Daily budget (`luna_core/tasks/budget.py`):** `UsageMeter` records each completed
+  response's tokens (`LunaBrain.stream` puts `result["usage"]` and `result["searches"]`;
+  `AIWorker._count`, also for cancelled requests) and each online transcription's audio seconds
+  (`CloudTranscriber`), priced from `tasks/prices.json` (+ `LUNA_AI_PRICES`; unknown models at
+  the dearest known price). Daily totals per path (`talk`, `listen`, later `task`) and model go
+  to SQLite `~/.luna/tasks.db` (`LUNA_TASKS_FILE`; numbers only; 400 days; memory-only if the
+  file fails). `CostGuard` (preference `ai_daily_budget`, Settings > AI) is checked by
+  `Conversation.ask` before every AI question (refusal sentence `BUDGET_SPENT`, warning
+  `BUDGET_LOW` once a day at 80 %) and by the app before an online-listening upload. A question
+  started under the budget is answered in full, so a day can end over it by one answer.
 - **Reasoning effort:** `LUNA_AI_REASONING` (`none`, `minimal`, `low`, `medium`, `high`,
   `xhigh`) is sent as `reasoning.effort` only when set. Not every model supports every value; the
   API then fails with `BadRequestError`, which is logged with a hint, never silently changed.
@@ -639,7 +649,8 @@ unknown keys are ignored. Adding a setting means: default in `read_preferences`,
 
 ## 6. Command-line options (`main.py`, `luna_core/cli.py`)
 Environment: `LUNA_FPS` (active frame rate, 30), `LUNA_IDLE_FPS` (15),
-`LUNA_AI_MODEL`, `LUNA_AI_MAX_OUTPUT_TOKENS`, `LUNA_HARDWARE=mock`, `LUNA_LOG_FILE`.
+`LUNA_AI_MODEL`, `LUNA_AI_MAX_OUTPUT_TOKENS`, `LUNA_AI_PRICES`, `LUNA_TASKS_FILE`,
+`LUNA_HARDWARE=mock`, `LUNA_LOG_FILE`.
 `--version`, `--headless`, `--mock-hardware`, `--no-plugins` (safe mode), `--windowed` (resizable window; default on Windows), `--fullscreen` (default elsewhere),
 `--no-voice`, `--no-speech`, `--no-ai`, `--screenshot FILE` (save first frame and exit; implies
 no voice/speech/AI so no native audio thread is alive at exit — on the Pi that caused a segfault).

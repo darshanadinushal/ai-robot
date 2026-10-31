@@ -80,14 +80,26 @@ def max_output_tokens(env=None):
     return number or None
 
 
-def usage_text(usage):
-    """Token counts of one response for the log (numbers only), or '' if unknown."""
+def usage_numbers(usage):
+    """(input, cached input, output) tokens of one response, or None if unknown."""
     try:
         details = getattr(usage, "input_tokens_details", None)
         cached = getattr(details, "cached_tokens", 0) or 0
-        return "%d in (%d cached), %d out" % (usage.input_tokens, cached, usage.output_tokens)
+        return int(usage.input_tokens), int(cached), int(usage.output_tokens)
     except (AttributeError, TypeError, ValueError):
-        return ""
+        return None
+
+
+def usage_text(usage):
+    """Token counts of one response for the log (numbers only), or '' if unknown."""
+    numbers = usage_numbers(usage)
+    return "%d in (%d cached), %d out" % numbers if numbers else ""
+
+
+def web_searches(response):
+    """How many hosted web searches a completed response made (each is billed per call)."""
+    return sum(getattr(item, "type", "") == "web_search_call"
+               for item in getattr(response, "output", None) or ())
 
 
 def reasoning_effort(env=None):
@@ -163,6 +175,8 @@ class LunaBrain:
 
         Afterwards `completed_id` (and `result["id"]` if a dict is given: safe when two streams
         overlap) is the answer's id, or StreamError is raised if the answer did not complete.
+        Once the response completed, `result["usage"]` is (input, cached, output) tokens and
+        `result["searches"]` the number of web searches, if any (for the usage meter).
         With `tools`, function calls are collected in `result["calls"]` (ToolCall) and
         `result["calling"]` is set as soon as one starts. `question` may be a list of input items
         (tool outputs), continuing from response `previous`.
@@ -189,9 +203,13 @@ class LunaBrain:
                 elif kind == "response.completed":
                     self.completed_id = event.response.id
                     result["id"] = event.response.id
-                    used = usage_text(getattr(event.response, "usage", None))
-                    if used:
-                        log.info("Luna AI: tokens %s", used)
+                    numbers = usage_numbers(getattr(event.response, "usage", None))
+                    if numbers:
+                        result["usage"] = numbers
+                        log.info("Luna AI: tokens %d in (%d cached), %d out" % numbers)
+                    searches = web_searches(event.response)
+                    if searches:
+                        result["searches"] = searches
                 elif kind in ("response.failed", "response.incomplete", "error"):
                     raise StreamError(kind)
         finally:
@@ -225,11 +243,14 @@ class AIWorker:
       ("lost", id, None)         the stream failed after sentences were sent: apologise
       ("error", id, sentence)    it failed before anything was said: a fixed error sentence
     `cancel(id)` stops a request: no more messages for it, and it is not added to the history.
+    `meter` (tasks.budget.UsageMeter, optional) counts the tokens and web searches of every
+    completed response, also of cancelled requests (they are billed too).
     Text in a response that calls tools is not spoken: the answer after the tool results is.
     """
 
-    def __init__(self, brain_factory=LunaBrain):
+    def __init__(self, brain_factory=LunaBrain, meter=None):
         self._factory = brain_factory
+        self.meter = meter
         self._brain = None
         self._brain_lock = threading.Lock()
         self.answers = queue.Queue()
@@ -357,7 +378,11 @@ class AIWorker:
                 options["previous"] = previous
             sentences, tag = SentenceStream(), AnswerText()
             pieces = brain.stream(given, language, instructions_text, result, **options)
-            if not self._read(request, pieces, result, sentences, spoke, started, tag):
+            try:
+                read = self._read(request, pieces, result, sentences, spoke, started, tag)
+            finally:
+                self._count(brain, result)
+            if not read:
                 return
             if not result.get("calls"):
                 self._finish(request, (), result, sentences, spoke, started, tag)
@@ -383,6 +408,18 @@ class AIWorker:
             if close:
                 close()  # stops the download when Luna was interrupted
         return not self._stopped(request)
+
+    def _count(self, brain, result):
+        """Report one response's usage to the meter (never fails the answer)."""
+        if self.meter is None or not (result.get("usage") or result.get("searches")):
+            return
+        try:
+            model = getattr(brain, "model", "") or "unknown"
+            usd = self.meter.add_tokens("talk", model, *(result.get("usage") or (0, 0, 0)))
+            usd += self.meter.add_calls("talk", "web_search", result.get("searches") or 0)
+            log.info("Luna AI: about $%.4f; today $%.3f", usd, self.meter.spent())
+        except Exception as error:  # the meter must never break a conversation
+            log.warning("Luna AI: usage not counted (%s)", type(error).__name__)
 
     def _wait_for_tools(self, request, calls):
         event, outputs = threading.Event(), []

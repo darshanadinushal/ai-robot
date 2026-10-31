@@ -6,12 +6,13 @@ import unittest
 from pathlib import Path
 
 from luna_core import ai, commands, languages, voices
+from luna_core.assistant_core.conversation import BUDGET_LOW, BUDGET_SPENT
 from luna_core.preferences import read_preferences
 from luna_core.settings import apply_choice
 
 FIXED_SENTENCES = {"Yes?", "My AI brain is not set up yet.", "I am not sure what to say.",
                    ai.LOST_CONNECTION, "Okay.", "Okay, let's start a new conversation.",
-                   "One moment."}
+                   "One moment.", BUDGET_SPENT, BUDGET_LOW}
 
 
 def ai_errors():

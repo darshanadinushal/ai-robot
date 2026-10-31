@@ -252,8 +252,14 @@ Then talk:
 - Optional limits in `~/.luna.env`: `LUNA_AI_MAX_OUTPUT_TOKENS=300` (a hard cap on answer
   length), `LUNA_MAX_TURNS=10` (shorter history), `LUNA_AI_WEB_SEARCH=off` (searches cost
   extra), `LUNA_AI_REASONING=low`.
-- The log (`~/.luna/logs/luna.log`) shows the tokens of every answer:
-  `Luna AI: tokens 1850 in (1700 cached), 40 out`.
+- **Daily AI budget** (Settings > AI; $0.10, **$0.30** default, $0.50, $1.00 or $2.00 per day):
+  answers, web searches ($0.01 each) and online listening are counted with OpenAI's list
+  prices. At 80 % Luna mentions it once; when it is used up she says so and answers only
+  offline commands until midnight. Settings > AI shows today's use. It is an estimate: check
+  real costs on the OpenAI dashboard. Daily totals (numbers only) are kept in `~/.luna/tasks.db`;
+  `LUNA_AI_PRICES=<file>` overrides prices (same format as `luna_core/tasks/prices.json`).
+- The log (`~/.luna/logs/luna.log`) shows the tokens and estimated cost of every answer:
+  `Luna AI: tokens 1850 in (1700 cached), 40 out` and `Luna AI: about $0.0002; today $0.012`.
 
 ## Controls
 

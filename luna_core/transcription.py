@@ -14,8 +14,11 @@ Privacy rules:
   On any error, timeout or cancel the offline Vosk text is used (fallback).
 
 Model: LUNA_TRANSCRIBE_MODEL (default gpt-transcribe); LUNA_TRANSCRIBE_TIMEOUT (seconds).
+Each upload's audio minutes are reported to the usage meter (`listen`); the app sends nothing
+once the daily AI budget is used up.
 """
 import io
+import logging
 import os
 import threading
 import wave
@@ -24,6 +27,8 @@ from dataclasses import dataclass
 
 from . import languages
 from .naming import personalise
+
+log = logging.getLogger("luna.listening")
 
 DEFAULT_MODEL = "gpt-transcribe"
 SAMPLE_RATE = 16000
@@ -125,8 +130,9 @@ def wav_file(pcm):
 
 
 class CloudTranscriber:
-    def __init__(self, client=None, model=None, timeout=None):
+    def __init__(self, client=None, model=None, timeout=None, meter=None):
         self._client = client
+        self.meter = meter  # tasks.budget.UsageMeter or None
         self.model = model or os.environ.get("LUNA_TRANSCRIBE_MODEL", "").strip() or DEFAULT_MODEL
         self.timeout = TIMEOUT_SECONDS if timeout is None else timeout
 
@@ -142,6 +148,11 @@ class CloudTranscriber:
                                                         **request_options(self.model, language))
         finally:
             wav.close()
+        if self.meter is not None:
+            try:
+                self.meter.add_audio("listen", self.model, seconds(pcm))
+            except Exception as error:  # never lose the transcript over the meter
+                log.warning("Luna listening: usage not counted (%s)", type(error).__name__)
         return " ".join(str(getattr(result, "text", "") or "").split())
 
 
@@ -180,8 +191,8 @@ class OnlineListening:
     is ignored; the thread ends on its own).
     """
 
-    def __init__(self, transcriber=None, timeout=None):
-        self.transcriber = transcriber or CloudTranscriber()
+    def __init__(self, transcriber=None, timeout=None, meter=None):
+        self.transcriber = transcriber or CloudTranscriber(meter=meter)
         self.timeout = self.transcriber.timeout if timeout is None else timeout
         self._job = None
         self._waiting = None  # (utterance, started at, audio seconds)

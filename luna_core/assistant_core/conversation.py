@@ -19,6 +19,8 @@ from .turn_taking import interruption
 
 HEARD_SECONDS = 8.0    # how long the screen shows what Luna heard
 ANSWER_SECONDS = 20.0  # how long it shows her answer after the last piece arrived
+BUDGET_SPENT = "I've reached today's AI budget. My offline commands still work."
+BUDGET_LOW = "I've used most of today's AI budget."
 
 
 class Conversation:
@@ -38,6 +40,8 @@ class Conversation:
     so Luna said "One moment." (once per question).
     Memory: `memory` is a MemoryStore (None: off). Its relevant facts go into the instructions
     and its tools join the face tools (see set_memory).
+    Budget: `budget` is a tasks.budget.CostGuard (None: no limit). Once the day's AI budget is
+    used up, questions get BUDGET_SPENT instead of an AI call; offline commands still work.
     """
 
     def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None, memory=None):
@@ -49,6 +53,7 @@ class Conversation:
         self.plugin_tools, self.plugin_risks, self.plugin_instructions = (), (), ()
         self.memory = None
         self.set_memory(memory)
+        self.budget = None
         self._tool_outputs = None  # (request, [(call_id, output)]) to send on the next poll
         self.session = Session()
         self.turn = None               # the question being answered or spoken
@@ -140,6 +145,9 @@ class Conversation:
     def ask(self, question, t, language):
         if self.ai is None:
             return [Speak(spoken("My AI brain is not set up yet.", language))]
+        if self.budget is not None and not self.budget.allows():
+            return [Log("Luna AI: daily budget reached ($%.2f)" % self.budget.daily_usd),
+                    Speak(spoken(BUDGET_SPENT, language))]
         effects = []
         if not self.streaming and self.session.turns >= self.settings.max_turns:
             effects = self._fresh("after %d answers" % self.session.turns)
@@ -181,6 +189,8 @@ class Conversation:
         self.question = question
         self.answer = ""
         self.session.close_followup()
+        if self.budget is not None and self.budget.warning_due():
+            effects.append(Speak(spoken(BUDGET_LOW, language)))  # said while the AI thinks
         return effects + [Accepted(question)]
 
     def poll(self, t, speaking, talking=False, listening=False):

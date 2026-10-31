@@ -28,4 +28,4 @@ version = { attr = "luna_core.__version__" }
 include = ["luna_core*", "robot_hud*"]
 
 [tool.setuptools.package-data]
-luna_core = ["voices.json", "languages/*.json"]
+luna_core = ["voices.json", "languages/*.json", "tasks/prices.json"]

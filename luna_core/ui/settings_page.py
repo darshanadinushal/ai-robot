@@ -11,6 +11,7 @@ from .. import i18n, languages, naming
 from ..i18n import tr
 from ..preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS
 from ..settings import KEYBOARD_ROWS, SECTIONS
+from ..tasks.budget import BUDGET_CHOICES, WARN_AT
 from ..voices import LANGUAGES as VOICE_LANGUAGES, get_voice, voices_for
 from .draw import draw_arc, draw_text, line, mix, wrap_text
 from .theme import (BACKGROUND, CONTENT_CLIP, CONTENT_RECT, CONTROL_RIGHT, CONTROL_X, LABEL_X,
@@ -37,6 +38,13 @@ def section_icon(surface, name, x, y, color):
         pygame.draw.rect(surface,color,(x-12,y-15,24,30),2,border_radius=4)
         for dy in (-7,0,7):
             line(surface,color,(x-6,y+dy),(x+6,y+dy),2)
+    elif name == 'AI':
+        pygame.draw.rect(surface,color,(x-10,y-10,20,20),2,border_radius=4)
+        for d in (-4,4):
+            line(surface,color,(x+d,y-15),(x+d,y-11),2)
+            line(surface,color,(x+d,y+11),(x+d,y+15),2)
+            line(surface,color,(x-15,y+d),(x-11,y+d),2)
+            line(surface,color,(x+11,y+d),(x+15,y+d),2)
     elif name == 'Plugins':
         for dx,dy in ((-7,-7),(7,-7),(-7,7),(7,7)):
             pygame.draw.rect(surface,color,(x+dx-6,y+dy-6,12,12),2,border_radius=3)
@@ -178,6 +186,16 @@ def online_status(prefs, ai_on, mic_on):
     if not mic_on:
         return 'basic',tr('Microphone off')
     return 'natural',tr('On - questions to Luna are transcribed online')
+
+
+def budget_status(spent, daily, ai_on):
+    """(state, translated line) for today's AI use in Settings."""
+    if not ai_on:
+        return 'basic',tr('Needs the AI (an OpenAI API key)')
+    if spent>=daily:
+        return 'basic',tr('Used up - AI answers return at midnight')
+    state = 'loading' if spent>=WARN_AT*daily else 'natural'
+    return state,tr('About ${spent} of ${budget} today',spent='%.2f'%spent,budget='%.2f'%daily)
 
 
 def audio_status(audio, mic_on):
@@ -384,7 +402,8 @@ def name_keyboard(surface, fonts, accent, editor, y, hits):
 
 def settings_page(surface, fonts, accent, prefs, active, preview, listening=('basic',''),
                   online=('basic',''), memory=((),0,False,False), interrupt=False,
-                  audio=('basic',''), editor=None, speech_state=None, plugins=((),0,None)):
+                  audio=('basic',''), editor=None, speech_state=None, plugins=((),0,None),
+                  budget=(0.0,False)):
     """Draw the Settings page (only the selected section) and return [(rect, action)] for taps."""
     hits = [(rect,('section',i)) for i,rect in enumerate(SECTION_RECTS)]
     settings_sidebar(surface,fonts,accent,active)
@@ -472,6 +491,19 @@ def settings_page(surface, fonts, accent, prefs, active, preview, listening=('ba
     elif name=='Memory':
         section_header(surface,fonts,name,y,'What Luna remembers about you')
         memory_section(surface,fonts,accent,prefs,y,memory,hits)
+    elif name=='AI':
+        section_header(surface,fonts,name,y,'Daily limit for paid AI use')
+        row_label(surface,fonts,'Daily budget',y+122)
+        for amount,rect in zip(BUDGET_CHOICES,control_rects(y+99,len(BUDGET_CHOICES),46,120)):
+            choice_button(surface,fonts,accent,rect,'$%.2f'%amount,
+                          abs(prefs['ai_daily_budget']-amount)<1e-6,hits,('ai_daily_budget',amount))
+        spent,ai_on = budget
+        status_row(surface,fonts,'Used today',y+200,budget_status(spent,prefs['ai_daily_budget'],ai_on))
+        notes = (tr('Counts answers, web searches and online listening (an estimate from list prices).'),
+                 tr('When it is used up, Luna still does offline commands until midnight.'))
+        for i,text in enumerate(notes):
+            draw_text(surface,wrap_text(fonts['mini'],text,860,1)[0],fonts['mini'],MUTED,
+                      topleft=(LABEL_X,y+262+i*28))
     elif name=='Plugins':
         plugins_section(surface,fonts,accent,y,plugins,hits)
     else:

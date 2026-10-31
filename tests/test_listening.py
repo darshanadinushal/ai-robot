@@ -302,7 +302,7 @@ class ListeningAppTests(unittest.TestCase):
                       mock.patch.object(app, "read_preferences",
                                         lambda: read_preferences(Path(folder) / "p.json")),
                       mock.patch.object(app, "write_preferences", lambda prefs: None),
-                      mock.patch.dict(os.environ, {"LUNA_VOICE": ""}),
+                      mock.patch.dict(os.environ, {"LUNA_VOICE": "", "LUNA_TASKS_FILE": str(Path(folder) / "t.db")}),
                       mock.patch("builtins.print")):
             patch.start()
             self.addCleanup(patch.stop)

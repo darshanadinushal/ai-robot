@@ -396,7 +396,8 @@ class RobotWithPluginsTests(unittest.TestCase):
         for patch in (mock.patch.object(app, "speech", self.speech),
                       mock.patch.object(app, "read_preferences", lambda: read_preferences(Path(folder) / "p.json")),
                       mock.patch.object(app, "write_preferences", lambda prefs: None),
-                      mock.patch.dict(os.environ, {"LUNA_MEMORY_FILE": str(Path(folder) / "m.db")})):
+                      mock.patch.dict(os.environ, {"LUNA_MEMORY_FILE": str(Path(folder) / "m.db"),
+                                    "LUNA_TASKS_FILE": str(Path(folder) / "t.db")})):
             patch.start()
             self.addCleanup(patch.stop)
 

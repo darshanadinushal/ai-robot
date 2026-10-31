@@ -169,7 +169,9 @@
     "Sorry, I lost my connection.": "Förlåt, jag tappade anslutningen.",
     "Okay.": "Okej.",
     "One moment.": "Ett ögonblick.",
-    "Okay, let's start a new conversation.": "Okej, vi börjar ett nytt samtal."
+    "Okay, let's start a new conversation.": "Okej, vi börjar ett nytt samtal.",
+    "I've reached today's AI budget. My offline commands still work.": "Jag har nått dagens AI-budget. Mina offlinekommandon fungerar fortfarande.",
+    "I've used most of today's AI budget.": "Jag har använt det mesta av dagens AI-budget."
   },
   "transcription_prompt": "Någon pratar med Luna, en vänlig hemrobot, och ställer en fråga på svenska.",
   "transcription_keywords": ["Luna", "cyan", "bärnsten", "lila"],
@@ -341,6 +343,14 @@
     "Use the internet": "Använda internet",
     "Use the camera": "Använda kameran",
     "Move the robot": "Flytta roboten",
-    "Control devices in your home": "Styra apparater i ditt hem"
+    "Control devices in your home": "Styra apparater i ditt hem",
+    "AI": "AI",
+    "Daily limit for paid AI use": "Daglig gräns för betald AI",
+    "Daily budget": "Daglig budget",
+    "Used today": "Använt i dag",
+    "About ${spent} of ${budget} today": "Cirka ${spent} av ${budget} i dag",
+    "Used up - AI answers return at midnight": "Slut - AI-svar kommer tillbaka vid midnatt",
+    "Counts answers, web searches and online listening (an estimate from list prices).": "Räknar svar, webbsökningar och onlinelyssning (en uppskattning från listpriser).",
+    "When it is used up, Luna still does offline commands until midnight.": "När den är slut gör Luna fortfarande offlinekommandon fram till midnatt."
   }
 }

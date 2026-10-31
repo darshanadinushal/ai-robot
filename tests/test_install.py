@@ -84,6 +84,7 @@ class UpgradeRollbackTests(unittest.TestCase):
                         GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
                         GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
         self.env.pop("LUNA_MEMORY_FILE", None)
+        self.env.pop("LUNA_TASKS_FILE", None)
         self.env.pop("LUNA_PLUGINS_FILE", None)
         self.run_in(["git", "clone", "--quiet", "--no-local", str(ROOT), str(self.repo)], cwd=self.home)
         self.run_in(["git", "remote", "remove", "origin"])

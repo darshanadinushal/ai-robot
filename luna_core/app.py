@@ -29,6 +29,7 @@ from .assistant_core.context import settings_from_env
 from .assistant_core.events import Accepted, Act, Log, Mood, Speak, StopSpeech
 from .assistant_core.expression import face_motion
 from .assistant_core.memory import ERRORS as MEMORY_ERRORS, MemoryStore
+from .tasks.budget import CostGuard, UsageMeter
 from .transcription import PREROLL_SECONDS, AudioRing, OnlineListening
 from .voice import VoiceListener
 from .face_state import FaceState
@@ -115,12 +116,15 @@ class RobotHUD:
         self.chat_active=False
         self.running=True
         self.conversation=Conversation()  # routing, AI answers, follow-ups (assistant core)
+        # AI cost: usage of every paid call (~/.luna/tasks.db) and the daily budget (Settings > AI).
+        self.usage=UsageMeter()
+        self.budget=self.conversation.budget=CostGuard(self.usage,self.prefs['ai_daily_budget'])
         self.memory=MemoryStore()  # facts the user asked Luna to remember (~/.luna-memory.db)
         self.memory_page=0
         self.forget_all_until=0.0  # "Forget everything" waits for a second tap until then
         self.conversation.set_memory(self.memory if self.prefs['memory'] else None)
         self.utterance=UtteranceAssembler(self.utterance_end)  # joins Vosk's pieces
-        self.online=OnlineListening()  # optional online transcription of questions
+        self.online=OnlineListening(meter=self.usage)  # optional online transcription of questions
         self.ring=AudioRing()          # recent mic audio in memory, only while online listening is on
         self.mic_overruns=0
         self.decode_mark=0.0
@@ -140,7 +144,7 @@ class RobotHUD:
         self.voice_key=os.environ.get('LUNA_VOICE') or self.prefs['voice']
         speech.set_voice(self.voice_key)
         use_ai=not getattr(args,'no_ai',False) and ai_configured()
-        self.ai=AIWorker() if use_ai else None
+        self.ai=AIWorker(meter=self.usage) if use_ai else None
         if use_ai:
             self.ai.warm_up()  # load the AI client now, not when the first question comes  # name, location, turn limit, idle reset (from ~/.luna.env or the environment)
             self.conversation.settings=settings_from_env()
@@ -336,6 +340,8 @@ class RobotHUD:
                 if self.voice:
                     self.forget_utterance()
                     self.voice.set_language(self.talk_language)
+            elif changed=='ai_daily_budget':
+                self.budget.daily_usd=self.prefs['ai_daily_budget']
             elif changed=='memory':
                 self.conversation.set_memory(self.memory if self.prefs['memory'] else None)
             elif changed=='online_listening' and not self.prefs['online_listening']:
@@ -503,7 +509,7 @@ class RobotHUD:
         if done:
             self.log_utterance(done)
             kind=route(done.text,conversation=done.conversation,language=self.heard_language)[0]
-            if online and kind=='ai':  # wake word or follow-up: authorised to send
+            if online and kind=='ai' and self.budget.allows():  # wake word or follow-up: may be sent
                 audio=self.ring.since(self.start_time+done.started-PREROLL_SECONDS)
                 self.ring.clear()
                 self.conversation.heard,self.conversation.heard_kind=done.text,kind
@@ -716,7 +722,8 @@ class RobotHUD:
                                          audio_status(self.audio,self.voice is not None),
                                          self.name_editor,
                                          speech.voice_state() if speech.enabled else None,
-                                         (self.plugins.view(),self.plugin_page,self.plugin_open))
+                                         (self.plugins.view(),self.plugin_page,self.plugin_open),
+                                         (self.usage.spent(),self.ai is not None))
 
     def draw_footer(self,t,default):
         """Bottom text: Luna's answer while relevant, otherwise the hint."""

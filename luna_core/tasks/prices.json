@@ -1,0 +1,31 @@
+{
+  "source": "https://developers.openai.com/api/docs/pricing (standard, short context), checked 2026-10-31",
+  "note": "USD per 1M tokens (input, cached input, output); tools per call; audio per minute. Override with LUNA_AI_PRICES=<file>.",
+  "models": {
+    "gpt-6-astra": {"input": 10.0, "cached": 1.0, "output": 50.0},
+    "gpt-6.1-sol": {"input": 2.0, "cached": 0.1, "output": 10.0},
+    "gpt-6.1-terra": {"input": 1.0, "cached": 0.05, "output": 5.0},
+    "gpt-6-sol": {"input": 2.0, "cached": 0.2, "output": 10.0},
+    "gpt-6-luna": {"input": 0.1, "cached": 0.01, "output": 0.5},
+    "gpt-5.6-sol": {"input": 4.0, "cached": 0.4, "output": 20.0},
+    "gpt-5.6-terra": {"input": 2.0, "cached": 0.2, "output": 12.0},
+    "gpt-5.6-luna": {"input": 0.2, "cached": 0.02, "output": 1.2},
+    "gpt-5.5": {"input": 5.0, "cached": 0.5, "output": 30.0},
+    "gpt-5.4": {"input": 2.5, "cached": 0.25, "output": 15.0},
+    "gpt-5.4-mini": {"input": 0.75, "cached": 0.075, "output": 4.5},
+    "gpt-5.4-nano": {"input": 0.2, "cached": 0.02, "output": 1.25},
+    "gpt-5-mini": {"input": 0.25, "cached": 0.025, "output": 2.0},
+    "gpt-5-nano": {"input": 0.05, "cached": 0.005, "output": 0.4},
+    "gpt-4.1-mini": {"input": 0.4, "cached": 0.1, "output": 1.6},
+    "gpt-4o-mini": {"input": 0.15, "cached": 0.075, "output": 0.6}
+  },
+  "tools": {
+    "web_search": 0.01
+  },
+  "audio_minute": {
+    "gpt-transcribe": 0.0045,
+    "gpt-4o-transcribe": 0.006,
+    "gpt-4o-mini-transcribe": 0.003,
+    "whisper-1": 0.006
+  }
+}

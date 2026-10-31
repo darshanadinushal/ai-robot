@@ -5,10 +5,10 @@ is applied with `apply_choice` and saved straight away.
 """
 from .i18n import LANGUAGES
 from .naming import MAX_LETTERS, clean_name
-from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS
+from .preferences import COLOR_CHOICES, LAYOUT_CHOICES, MODES, WAVE_LAYOUTS, budget_choice
 from .voices import VOICES, get_voice, voice_for, voices_for
 
-SECTIONS = ("Display & Theme", "Voice", "Listening", "Memory", "Plugins", "About")
+SECTIONS = ("Display & Theme", "Voice", "Listening", "Memory", "AI", "Plugins", "About")
 
 
 KEYBOARD_ROWS = ("QWERTYUIOPÅ", "ASDFGHJKLÖÄ", "ZXCVBNM")
@@ -74,6 +74,8 @@ def apply_choice(prefs, kind, value=None, echo_cancelling=False):
         key, new = "memory", not prefs.get("memory", True)
     elif kind == "voice_interrupt":
         key, new = "voice_interrupt", not voice_interrupt_wanted(prefs, echo_cancelling)
+    elif kind == "ai_daily_budget" and budget_choice(value) is not None:
+        key, new = "ai_daily_budget", budget_choice(value)
     elif kind == "language" and value in LANGUAGES:
         key, new = "language", value  # screen texts only, not the voice
     elif kind == "voice" and value in VOICES:
