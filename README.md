@@ -10,7 +10,7 @@ with an online AI. Camera video, motors and home control are future work.
 
 ## Luna project cost tracker
 
-Track hardware purchases, upcoming parts, and ongoing AI/API costs in SEK in [Luna Cost Tracker](docs/LUNA_COST_TRACKER.md). Prices marked `TBD` are not yet confirmed; record receipt totals as purchases occur.
+See only **confirmed Luna expenses** (hardware order and OpenAI top-ups) in both SEK (kr) and USD in the [Luna Money Spent Tracker](docs/LUNA_COST_TRACKER.md). Planned purchases are excluded.
 
 ## Features
 
