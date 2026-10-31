@@ -21,7 +21,7 @@ class PackageTests(unittest.TestCase):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertEqual(project["tool"]["setuptools"]["dynamic"]["version"]["attr"],
                          "luna_core.__version__")
-        self.assertEqual(luna_core.__version__, "1.0.0")
+        self.assertEqual(luna_core.__version__, "1.0.1")
 
     def test_importing_the_core_does_not_start_pygame(self):
         code = ("import sys, luna_core, luna_core.plugins.manager; "

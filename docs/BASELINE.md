@@ -45,7 +45,7 @@ Start-up and idle cost (also to fill in on the Pi):
 .venv/bin/python scripts/measure_startup.py                       # mock hardware, 5 starts + 30 s idle
 .venv/bin/python scripts/measure_startup.py --real-hardware --idle 60
 ```
-| Measurement | v1.0.0 | unreleased (display/font-only pygame, 2 malloc arenas) |
+| Measurement | v1.0.0 | v1.0.1 (display/font-only pygame, 2 malloc arenas) |
 |---|---|---|
 | Start to first frame, laptop (`--no-voice --no-speech`) | 0.54 s | 0.42 s |
 | Start to first frame, Pi 5 | | |

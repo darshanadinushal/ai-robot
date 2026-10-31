@@ -3,7 +3,7 @@
 Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
-## Unreleased
+## 1.0.1 (2026-10-31)
 - Startup works with [robot-setup](https://github.com/darshanadinushal/robot-setup): there is
   one `luna.service`. `scripts/install-service.sh` marks its files and refuses (also with
   `--remove`) when Robot Setup manages the service; Robot Setup replaces and later restores them.
