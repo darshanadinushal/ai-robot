@@ -4,7 +4,9 @@
 stdout. Two small threads move the lines, so the UI thread never waits on a pipe: `send` only
 queues a line and `receive` only takes the lines that have arrived. Its stderr is discarded
 (the service writes its own log file). Closing asks the service to stop and kills it if it does
-not exit within a few seconds, in the background.
+not exit within a few seconds, in the background. On Linux the child gets at most 2 malloc
+arenas unless MALLOC_ARENA_MAX is set (as scripts/run-pi.sh does for Luna): less memory on the
+Pi, and the helper waits on the network most of the time anyway.
 """
 import logging
 import os
@@ -21,8 +23,16 @@ COMMAND = (sys.executable, "-m", "luna_core.agents")
 EXIT_WAIT = 3.0
 
 
+def child_environment(env=None, platform=sys.platform):
+    env = dict(os.environ if env is None else env)
+    if platform.startswith("linux"):
+        env.setdefault("MALLOC_ARENA_MAX", "2")
+    return env
+
+
 class ProcessTransport:
     def __init__(self, command=COMMAND, env=None):
+        env = child_environment(env)
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         self.process = subprocess.Popen(list(command), stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,

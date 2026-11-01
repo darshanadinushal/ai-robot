@@ -2,7 +2,9 @@
 import filecmp
 import logging
 import os
+import shutil
 import subprocess
+import tempfile
 import sys
 import tomllib
 import unittest
@@ -14,6 +16,22 @@ import luna_core
 from luna_core import cli, logs
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@unittest.skipUnless(os.name != "nt" and shutil.which("bash"), "needs bash (Linux, the Pi)")
+class DeployScriptTests(unittest.TestCase):
+    def test_the_agents_extra_is_installed_only_with_background_tasks_on(self):
+        home = tempfile.mkdtemp()
+        script = ('source scripts/deploy-common.sh; for case in none file env; do '
+                  'if [ $case = file ]; then printf "X=1\\nexport LUNA_TASKS=\\"service\\"\\n" '
+                  '> "$HOME/.luna.env"; fi; '
+                  'if [ $case = env ]; then rm "$HOME/.luna.env"; export LUNA_TASKS=service; fi; '
+                  'wants_agents && echo "$case yes" || echo "$case no"; done')
+        env = {k: v for k, v in os.environ.items() if k != "LUNA_TASKS"}
+        result = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True,
+                                env=dict(env, HOME=home), timeout=30)
+        self.assertEqual(result.stdout.split("\n")[:3], ["none no", "file yes", "env yes"],
+                         result.stderr)
 
 
 class PackageTests(unittest.TestCase):

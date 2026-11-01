@@ -51,6 +51,23 @@ Start-up and idle cost (also to fill in on the Pi):
 | Start to first frame, Pi 5 | | |
 | Idle CPU / memory / threads, Pi 5 | | |
 
+## Background task helper (task service step 6)
+```bash
+.venv/bin/python scripts/measure_tasks.py --runs 3    # needs the [agents] extra; no API key used
+```
+A scripted helper (one web search + answer, no real API) through the real `TaskClient` and
+helper process, while a 30 fps loop checks for late frames. Memory needs `psutil` on Windows.
+
+| Measurement | Laptop (Windows, Python 3.12) | Pi 5 |
+|---|---|---|
+| Helper cold start to `ready` | 1.76 s | |
+| Helper memory after `ready` / after a task | about 99 MB (step 4) | |
+| Scripted task, cold / warm helper | 1.83 s / 0.05 s | |
+| Late UI frames idle / during tasks | 0 / 89, 0 / 55 | |
+| UI poll cost during tasks, median (max) | 0.66 ms (13.3 ms) | |
+
+Talk latency with tasks on must match the start-up and listening tables above.
+
 Not changed on purpose: opening `DejaVuSans.ttf` directly would skip pygame's `fc-list` font
 search at start, but `SysFont('dejavusans')` picks another DejaVu file (for example Condensed)
 when `fonts-dejavu-extra` is installed, so text would look different on such systems.

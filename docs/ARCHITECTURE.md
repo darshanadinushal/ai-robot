@@ -321,7 +321,7 @@ home, driving) without growing `app.py`, and is tested without pygame
 - `RobotHUD` (the adapter) keeps the microphone (`listen`), the face (`apply_actions`), touch and
   drawing. `hud.ai` is a property that sets `conversation.ai`.
 
-## 2b. Background tasks (`luna_core/tasks/`, `luna_core/agents/`, task service steps 3-4)
+## 2b. Background tasks (`luna_core/tasks/`, `luna_core/agents/`, task service steps 3-6)
 Design: `docs/design/TASK_SERVICE.md`. Luna can hand a longer job to a specialist helper and keep
 talking. Off by default (Settings toggles say "Not set up on this robot yet."):
 `LUNA_TASKS=service` (environment or `~/.luna.env`; needs the AI key and
@@ -348,14 +348,23 @@ talking. Off by default (Settings toggles say "Not set up on this robot yet."):
   answered in 12 h is answered "no" and the task fails.
 - `process.py`: `ProcessTransport` runs `python -m luna_core.agents` (stdin/stdout JSON lines,
   reader/writer threads, no console window, stderr discarded; `close` reaps in the background).
-- `catalog.py`: Luna's specialist catalogue (`RESEARCH`: 8 turns, 120 s, $0.05, no tools).
+- `catalog.py`: Luna's specialist catalogue (`RESEARCH`: 8 turns, 120 s, $0.05, no Luna tools,
+  hosted `web_search`, `reads_untrusted`).
+- Untrusted content (taint): a task whose specialist `reads_untrusted` (or that is known only
+  from the service) starts tainted, and a `web` step (one per hosted search, $0.01, charged to
+  the task and the budget) taints it. `TaskClient._check` turns every allowed non-local tool of a
+  tainted task into a confirmation (touch for sensitive). The result note tells the talk AI it is
+  data from web pages, not instructions. Spoken summaries go through `model.speakable()`.
 - `luna_core/agents/` (the only code that imports the SDK; runs in the child process, `nice 10`,
   logs to `luna-agents.log`): `service.TaskService` (asyncio; `Runner.run` per task with
   `max_turns` and a time limit; usage and steps from `RunHooks`; `RunState` serialised on an
   approval), `bridge.proxy` (each allowed tool is a `FunctionTool` whose `needs_approval` sends
   `check` and whose call sends `tool_call`), `specialists.build`, `models` (model per role:
   `LUNA_AGENT_MODEL_<ROLE>` > `LUNA_AI_MODEL`; `max_tokens`/reasoning as for talk; tracing off
-  unless `LUNA_AGENT_TRACING=openai`; `LUNA_AGENT_SCRIPT` = scripted model for tests).
+  unless `LUNA_AGENT_TRACING=openai`; `LUNA_AGENT_SCRIPT` = scripted model for tests;
+  `hosted_tools` = `WebSearchTool` unless `LUNA_AI_WEB_SEARCH=0`). Hooks report hosted
+  searches as `web` steps; an unknown tool name goes back to the model as an error. The child
+  gets `MALLOC_ARENA_MAX=2` on Linux (`process.child_environment`).
 - `announce.py`: `Announcer` decides **when** Luna speaks about a task: never while she is busy,
   20 s gap, results wait while the user talks to her, quiet hours 22:00-07:00 (setting) only
   when nobody has spoken to her for 10 min; order approval > result > failure > progress.

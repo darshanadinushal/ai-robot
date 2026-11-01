@@ -9,6 +9,7 @@ Lifecycle (docs/design/TASK_SERVICE.md section 5):
 
 Luna owns every task; the task service only works on the ones it is given.
 """
+import re
 import uuid
 from dataclasses import dataclass, field
 
@@ -43,6 +44,33 @@ def clean(text, limit):
     return " ".join(str(text or "").split())[:limit]
 
 
+_CITED_LINK = re.compile(r"\s*\(\s*!?\[[^\]]*\]\([^)]*\)\s*\)")      # ([source](url))
+_LINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")                  # [text](url) -> text
+_WEB = r"(?:https?://|www\.)"
+_CITED = re.compile(r"\s*\([^()]*" + _WEB + r"[^()]*\)")         # (see https://...)
+_URL = re.compile(_WEB + r"\S+")
+_BULLET = re.compile(r"^(?:#{1,6}|>|[-*+•]|\d+[.)])\s+")         # at a line start only
+_MARKS = re.compile(r"\*+|`+|~~|__|\|")
+
+
+def speakable(text, limit=SUMMARY_CHARS):
+    """`text` as one plain line Luna can say: no markdown, links or web addresses. Lines
+    (headings, list items) become sentences; a longer text ends at its last whole sentence."""
+    text = _CITED_LINK.sub("", str(text or ""))
+    text = _URL.sub("", _CITED.sub("", _LINK.sub(r"\1", text)))
+    sentences = []
+    for line in text.splitlines():
+        line = " ".join(_MARKS.sub(" ", _BULLET.sub("", line.strip())).split()).strip(" -,;")
+        if line:
+            sentences.append(line if line[-1] in ".!?:" else line + ".")
+    text = re.sub(r"\s+([,.!?;:])", r"\1", " ".join(sentences))
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    return cut[:end + 1] if end > limit // 4 else cut[:limit - 1].rstrip() + "…"
+
+
 def new_id():
     return uuid.uuid4().hex[:12]
 
@@ -71,6 +99,8 @@ class Specialist:
     The task service builds the agent from the rest: `instructions`, `model_role` (picks the
     model: LUNA_AGENT_MODEL_<ROLE>), `tools` (names of Luna's tools it may ask to use, always
     through Luna's permission check) and `hosted` (OpenAI-hosted tools such as web search).
+    `reads_untrusted`: it reads content others wrote (web pages...), so its tasks are tainted
+    from the start: every later non-`local` tool call needs the user's OK (taint rule).
     """
     name: str
     description: str
@@ -80,6 +110,7 @@ class Specialist:
     model_role: str = ""
     tools: tuple = ()
     hosted: tuple = ()
+    reads_untrusted: bool = False
 
 
 @dataclass(frozen=True)

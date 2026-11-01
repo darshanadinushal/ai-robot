@@ -39,14 +39,24 @@ switch_to() {
   fi
 }
 
+wants_agents() {
+  # Background tasks with the real helper: LUNA_TASKS=service here or in ~/.luna.env.
+  [ "${LUNA_TASKS:-}" = "service" ] ||
+    grep -qsE '^[[:space:]]*(export[[:space:]]+)?LUNA_TASKS=["'"'"']?service' "$HOME/.luna.env"
+}
+
 install_packages() {
   if [ "${LUNA_PIP:-}" = "skip" ] || [ ! -x .venv/bin/pip ]; then
     return 0
   fi
   # Luna itself without dependencies (pygame comes from apt on the Pi), then the [voice] and
-  # [ai] extras listed in pyproject.toml.
+  # [ai] extras listed in pyproject.toml, and [agents] when background tasks are switched on.
+  local extras="voice ai"
+  if wants_agents; then
+    extras="$extras agents"
+  fi
   .venv/bin/pip install --quiet --no-deps -e . &&
-    .venv/bin/python -c 'import tomllib; e = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]; print("\n".join(e["voice"] + e["ai"]))' |
+    LUNA_EXTRAS="$extras" .venv/bin/python -c 'import os, tomllib; e = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]; print("\n".join(p for x in os.environ["LUNA_EXTRAS"].split() for p in e[x]))' |
     xargs .venv/bin/pip install --quiet
 }
 

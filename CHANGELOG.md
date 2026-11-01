@@ -4,6 +4,15 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
 ## Unreleased
+- **Research helper searches the web** (task service step 5): OpenAI's web search (about
+  $0.01 per search, counted in the task's cost and the daily budget; off with
+  `LUNA_AI_WEB_SEARCH=0`). Each search shows as a task step. Safety: a task that read web pages
+  is "tainted" and needs your OK for every tool beyond Luna's local ones; its result reaches the
+  talk AI as data, not instructions. Spoken results have no links, markdown or URLs and end at a
+  whole sentence. A helper asking for a tool it does not have no longer fails the task.
+- **Task helper on the Pi** (step 6): `install-pi.sh` / `upgrade-pi.sh` install the `[agents]`
+  extra when `LUNA_TASKS=service` is set; the helper uses 2 malloc arenas on Linux;
+  `scripts/measure_tasks.py` measures helper start, memory, task time and UI frame lateness.
 - **Background tasks, real helper** (task service step 4): with `LUNA_TASKS=service` and the new
   `[agents]` extra (`openai-agents`), tasks run in a separate helper process
   (`python -m luna_core.agents`, started only when needed, stopped after 5 idle minutes, lower

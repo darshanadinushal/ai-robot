@@ -30,7 +30,8 @@ from datetime import datetime
 
 from .confirm import call_key
 from .model import (CANCELLED, DETAILS_CHARS, DONE, FAILED, GOAL_CHARS, INTERRUPTED, QUEUED,
-                    RUNNING, SUMMARY_CHARS, WAITING, Limits, Specialist, Task, clean, new_id)
+                    RUNNING, SUMMARY_CHARS, WAITING, Limits, Specialist, Task, clean, new_id,
+                    speakable)
 from .protocol import (FROM_SERVICE, PROTOCOL_VERSION, TO_SERVICE, ProtocolError,
                        compatible, decode, encode)
 from .store import HISTORY_DAYS
@@ -100,7 +101,8 @@ def _specialists(items, known=None):
         found[name] = Specialist(name, clean(item.get("description"), 300),
                                  clean(item.get("title") or name, 40), spec_limits,
                                  tools=tuple(clean(tool, 80) for tool in tools
-                                             if isinstance(tool, str)))
+                                             if isinstance(tool, str)),
+                                 reads_untrusted=True)  # Luna cannot vouch for it
     return found
 
 
@@ -208,7 +210,8 @@ class TaskClient:
             return None, "specialist"
         if len(self.store.active()) >= self.max_active:
             return None, "busy"
-        task = self.store.add(Task(new_id(), text, spec.name, clean(language, 8) or "en"))
+        task = self.store.add(Task(new_id(), text, spec.name, clean(language, 8) or "en",
+                                   tainted=spec.reads_untrusted))
         limits = spec.limits.within(LIMIT_CAP)
         message = {"t": "start", "id": task.id, "goal": task.goal, "specialist": spec.name,
                    "language": task.language, "context": self._context(spec),
@@ -425,6 +428,10 @@ class TaskClient:
                 self.started[task.id] = t  # its time starts now (it may have waited its turn)
         elif kind == "step":
             self.store.add_step(task.id, message["kind"], message["name"], message["summary"])
+            if message["kind"] == "web":  # a hosted web search: billed per call, untrusted text
+                task = self.store.update(task.id, tainted=True)
+                self._charge(task, self.meter.add_calls("task", "web_search", 1)
+                             if self.meter is not None else 0.0)
         elif kind == "usage":
             self._usage(task, message)
         elif kind == "check":
@@ -438,7 +445,7 @@ class TaskClient:
             if text:
                 self.events.append(TaskEvent("progress", task, text))
         elif kind == "done":
-            moved = self.store.move(task.id, DONE, summary=clean(message["summary"], SUMMARY_CHARS),
+            moved = self.store.move(task.id, DONE, summary=speakable(message["summary"]),
                                     details=str(message["details"])[:DETAILS_CHARS])
             self._ended(moved, "done")
         elif kind == "failed":
@@ -481,7 +488,12 @@ class TaskClient:
             decision_text, verdict = "allowed (the user said yes)", "allow"
         else:
             decision = executor.policy.decide(tool, arguments)
-            if decision.allowed:
+            if decision.allowed and task.tainted and tool.risk != "local":
+                # Taint rule: after untrusted text (web pages...) only the user may say yes.
+                from ..assistant_core.tools import Decision  # pure; imported late (no cycle)
+                decision = Decision(False, "", "touch" if tool.risk == "sensitive" else "voice")
+                decision_text, verdict = "asks the user (untrusted content read)", "confirm"
+            elif decision.allowed:
                 decision_text, verdict = "allowed", "allow"
             elif decision.confirm:
                 decision_text, verdict = "asks the user", "confirm"
@@ -541,6 +553,10 @@ class TaskClient:
         if self.meter is not None:
             usd = self.meter.add_tokens("task", clean(message["model"], 80), message["input"],
                                         message["cached"], message["output"])
+        self._charge(task, usd)
+
+    def _charge(self, task, usd):
+        """Add `usd` to the task; stop it when the day's budget or its own limit is used up."""
         task = self.store.update(task.id, cost_usd=task.cost_usd + usd)
         limits = self.limits.get(task.id, LIMIT_CAP)
         if self.guard is not None and not self.guard.allows():

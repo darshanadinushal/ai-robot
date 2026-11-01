@@ -248,6 +248,11 @@ Then talk:
   or the Tasks page. The helper runs in its own process only while needed (about 100 MB, stops
   after 5 idle minutes) and counts against the daily AI budget. `LUNA_TASKS=demo` uses a
   pretend helper instead. Optional: `LUNA_AGENT_MODEL_RESEARCH=<model>` for the helper's model.
+  The research helper searches the web (about $0.01 per search, at most $0.05 per task;
+  `LUNA_AI_WEB_SEARCH=0` switches searching off). What it reads is treated as data only: a task
+  that read web pages always needs your OK before it may use any of Luna's tools. On the Pi,
+  `install-pi.sh` / `upgrade-pi.sh` install the `[agents]` extra when `~/.luna.env` has
+  `LUNA_TASKS=service`.
 
 ### Keeping the AI cost low
 - The default model `gpt-6-luna` is the cheapest current one (about $0.10 per million input

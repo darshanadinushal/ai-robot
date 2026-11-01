@@ -15,7 +15,7 @@ from agents import RunConfig, RunHooks, RunState, Runner, set_tracing_disabled
 from agents.exceptions import MaxTurnsExceeded
 
 from ..tasks.catalog import catalog, describe
-from ..tasks.model import Limits
+from ..tasks.model import Limits, speakable
 from ..tasks.protocol import MAX_PAUSED, PROTOCOL_VERSION
 from . import models, specialists
 
@@ -33,14 +33,13 @@ def tracing():
 
 
 def split_answer(text):
-    """(summary to speak, details for the screen): the first paragraph, then the rest."""
+    """(summary to speak, details for the screen): the first paragraph as plain speech (no
+    markdown or links), then the rest. A long first paragraph keeps the whole text as details."""
     text = str(text or "").strip()
     first, _, rest = text.partition("\n\n")
-    summary = " ".join(first.split())
-    if len(summary) > SUMMARY_CHARS:
-        cut = summary[:SUMMARY_CHARS]
-        end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-        summary = cut[:end + 1] if end > 80 else cut.rstrip() + "…"
+    whole = speakable(first, limit=len(first) + 1)
+    summary = speakable(first, limit=SUMMARY_CHARS)
+    if len(whole) > SUMMARY_CHARS:
         rest = text
     return summary, rest.strip()[:DETAILS_CHARS]
 
@@ -109,6 +108,10 @@ class Hooks(RunHooks):
                       cached=int(getattr(details, "cached_tokens", 0) or 0),
                       output=int(usage.output_tokens or 0))
         self.job.send("step", kind="model", name=self.job.model_name, summary="")
+        for item in response.output or ():  # hosted searches ran inside this model call
+            if getattr(item, "type", "") == "web_search_call":
+                query = getattr(getattr(item, "action", None), "query", "") or ""
+                self.job.send("step", kind="web", name="web_search", summary=str(query)[:200])
 
     async def on_tool_start(self, context, agent, tool):
         self.job.send("step", kind="tool", name=str(getattr(tool, "name", "tool"))[:80],
@@ -124,8 +127,11 @@ class TaskService:
         self.slots = asyncio.Semaphore(concurrency)
         self.stopped = asyncio.Event()
         set_tracing_disabled(not tracing())
+        # A tool the helper does not have (perhaps a web page asked for it) is an error the model
+        # is told about, not the end of the task; max_turns still bounds the run.
         self.config = RunConfig(tracing_disabled=not tracing(), trace_include_sensitive_data=False,
-                                workflow_name="Luna task")
+                                workflow_name="Luna task",
+                                tool_not_found_behavior="return_error_to_model")
 
     def send(self, message):
         try:

@@ -1,7 +1,7 @@
 # Task service: hybrid multi-agent foundation (design)
 
 Status: **approved, being built** (phase 1 of [ROADMAP.md](../ROADMAP.md); decision:
-[ADR-0002](../adr/0002-hybrid-task-service.md)). Steps 0-4 are done (see §13).
+[ADR-0002](../adr/0002-hybrid-task-service.md)). Steps 0-5 are done and step 6 is built; its Pi measurements are open (see §13).
 
 ## 1. Goals and non-goals
 Goals
@@ -209,8 +209,8 @@ tagged only after approval.
 | 2 ✅ | General confirmation | `tasks/confirm.py`; pack `answers.yes/no`; Yes/No overlay; touch-only; timeout = no; memory grants moved onto it | Memory tests unchanged and green; new confirmation tests |
 | 3 ✅ | Task core without the SDK | model, store, protocol, Announcer, `TaskClient` + `FakeTaskService`; talk tools; voice controls; Tasks page; Settings (tasks on/off, quiet hours, history days) | End-to-end with the fake service: delegate, announce, follow-up, cancel, restart recovery, quiet hours. Done; left for step 4: the real subprocess, approvals/`check`/`tool_call` (refused for now), paused runs (fail as `paused`). Demo only with `LUNA_TASKS=demo` |
 | 4 ✅ | Task service | `[agents]` extra; `luna_core/agents/`; bridge; hooks; local tracing; paused runs stored | Fake-model tests: approval, refusal, cancel, budget cut, turn/time limits, service crash. Done, opt-in with `LUNA_TASKS=service`. Changes from the plan: no supervisor agent (the talk AI already picks the specialist with `start_task`, so a supervisor would only add a model call); steps and usage come from `RunHooks` (`on_llm_end`, `on_tool_start`), not a tracing processor (SDK tracing stays off unless `LUNA_AGENT_TRACING=openai`); the process is lazy (300 s idle stop); unanswered questions expire after 12 h |
-| 5 | Research specialist | Specialist, taint rule, summaries | Prompt-injection test; manual run on the laptop with a real key |
-| 6 | Pi hardening, release 1.1.0 | RAM/CPU/latency on the Pi; docs (README, ARCHITECTURE, AGENTS) | Talk latency unchanged on the Pi |
+| 5 ✅ | Research specialist | Specialist, taint rule, summaries | Prompt-injection test; manual run on the laptop with a real key. Done: the research helper uses OpenAI's hosted web search (`search_context_size=low`, off with `LUNA_AI_WEB_SEARCH=0`, $0.01 per search counted in the task's cost and the budget) and has no Luna tools; each search is a `web` step. Taint: research tasks (and helpers known only from the service) start tainted, any web step taints a task, and a tainted task needs your OK for every non-local tool (touch for sensitive). Summaries go through `speakable()` (no links, markdown or URLs; cut at a whole sentence). An unknown tool name goes back to the model as an error instead of failing the task |
+| 6 | Pi hardening, release 1.1.0 | RAM/CPU/latency on the Pi; docs (README, ARCHITECTURE, AGENTS) | Talk latency unchanged on the Pi. Built: `scripts/measure_tasks.py` (laptop numbers in BASELINE.md), deploy scripts install the `[agents]` extra when `LUNA_TASKS=service`, the helper gets `MALLOC_ARENA_MAX=2` on Linux. Open: Pi numbers, release |
 | 7 | Plugin specialists, release 1.2.0 | `add_specialist`, `agents` permission, docs/PLUGINS.md, example | Plugin API compatibility tests |
 
 ## 14. Test plan
