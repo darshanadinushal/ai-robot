@@ -19,19 +19,21 @@ main() {
   say "Luna $(version_name) -> $(git rev-parse --short "$previous")"
   git checkout --quiet "$previous"
   install_packages
+  local stopped=""
   if [ "${1:-}" = "--with-data" ] && [ -f "$STATE/last-backup" ]; then
     local folder file
     folder="$(cat "$STATE/last-backup")"
+    # Luna keeps her databases open: stop her so nothing writes over the restored files.
+    if stop_service; then stopped=1; fi
     shopt -s dotglob  # the backups are dotfiles (.ai-robot-hud.json, .luna-memory.db)
     for file in "$folder"/*; do
-      [ -e "$file" ] || continue
+      [ -f "$file" ] || continue
       case "$(basename "$file")" in
-        .ai-robot-hud.json) cp -p "$file" "$HOME/" ;;
-        plugins.json) cp -p "$file" "${LUNA_PLUGINS_FILE:-$HOME/.luna/plugins.json}" ;;
-        tasks.db)
-          mkdir -p "$(dirname "${LUNA_TASKS_FILE:-$HOME/.luna/tasks.db}")"
-          cp -p "$file" "${LUNA_TASKS_FILE:-$HOME/.luna/tasks.db}" ;;
-        *) cp -p "$file" "${LUNA_MEMORY_FILE:-$HOME/$(basename "$file")}" ;;
+        *.part|*.restore) ;;
+        .ai-robot-hud.json) restore_data "$file" "$HOME/.ai-robot-hud.json" ;;
+        plugins.json) restore_data "$file" "${LUNA_PLUGINS_FILE:-$HOME/.luna/plugins.json}" ;;
+        tasks.db) restore_data "$file" "${LUNA_TASKS_FILE:-$HOME/.luna/tasks.db}" ;;
+        *) restore_data "$file" "${LUNA_MEMORY_FILE:-$HOME/$(basename "$file")}" ;;
       esac
     done
     say "Restored data from $folder"
@@ -42,7 +44,12 @@ main() {
   else
     say "Warning: this version did not pass the start check."
   fi
-  restart_service
+  if [ -n "$stopped" ]; then
+    systemctl --user start luna.service
+    say "Luna started."
+  else
+    restart_service
+  fi
 }
 
 main "$@"; exit $?

@@ -3,12 +3,15 @@ import filecmp
 import logging
 import os
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 import sys
+import threading
 import tomllib
 import unittest
 import warnings
+from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
@@ -58,6 +61,41 @@ class DeployScriptTests(unittest.TestCase):
         self.assertIn("openai>=1.40", log)
         self.assertNotIn("agents", log)
 
+
+    def test_a_database_luna_is_writing_to_is_backed_up_whole(self):
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder, True)
+        (folder / "scripts").mkdir()
+        shutil.copy(ROOT / "scripts" / "deploy-common.sh", folder / "scripts")
+        data = folder / "tasks.db"
+        with closing(sqlite3.connect(data)) as db, db:
+            db.execute("CREATE TABLE usage (n INTEGER, text TEXT)")
+            db.executemany("INSERT INTO usage VALUES (?, ?)", [(n, "x" * 500) for n in range(2000)])
+        data.chmod(0o600)
+        (folder / "notes.db").write_text("not SQLite")
+        # Luna in the middle of a large write: changed pages already in the file, the old ones
+        # in its journal. A plain copy of tasks.db now would hold half of a transaction.
+        writer = sqlite3.connect(data, isolation_level=None, check_same_thread=False)
+        writer.execute("PRAGMA cache_size=1")
+        writer.execute("BEGIN")
+        writer.executemany("UPDATE usage SET text = ? WHERE n = ?", [("y" * 500, n) for n in range(2000)])
+        self.assertTrue((folder / "tasks.db-journal").exists())
+        done = threading.Timer(1.0, writer.execute, ("ROLLBACK",))
+        done.start()
+        self.addCleanup(writer.close)
+        self.addCleanup(done.join)
+        script = ('source scripts/deploy-common.sh; copy_data tasks.db copy.db && '
+                  'copy_data notes.db notes-copy.db && echo copied')
+        result = subprocess.run(["bash", "-c", script], cwd=folder, capture_output=True, text=True,
+                                env=dict(os.environ, LUNA_PYTHON=sys.executable), timeout=60)
+        self.assertIn("copied", result.stdout, result.stderr)
+        self.assertNotIn("Warning", result.stdout)
+        with closing(sqlite3.connect(folder / "copy.db")) as db:
+            self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            self.assertEqual(db.execute("SELECT count(*) FROM usage WHERE text LIKE 'x%'").fetchone()[0], 2000)
+        self.assertEqual((folder / "copy.db").stat().st_mode & 0o777, 0o600)
+        self.assertEqual((folder / "notes-copy.db").read_text(), "not SQLite")
+        self.assertFalse((folder / "copy.db.part").exists())
 
 class PackageTests(unittest.TestCase):
     def test_version_matches_pyproject(self):

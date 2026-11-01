@@ -14,6 +14,62 @@ require_clean_tree() {
   fi
 }
 
+copy_data() {
+  # copy_data FROM TO. A SQLite database (memories, tasks.db) is copied with SQLite's backup
+  # API, which is safe while Luna is writing to it, and the copy is checked. Other files, and a
+  # .db that is not SQLite, are copied as they are.
+  local from="$1" to="$2" result=0
+  "$PY" - "$from" "$to" <<'PYEOF' || result=$?
+import os, sqlite3, sys
+src, dst = sys.argv[1], sys.argv[2]
+with open(src, "rb") as f:
+    if f.read(16) != b"SQLite format 3\x00":
+        sys.exit(3)
+os.umask(0o077)
+part = dst + ".part"
+if os.path.exists(part):
+    os.remove(part)
+source, copy = sqlite3.connect(src, timeout=10), sqlite3.connect(part)
+try:
+    source.backup(copy)
+    if copy.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+        sys.exit("the copy did not pass SQLite's integrity check")
+finally:
+    copy.close()
+    source.close()
+info = os.stat(src)
+os.chmod(part, info.st_mode & 0o777)
+os.utime(part, ns=(info.st_atime_ns, info.st_mtime_ns))
+os.replace(part, dst)
+PYEOF
+  if [ "$result" -ne 0 ]; then
+    rm -f "$to.part"
+    if [ "$result" -ne 3 ]; then
+      say "Warning: could not copy $from with SQLite; copying the file as it is."
+    fi
+    cp -p "$from" "$to"
+  fi
+}
+
+restore_data() {
+  # restore_data BACKUP TO, with Luna stopped. Old SQLite journal files would belong to the
+  # file being replaced, so they are removed; the copy is moved into place in one step.
+  local from="$1" to="$2"
+  mkdir -p "$(dirname "$to")"
+  rm -f "$to-journal" "$to-wal" "$to-shm"
+  cp -p "$from" "$to.restore" && mv -f "$to.restore" "$to"
+}
+
+stop_service() {
+  # Stops luna.service if it is running; returns 1 when it was not running.
+  if command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet luna.service 2>/dev/null; then
+    systemctl --user stop luna.service
+    say "Luna stopped while her data is restored."
+    return 0
+  fi
+  return 1
+}
+
 backup_data() {
   # Settings, memories, plugin choices and task history with AI usage (tasks.db, Luna 1.1+);
   # restored only by: rollback-pi.sh --with-data
@@ -23,7 +79,7 @@ backup_data() {
   for file in "$HOME/.ai-robot-hud.json" "${LUNA_MEMORY_FILE:-$HOME/.luna-memory.db}" \
               "${LUNA_PLUGINS_FILE:-$HOME/.luna/plugins.json}" \
               "${LUNA_TASKS_FILE:-$HOME/.luna/tasks.db}"; do
-    if [ -f "$file" ]; then cp -p "$file" "$folder/"; fi
+    if [ -f "$file" ]; then copy_data "$file" "$folder/$(basename "$file")"; fi
   done
   printf '%s\n' "$folder" > "$STATE/last-backup"
   say "Backup: $folder"

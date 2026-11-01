@@ -13,6 +13,11 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
     the older version does not have (`agents`) is skipped.
   - `upgrade-pi.sh` backs up `~/.luna/tasks.db` (task history and AI usage) too, and
     `rollback-pi.sh --with-data` restores it to its own place.
+- Backups of the SQLite databases (`tasks.db`, memories) use SQLite's backup API and an
+  integrity check, so a backup taken while Luna writes (AI usage after each reply) holds no
+  half-written transaction; other files are still copied with `cp -p`.
+- `rollback-pi.sh --with-data` stops `luna.service` before restoring (Luna keeps her
+  databases open), removes old `-journal`/`-wal` files and starts her again afterwards.
   - `tasks.db` records its schema version (`PRAGMA user_version`); a newer Luna's file is
     logged after a rollback and still used.
   - CI tests ARM Linux and the Agents SDK on Python 3.13 (Raspberry Pi OS Trixie).

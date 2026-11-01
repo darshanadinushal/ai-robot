@@ -6,11 +6,13 @@ data files, plugin discovery and a headless screenshot, all outside the source f
 """
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import unittest
 import venv
+from contextlib import closing
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,8 +101,34 @@ class UpgradeRollbackTests(unittest.TestCase):
         self.run_in(["git", "checkout", "--quiet", "good"])
         (self.home / ".ai-robot-hud.json").write_text('{"mode": "face"}')
         (self.home / ".luna").mkdir()
-        (self.home / ".luna" / "tasks.db").write_text("tasks 1")
-        (self.home / ".luna-memory.db").write_text("memory 1")
+        self.tasks = self.home / ".luna" / "tasks.db"
+        self.set_tasks(self.tasks, "tasks 1")
+        (self.home / ".luna-memory.db").write_text("memory 1")  # not SQLite: copied as it is
+        # A systemctl that says luna.service runs, and notes what tasks.db holds when stopped.
+        bin_dir = self.home / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "systemctl").write_text(
+            '#!/bin/sh\ncase "$*" in\n'
+            '  *is-active*) [ -f "$HOME/running" ] ;;\n'
+            '  *stop*) rm -f "$HOME/running"; cp "$HOME/.luna/tasks.db" "$HOME/at-stop.db"; '
+            'echo stop >> "$HOME/systemctl.log" ;;\n'
+            '  *start*) touch "$HOME/running"; echo "$*" >> "$HOME/systemctl.log" ;;\n'
+            'esac\n')
+        (bin_dir / "systemctl").chmod(0o755)
+        (self.home / "running").touch()
+        self.env["PATH"] = "%s%s%s" % (bin_dir, os.pathsep, self.env.get("PATH", ""))
+
+    @staticmethod
+    def set_tasks(path, value):
+        with closing(sqlite3.connect(path)) as db, db:
+            db.execute("CREATE TABLE IF NOT EXISTS note (value TEXT)")
+            db.execute("DELETE FROM note")
+            db.execute("INSERT INTO note VALUES (?)", (value,))
+
+    @staticmethod
+    def tasks_value(path):
+        with closing(sqlite3.connect(path)) as db:
+            return db.execute("SELECT value FROM note").fetchone()[0]
 
     def run_in(self, command, cwd=None, check=True):
         result = subprocess.run(command, cwd=cwd or self.repo, env=self.env, capture_output=True,
@@ -123,7 +151,10 @@ class UpgradeRollbackTests(unittest.TestCase):
         self.assertTrue((self.home / ".luna" / "last-backup").is_file())
         backup, = (self.home / ".luna" / "backups").iterdir()
         self.assertEqual((backup / ".ai-robot-hud.json").read_text(), '{"mode": "face"}')
-        self.assertEqual((backup / "tasks.db").read_text(), "tasks 1")
+        self.assertEqual(self.tasks_value(backup / "tasks.db"), "tasks 1")
+        self.assertEqual((backup / ".luna-memory.db").read_text(), "memory 1")
+        self.assertEqual(oct((backup / "tasks.db").stat().st_mode & 0o777),
+                         oct(self.tasks.stat().st_mode & 0o777))
 
         failed = self.run_in([shutil.which("bash"), "scripts/upgrade-pi.sh", "bad"], check=False)
         self.assertNotEqual(failed.returncode, 0)
@@ -131,11 +162,18 @@ class UpgradeRollbackTests(unittest.TestCase):
         self.assertEqual(self.head(), self.head("good2"))
 
         (self.home / ".ai-robot-hud.json").write_text('{"mode": "wave"}')
-        (self.home / ".luna" / "tasks.db").write_text("tasks 2")
+        self.set_tasks(self.tasks, "tasks 2")
+        journal = self.home / ".luna" / "tasks.db-journal"
+        journal.write_text("a journal left by the running Luna")
         self.run_in([shutil.which("bash"), "scripts/rollback-pi.sh", "--with-data"])
+        self.assertEqual(self.tasks_value(self.home / "at-stop.db"), "tasks 2",
+                         "Luna is stopped before her data is restored")
+        self.assertFalse(journal.exists(), "an old journal is not applied to the restored file")
+        self.assertEqual((self.home / "systemctl.log").read_text().splitlines()[-2:],
+                         ["stop", "--user start luna.service"])
         self.assertEqual(self.head(), self.head("good"))
         self.assertEqual((self.home / ".ai-robot-hud.json").read_text(), '{"mode": "face"}')
-        self.assertEqual((self.home / ".luna" / "tasks.db").read_text(), "tasks 1")
+        self.assertEqual(self.tasks_value(self.tasks), "tasks 1")
         self.assertEqual((self.home / ".luna-memory.db").read_text(), "memory 1",
                          "tasks.db is not restored over the memories")
         self.run_in([shutil.which("bash"), "scripts/rollback-pi.sh"])  # undo the rollback

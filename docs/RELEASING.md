@@ -32,15 +32,16 @@ Apps then pin the version: `luna-core @ git+https://github.com/<you>/ai-robot@vX
 
 **Upgrade** (`upgrade-pi.sh`): refuses if there are local code changes, backs up
 `~/.ai-robot-hud.json`, `~/.luna-memory.db`, `~/.luna/plugins.json` and `~/.luna/tasks.db` to
-`~/.luna/backups/<time>-<commit>`, checks out the version, installs the packages, and checks
-that Luna starts (version + one headless frame with mock hardware). If that fails it checks out
+`~/.luna/backups/<time>-<commit>` (databases with SQLite's backup API, safe while Luna runs),
+checks out the version, installs the packages, and checks that Luna starts (version + one headless frame with mock hardware). If that fails it checks out
 the earlier commit again and exits with an error (an extra the checked-out version does not
 have, such as `agents` before 1.1, is skipped); otherwise it restarts the service and
 remembers the earlier commit in `~/.luna/previous-version`.
 
 **Rollback** (`rollback-pi.sh`): checks out `previous-version` (running it again undoes the
 rollback). Settings and memories are kept unless `--with-data` is given, because a newer version
-may have saved things the user wants. Backups are never deleted automatically.
+may have saved things the user wants; to restore them it stops `luna.service` first and removes
+old SQLite journal files. Backups are never deleted automatically.
 
 **Service** (`install-service.sh`): a systemd *user* service, `~/.config/systemd/user/luna.service`,
 started by `~/.config/autostart/luna.desktop` when the desktop logs in (so Luna gets the screen).
