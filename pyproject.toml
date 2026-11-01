@@ -16,6 +16,8 @@ dependencies = ["pygame>=2.1,<3"]
 voice = ["vosk>=0.3.45", "sounddevice>=0.4.6"]
 speech = ["piper-tts==1.8.0", "onnxruntime==1.31.0"]
 ai = ["openai>=1.40"]
+# Background tasks with specialist agents (LUNA_TASKS=service); runs in its own process.
+agents = ["openai-agents>=0.24,<0.25"]
 all = ["luna-core[voice,speech,ai]"]
 
 [project.scripts]

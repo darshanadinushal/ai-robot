@@ -7,7 +7,7 @@ from pathlib import Path
 
 from luna_core import ai, commands, languages, voices
 from luna_core.assistant_core.conversation import BUDGET_LOW, BUDGET_SPENT, CONFIRM_DECLINED, CONFIRM_DONE, CONFIRM_FAILED, CONFIRM_TAP
-from luna_core.assistant_core.conversation import (TASK_BUDGET, TASK_DONE, TASK_FAILED, TASK_INTERRUPTED, TASK_NONE,
+from luna_core.assistant_core.conversation import (TASK_ASK, TASK_BUDGET, TASK_DONE, TASK_FAILED, TASK_INTERRUPTED, TASK_NONE,
                                                    TASK_STOPPED, TASK_WORKING, TASKS_IDLE, TASKS_UNAVAILABLE, TASKS_WORKING)
 from luna_core.preferences import read_preferences
 from luna_core.settings import apply_choice
@@ -16,7 +16,7 @@ FIXED_SENTENCES = {"Yes?", "My AI brain is not set up yet.", "I am not sure what
                    ai.LOST_CONNECTION, "Okay.", "Okay, let's start a new conversation.",
                    "One moment.", BUDGET_SPENT, BUDGET_LOW, CONFIRM_DONE, CONFIRM_DECLINED,
                    CONFIRM_TAP, CONFIRM_FAILED, TASKS_UNAVAILABLE, TASKS_IDLE, TASK_WORKING, TASKS_WORKING,
-                   TASK_STOPPED, TASK_NONE, TASK_DONE, TASK_FAILED, TASK_BUDGET, TASK_INTERRUPTED}
+                   TASK_STOPPED, TASK_NONE, TASK_DONE, TASK_FAILED, TASK_BUDGET, TASK_INTERRUPTED, TASK_ASK}
 
 
 def ai_errors():

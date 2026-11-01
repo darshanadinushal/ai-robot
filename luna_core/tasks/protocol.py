@@ -2,7 +2,8 @@
 
 Luna and the task service (a child process from step 4; FakeTaskService in tests) exchange
 these messages over stdin/stdout. `encode` and `decode` check every message: required fields
-and their types, line length (64 KB; 2 MB for `paused`). Unknown fields are ignored; an
+and their types, line length (64 KB; 2 MB for `paused` and `resume`, which carry a paused run).
+The service is stateless: `resume` repeats what `start` said about the task. Unknown fields are ignored; an
 unknown type is a ProtocolError (the client logs and drops it). A service with another major
 PROTOCOL_VERSION is not used. Never in a message: API keys, API error messages (class names
 only), raw audio.
@@ -18,7 +19,8 @@ VERDICTS = ("allow", "refuse", "confirm")
 TO_SERVICE = {
     "start": {"id": str, "goal": str, "specialist": str, "language": str, "context": dict,
               "limits": dict},
-    "resume": {"id": str, "state": str, "item": str, "approved": bool},
+    "resume": {"id": str, "state": str, "item": str, "approved": bool, "specialist": str,
+               "language": str, "context": dict, "limits": dict},
     "cancel": {"id": str, "reason": str},
     "check_result": {"id": str, "call": str, "verdict": str, "reason": str, "summary": str,
                      "touch": bool},
@@ -64,7 +66,7 @@ def _check(message, table):
 
 
 def _limit(kind):
-    return MAX_PAUSED if kind == "paused" else MAX_LINE
+    return MAX_PAUSED if kind in ("paused", "resume") else MAX_LINE
 
 
 def encode(message, table=TO_SERVICE):

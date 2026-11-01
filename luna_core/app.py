@@ -31,7 +31,10 @@ from .assistant_core.expression import face_motion
 from .assistant_core.memory import ERRORS as MEMORY_ERRORS, MemoryStore
 from .tasks.announce import Announcer
 from .tasks.budget import CostGuard, UsageMeter
-from .tasks.client import demo_client
+from .tasks.client import TaskClient, demo_client
+from .tasks.catalog import catalog as task_catalog
+from .tasks import process as task_process
+from . import agents as task_agents
 from .tasks.store import TaskStore
 from .transcription import PREROLL_SECONDS, AudioRing, OnlineListening
 from .voice import VoiceListener
@@ -125,14 +128,30 @@ class RobotHUD:
         self.usage=UsageMeter()
         self.budget=self.conversation.budget=CostGuard(self.usage,self.prefs['ai_daily_budget'])
         self.core_pages=4  # Chat, Home, Camera, Settings (and Tasks) cannot be removed
-        self.tasks=None    # background tasks (tasks/client.py); step 3: only LUNA_TASKS=demo
-        if os.environ.get('LUNA_TASKS','').strip().lower()=='demo':
+        # Background tasks (tasks/client.py), opt-in: LUNA_TASKS=service runs the specialist
+        # agents in their own process (needs the [agents] extra and the AI), started only when
+        # a task needs it; LUNA_TASKS=demo uses a pretend helper.
+        self.tasks=None
+        task_mode=os.environ.get('LUNA_TASKS','').strip().lower()
+        if task_mode=='service':
+            if getattr(args,'no_ai',False) or not ai_configured():
+                log.info('Luna tasks: off (they need the AI)')
+            elif not task_agents.available():
+                log.info('Luna tasks: off (install the agents extra: pip install -e ".[agents]")')
+            else:
+                self.tasks=TaskClient(task_process.connect,TaskStore(),self.usage,self.budget,
+                                      enabled=self.prefs['tasks'],
+                                      history_days=self.prefs['task_history_days'],
+                                      catalog=task_catalog(),lazy=True)
+                log.info('Luna tasks: on (the helper process starts when a task needs it)')
+        elif task_mode=='demo':
             self.tasks=demo_client(TaskStore(),self.usage,self.budget,enabled=self.prefs['tasks'],
                                    history_days=self.prefs['task_history_days'])
+            log.info('Luna tasks: demo mode (a pretend helper finishes every task after 8 s)')
+        if self.tasks is not None:
             self.conversation.set_tasks(self.tasks,Announcer(quiet=self.prefs['quiet_hours']))
             self.pages.insert(self.core_pages,TasksPage())
             self.core_pages+=1
-            log.info('Luna tasks: demo mode (a pretend helper finishes every task after 8 s)')
         self.memory=MemoryStore()  # facts the user asked Luna to remember (~/.luna-memory.db)
         self.memory_page=0
         self.forget_all_until=0.0  # "Forget everything" waits for a second tap until then

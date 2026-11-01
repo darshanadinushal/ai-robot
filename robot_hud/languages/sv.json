@@ -198,7 +198,8 @@
     "Here is what I found.": "Det här kom jag fram till.",
     "Sorry, I couldn't finish this task: {goal}": "Förlåt, jag kunde inte slutföra den här uppgiften: {goal}",
     "I stopped a task because today's AI budget is used up.": "Jag avbröt en uppgift eftersom dagens AI-budget är slut.",
-    "I was interrupted while working on this: {goal}. Please ask me again.": "Jag blev avbruten när jag jobbade med det här: {goal}. Fråga mig gärna igen."
+    "I was interrupted while working on this: {goal}. Please ask me again.": "Jag blev avbruten när jag jobbade med det här: {goal}. Fråga mig gärna igen.",
+    "My task needs your OK: {goal}. Should I go ahead?": "Min uppgift behöver ditt godkännande: {goal}. Ska jag fortsätta?"
   },
   "transcription_prompt": "Någon pratar med Luna, en vänlig hemrobot, och ställer en fråga på svenska.",
   "transcription_keywords": ["Luna", "cyan", "bärnsten", "lila"],

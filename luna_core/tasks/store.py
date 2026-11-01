@@ -33,7 +33,8 @@ SCHEMA = (
     "CREATE TABLE IF NOT EXISTS approvals (task_id TEXT NOT NULL, item TEXT NOT NULL, "
     "call_id TEXT NOT NULL, tool TEXT NOT NULL, args_hash TEXT NOT NULL, risk TEXT NOT NULL, "
     "touch INTEGER NOT NULL, asked TEXT NOT NULL, answer TEXT NOT NULL DEFAULT '', "
-    "answered TEXT NOT NULL DEFAULT '', by TEXT NOT NULL DEFAULT '')",
+    "answered TEXT NOT NULL DEFAULT '', by TEXT NOT NULL DEFAULT '', "
+    "label TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '')",
     "CREATE INDEX IF NOT EXISTS steps_task ON steps (task_id)",
 )
 
@@ -77,6 +78,11 @@ class TaskStore:
         with db:
             for statement in SCHEMA:
                 db.execute(statement)
+            have = {row[1] for row in db.execute("PRAGMA table_info(approvals)")}
+            for column in ("label", "detail"):  # files made before step 4
+                if column not in have:
+                    db.execute("ALTER TABLE approvals ADD COLUMN %s TEXT NOT NULL DEFAULT ''"
+                               % column)
 
     def _run(self, sql, args=()):
         """Run a statement (in a transaction); on a file error, continue in memory."""
@@ -160,6 +166,45 @@ class TaskStore:
     def steps(self, task_id):
         return [tuple(row) for row in self._run(
             "SELECT at, kind, name, summary FROM steps WHERE task_id = ? ORDER BY rowid", (task_id,))]
+
+    # --- approvals (one row per question; `item` is the call_key of the exact call) -------
+    def ask_approval(self, task_id, call_id, tool, item, risk, touch, label, detail=""):
+        self._run("INSERT INTO approvals (task_id, item, call_id, tool, args_hash, risk, touch, "
+                  "asked, label, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  (task_id, item, clean(call_id, 80), clean(tool, 80), item.rsplit(":", 1)[-1],
+                   clean(risk, 20), int(bool(touch)), self._now(), clean(label, 80),
+                   clean(detail, 200)))
+
+    def pending_approval(self, task_id, call_id=None):
+        """The newest unanswered question of a task (for `call_id` only, if given), as a dict."""
+        sql = ("SELECT task_id, call_id, tool, item, risk, touch, label, detail FROM approvals "
+               "WHERE task_id = ? AND answer = ''")
+        args = (task_id,)
+        if call_id is not None:
+            sql += " AND call_id = ?"
+            args += (call_id,)
+        rows = self._run(sql + " ORDER BY rowid DESC LIMIT 1", args)
+        if not rows:
+            return None
+        keys = ("task_id", "call_id", "tool", "item", "risk", "touch", "label", "detail")
+        found = dict(zip(keys, rows[0]))
+        found["touch"] = bool(found["touch"])
+        return found
+
+    def answer_approval(self, task_id, call_id, answer, by):
+        """`answer`: "yes" or "no"; `by`: "voice", "tap" or "timeout"."""
+        self._run("UPDATE approvals SET answer = ?, answered = ?, by = ? "
+                  "WHERE task_id = ? AND call_id = ? AND answer = ''",
+                  (answer, self._now(), by, task_id, call_id))
+
+    def use_approval(self, task_id, item):
+        """True once for each "yes" to exactly this call (tool + arguments); it is then used."""
+        rows = self._run("SELECT rowid FROM approvals WHERE task_id = ? AND item = ? "
+                         "AND answer = 'yes' ORDER BY rowid LIMIT 1", (task_id, item))
+        if not rows:
+            return False
+        self._run("UPDATE approvals SET answer = 'used' WHERE rowid = ?", (rows[0][0],))
+        return True
 
     # --- start-up ------------------------------------------------------------------------
     def recover(self):

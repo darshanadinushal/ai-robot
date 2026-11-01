@@ -1,8 +1,12 @@
 """Background tasks, step 3: model, store, protocol, Announcer, TaskClient + FakeTaskService,
 talk tools, voice controls and the conversation end to end (no SDK, no real service)."""
+import dataclasses
 import json
 import os
+import queue
+import sys
 import tempfile
+import time
 import types
 import unittest
 from datetime import datetime, timedelta
@@ -12,10 +16,14 @@ from unittest import mock
 from luna_core.assistant_core.context import TASK_RULES
 from luna_core.assistant_core.conversation import Conversation
 from luna_core.assistant_core.events import Announce, TaskStarted
-from luna_core.assistant_core.tools import ToolCall
+from luna_core.assistant_core.events import Act
+from luna_core.assistant_core.tools import (Tool, ToolCall, ToolExecutor, ToolRegistry, ToolResult,
+                                            _object)
 from luna_core.tasks import announce, protocol
 from luna_core.tasks.announce import Announcement, Announcer
+from luna_core.tasks.catalog import RESEARCH
 from luna_core.tasks.client import FakeTaskService, TaskClient
+from luna_core.tasks.process import ProcessTransport
 from luna_core.tasks.model import (CANCELLED, DONE, FAILED, INTERRUPTED, QUEUED, RUNNING, WAITING,
                                    Task, new_id)
 from luna_core.tasks.store import TaskStore
@@ -285,7 +293,7 @@ class ClientTests(unittest.TestCase):
             client.poll(0.0)
         self.assertEqual((client.disabled, client.available), ("version", False))
 
-    def test_actions_and_approvals_are_not_available_yet(self):
+    def test_a_helper_without_tools_cannot_use_any(self):
         self.client.poll(0.0)
         task = self.start()
         self.service.emit(t="check", id=task.id, call="c1", name="turn_on", args={})
@@ -300,6 +308,7 @@ class ClientTests(unittest.TestCase):
     def test_time_limit_cancel_and_switching_off(self):
         self.client.poll(0.0)
         slow = self.start(t=0.0)
+        self.client.poll(0.5)  # accepted: its time starts
         events = self.client.poll(151.0)
         self.assertEqual([(e.kind, e.task.error) for e in events], [("failed", "time")])
         task = self.start(t=152.0)
@@ -323,6 +332,235 @@ class ClientTests(unittest.TestCase):
         client = TaskClient(FakeTaskService().connect, self.store)
         self.assertEqual([(t.id, t.state) for t in client.unannounced()],
                          [(recent.id, INTERRUPTED)])
+
+
+TEXT = {"type": "string", "description": "text"}
+
+
+def bridge_tools(ran):
+    def run(name):
+        return lambda args: ([Act((name,))], ran.append((name, args)) or ToolResult(True, "ok"))
+    return [Tool("face", "Change the face", _object({"mood": TEXT}), "local", run("face")),
+            Tool("note", "Save a note", _object({"text": TEXT}), "memory", run("note"),
+                 asked_with="remember", confirm=lambda a: ("Save a note", a["text"])),
+            Tool("unlock", "Unlock the door", _object({}), "sensitive", run("unlock"),
+                 confirm=lambda a: ("Unlock the door", "")),
+            Tool("drive", "Drive", _object({"to": TEXT}), "motion", run("drive"))]
+
+
+def bridge_client(test, store, service=None, lazy=False, **options):
+    """A client whose research helper may ask for face, note, unlock and drive."""
+    test.ran = []
+    test.executor = ToolExecutor(ToolRegistry(bridge_tools(test.ran)))
+    spec = dataclasses.replace(RESEARCH, tools=("face", "note", "unlock", "drive"))
+    service = service or FakeTaskService(specialists=[{"name": "research", "tools": ["face"]}])
+    client = TaskClient(service.connect, store, FakeMeter(), FakeGuard(),
+                        catalog={"research": spec}, lazy=lazy, **options)
+    client.executor = lambda: test.executor
+    return client, service
+
+
+class BridgeTests(unittest.TestCase):
+    """A task asks to use Luna's tools: Luna's code decides every call (step 4)."""
+
+    def setUp(self):
+        self.clock = Clock()
+        self.store = temp_store(self, self.clock)
+        self.client, self.service = bridge_client(self, self.store)
+        self.client.poll(0.0)
+        self.task, _ = self.client.begin("note that we need milk", "research", "en", t=1.0)
+        self.client.poll(1.1)
+
+    def check(self, call, name, args, t=2.0):
+        self.service.check(self.task.id, call, name, args)
+        events = self.client.poll(t)
+        return self.service.replies("check_result")[-1], events
+
+    def call(self, call, name, args, t=2.5):
+        self.service.tool_call(self.task.id, call, name, args)
+        events = self.client.poll(t)
+        return self.service.replies("tool_result")[-1], events
+
+    def test_luna_offers_only_her_catalogue_tools_never_motion(self):
+        start = self.service.replies("start")[0]
+        self.assertEqual([tool["name"] for tool in start["context"]["tools"]],
+                         ["face", "note", "unlock"])
+        self.assertEqual(start["limits"]["max_turns"], RESEARCH.limits.max_turns)
+        verdict, _ = self.check("c1", "drive", {"to": "kitchen"})
+        self.assertEqual(verdict["verdict"], "refuse")
+        result, _ = self.call("c1", "drive", {"to": "kitchen"})
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.ran, [], "motion never runs through a task")
+        verdict, _ = self.check("c2", "shell", {})
+        self.assertEqual(verdict["verdict"], "refuse", "a tool Luna does not have")
+
+    def test_an_allowed_call_runs_once_with_the_checked_arguments(self):
+        verdict, _ = self.check("c1", "face", {"mood": "happy"})
+        self.assertEqual(verdict["verdict"], "allow")
+        result, _ = self.call("c1", "face", {"mood": "sad"})
+        self.assertFalse(result["ok"], "other arguments than the checked ones")
+        self.check("c2", "face", {"mood": "happy"})
+        result, events = self.call("c2", "face", {"mood": "happy"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.ran, [("face", {"mood": "happy"})])
+        self.assertEqual([(e.kind, e.effects) for e in events], [("effects", (Act(("face",)),))])
+        result, _ = self.call("c2", "face", {"mood": "happy"}, t=3.0)
+        self.assertFalse(result["ok"], "a check allows one call")
+        result, _ = self.call("c3", "face", {"mood": "happy"}, t=3.5)
+        self.assertFalse(result["ok"], "never checked")
+        verdict, _ = self.check("c4", "face", {"mood": 3, "extra": 1}, t=4.0)
+        self.assertEqual(verdict["verdict"], "refuse")
+        self.assertEqual(len(self.ran), 1)
+
+    def test_a_failing_tool_does_not_stop_luna(self):
+        broken = Tool("face", "x", _object({"mood": TEXT}), "local", lambda a: 1 / 0)
+        self.executor = ToolExecutor(ToolRegistry([broken]))
+        self.check("c1", "face", {"mood": "happy"})
+        with self.assertLogs("luna.tasks", "WARNING"):
+            result, _ = self.call("c1", "face", {"mood": "happy"})
+        self.assertEqual((result["ok"], result["output"]), (False, "the tool failed"))
+
+    def test_asking_the_user_pauses_the_task_until_they_answer(self):
+        verdict, _ = self.check("c1", "note", {"text": "milk"})
+        self.assertEqual((verdict["verdict"], verdict["summary"], verdict["touch"]),
+                         ("confirm", "milk", False))
+        self.service.pause(self.task.id, "c1", state="RUN-STATE")
+        events = self.client.poll(3.0)
+        self.assertEqual([e.kind for e in events], ["approval"])
+        approval = events[0].approval
+        self.assertEqual((approval.label, approval.detail, approval.touch),
+                         ("Save a note", "milk", False))
+        self.assertEqual(self.store.get(self.task.id).state, WAITING)
+        self.assertEqual(self.client.waiting(), [approval])
+        self.assertTrue(self.client.answer(self.task.id, "c1", True, "voice"))
+        resume = self.service.replies("resume")[-1]
+        self.assertEqual((resume["state"], resume["item"], resume["approved"],
+                          resume["specialist"]), ("RUN-STATE", "c1", True, "research"))
+        self.assertEqual(self.store.get(self.task.id).state, RUNNING)
+        self.assertFalse(self.client.answer(self.task.id, "c1", True, "voice"), "answered once")
+        result, _ = self.call("c1", "note", {"text": "milk"}, t=4.0)
+        self.assertTrue(result["ok"])
+        result, _ = self.call("c1", "note", {"text": "milk"}, t=4.5)
+        self.assertFalse(result["ok"], "a yes covers one call")
+        self.assertEqual(self.ran, [("note", {"text": "milk"})])
+        steps = [step[1:] for step in self.store.steps(self.task.id)]
+        self.assertIn(("approval", "note", "yes (voice)"), steps)
+
+    def test_no_means_no(self):
+        self.check("c1", "note", {"text": "milk"})
+        self.service.pause(self.task.id, "c1")
+        self.client.poll(3.0)
+        self.client.answer(self.task.id, "c1", False, "voice")
+        self.assertFalse(self.service.replies("resume")[-1]["approved"])
+        result, _ = self.call("c1", "note", {"text": "milk"}, t=4.0)
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.ran, [])
+
+    def test_sensitive_tools_need_a_tap(self):
+        verdict, _ = self.check("c1", "unlock", {})
+        self.assertEqual((verdict["verdict"], verdict["touch"]), ("confirm", True))
+
+    def test_a_question_survives_a_restart_and_expires(self):
+        self.check("c1", "note", {"text": "milk"})
+        self.service.pause(self.task.id, "c1")
+        self.client.poll(3.0)
+        client, _ = bridge_client(self, self.store)
+        self.assertEqual(self.store.get(self.task.id).state, WAITING, "kept by recover()")
+        self.assertEqual([a.call for a in client.waiting()], ["c1"])
+        client.poll(10.0)
+        self.assertEqual(self.store.get(self.task.id).state, WAITING)
+        self.clock.now += timedelta(hours=13)
+        events = client.poll(100.0)
+        self.assertEqual([(e.kind, e.task.error) for e in events], [("failed", "no answer")])
+        self.assertEqual(client.waiting(), [])
+
+
+class LazyServiceTests(unittest.TestCase):
+    """LUNA_TASKS=service: the helper process runs only while there is work."""
+
+    def test_started_when_needed_and_stopped_when_idle(self):
+        store = temp_store(self, Clock())
+        client, service = bridge_client(self, store, lazy=True, idle_stop=300.0)
+        client.poll(0.0)
+        self.assertEqual((service.connects, client.available, client.running), (0, True, False))
+        self.assertEqual(sorted(client.specialists), ["research"], "from Luna's catalogue")
+        task, _ = client.begin("compare vacuums", "research", "en", t=1.0)
+        self.assertEqual(service.sent, [], "queued until the service is ready")
+        client.poll(1.0)
+        self.assertEqual((service.connects, [m["t"] for m in service.sent]), (1, ["start"]))
+        client.poll(100.0)
+        self.assertEqual(store.get(task.id).state, RUNNING)
+        self.assertEqual(client.started[task.id], 100.0, "its time starts when it runs")
+        service.finish(task.id, "Done.")
+        client.poll(101.0)
+        client.poll(400.0)
+        self.assertTrue(client.running)
+        client.poll(402.0)
+        self.assertEqual((client.running, service.sent[-1]["t"]), (False, "shutdown"))
+        self.assertEqual(client.crashes, [], "stopping on purpose is not a crash")
+        client.begin("again", "research", "en", t=500.0)
+        client.poll(500.0)
+        self.assertEqual(service.connects, 2)
+
+    def test_a_cancelled_queued_task_is_never_sent(self):
+        store = temp_store(self, Clock())
+        client, service = bridge_client(self, store, lazy=True)
+        client.begin("compare vacuums", "research", "en", t=1.0)
+        client.cancel()
+        client.poll(1.0)
+        self.assertEqual(service.connects, 0)
+
+
+CHILD = r"""
+import sys
+out = sys.stdout.buffer
+out.write(b'{"t":"ready"}\n'); out.flush()
+for line in sys.stdin.buffer:
+    if line.strip() == b"crash":
+        sys.exit(3)
+    out.write(b"echo " + line); out.flush()
+"""
+
+
+class ProcessTransportTests(unittest.TestCase):
+    def wait_for(self, transport, count, seconds=10.0):
+        lines, end = [], time.monotonic() + seconds
+        while len(lines) < count and time.monotonic() < end:
+            lines += transport.receive()
+            time.sleep(0.01)
+        return lines
+
+    def test_lines_both_ways_and_a_clean_stop(self):
+        transport = ProcessTransport((sys.executable, "-c", CHILD))
+        self.assertEqual(self.wait_for(transport, 1), [b'{"t":"ready"}\n'])
+        transport.send("hello\n")
+        transport.send("big " + "x" * 300000 + "\n")
+        lines = self.wait_for(transport, 2)
+        self.assertEqual((lines[0], len(lines[1])), (b"echo hello\n", 300010))
+        self.assertTrue(transport.alive)
+        transport.close()
+        transport.process.wait(10)
+        self.assertEqual(transport.process.returncode, 0, "closing stdin stops it")
+        self.wait_for(transport, 0, 0.2)
+        self.assertFalse(transport.alive)
+
+    def test_a_crash_is_noticed(self):
+        transport = ProcessTransport((sys.executable, "-c", CHILD))
+        self.wait_for(transport, 1)
+        transport.send("crash\n")
+        transport.process.wait(10)
+        end = time.monotonic() + 5
+        while transport.alive and time.monotonic() < end:
+            transport.receive()
+            time.sleep(0.01)
+        self.assertFalse(transport.alive)
+        with self.assertRaises(OSError):
+            transport.send("hello\n")
+        transport.close()
+
+    def test_a_missing_program_cannot_connect(self):
+        with self.assertRaises(OSError):
+            ProcessTransport(("no-such-program-for-luna",))
 
 
 class ConversationTaskTests(unittest.TestCase):
@@ -425,6 +663,94 @@ class ConversationTaskTests(unittest.TestCase):
         self.assertEqual(client.unannounced(), [])
 
 
+class ConversationApprovalTests(unittest.TestCase):
+    """A task's question: asked when Luna is free, answered by voice, tap or not at all."""
+
+    def setUp(self):
+        self.clock = Clock()
+        self.store = temp_store(self, self.clock)
+        self.chat = Conversation(FakeAI(), clock=self.clock)
+        self.ran = []
+        self.chat.set_plugins(tools=bridge_tools(self.ran))
+        spec = dataclasses.replace(RESEARCH, tools=("face", "note", "unlock"))
+        self.service = FakeTaskService()
+        self.client = TaskClient(self.service.connect, self.store, FakeMeter(), FakeGuard(),
+                                 catalog={"research": spec})
+        self.chat.set_tasks(self.client, Announcer())
+        self.chat.touched(0.0)
+        self.chat.poll(0.0, False)
+
+    def ask(self, tool="note", args=None, language="en", t=1.0):
+        args = {"text": "milk"} if args is None else args
+        task, _ = self.client.begin("Plan the shopping", "research", language, t=t)
+        self.service.check(task.id, "c1", tool, args)
+        self.service.pause(task.id, "c1")
+        effects = self.chat.poll(t + 0.5, False)
+        return task, effects
+
+    def test_yes_by_voice_resumes_the_task_and_its_tool_changes_the_face(self):
+        task, effects = self.ask()
+        self.assertEqual([e.text for e in effects if isinstance(e, Announce)],
+                         ["My task needs your OK: Plan the shopping. Should I go ahead?"])
+        self.assertIsNotNone(self.chat.confirmation)
+        self.assertEqual(self.chat.confirmation.summary(), "Save a note: milk")
+        self.chat.poll(2.0, False)
+        self.assertTrue(self.chat.in_followup(2.1), "the answer needs no wake word")
+        self.assertEqual(spoken(self.chat.hear("yes", 2.5, "en", "en")), ["Okay."])
+        self.assertIsNone(self.chat.confirmation)
+        self.assertTrue(self.service.replies("resume")[-1]["approved"])
+        self.service.tool_call(task.id, "c1", "note", {"text": "milk"})
+        effects = self.chat.poll(3.0, False)
+        self.assertIn(Act(("note",)), effects)
+        self.assertEqual(self.ran, [("note", {"text": "milk"})])
+
+    def test_no_answer_or_moving_on_means_no(self):
+        task, _ = self.ask()
+        self.chat.poll(2.0, False)
+        self.chat.poll(62.0, False)
+        self.assertIsNone(self.chat.confirmation)
+        resume = self.service.replies("resume")[-1]
+        self.assertFalse(resume["approved"])
+        self.assertIn(("approval", "note", "no (timeout)"),
+                      [step[1:] for step in self.store.steps(task.id)])
+        self.service.fail(task.id, "turns")
+        other, _ = self.ask(t=100.0)
+        self.chat.poll(101.0, False)
+        self.chat.hear("luna what time is it", 102.0, "en", "en")
+        self.assertFalse(self.service.replies("resume")[-1]["approved"])
+
+    def test_a_spoken_yes_does_not_approve_a_sensitive_tool(self):
+        task, _ = self.ask("unlock", {})
+        self.chat.poll(2.0, False)
+        self.assertEqual(spoken(self.chat.hear("yes", 2.5, "en", "en")),
+                         ["Please tap Yes on the screen."])
+        self.assertEqual(self.service.replies("resume"), [])
+        self.chat.answer_touch(True, 3.0)
+        self.assertTrue(self.service.replies("resume")[-1]["approved"])
+
+    def test_cancelling_the_task_closes_its_question_and_swedish(self):
+        task, effects = self.ask(language="sv")
+        self.assertEqual([e.text for e in effects if isinstance(e, Announce)],
+                         ["Min uppgift behöver ditt godkännande: Plan the shopping. "
+                          "Ska jag fortsätta?"])
+        self.chat.poll(2.0, False)
+        self.chat.hear("luna avbryt uppgiften", 2.5, "sv", "sv")
+        self.assertIsNone(self.chat.confirmation)
+        self.assertEqual(self.store.get(task.id).state, CANCELLED)
+        self.assertEqual(self.service.replies("resume"), [])
+
+    def test_a_question_from_before_a_restart_is_asked_again(self):
+        task, _ = self.ask()
+        self.chat.poll(2.0, False)
+        chat = Conversation(FakeAI(), clock=self.clock)
+        client = TaskClient(FakeTaskService().connect, self.store, catalog=self.client.catalog)
+        chat.set_tasks(client, Announcer())
+        chat.touched(5.0)
+        said = [e.text for e in chat.poll(5.0, False) if isinstance(e, Announce)]
+        self.assertEqual(said, ["My task needs your OK: Plan the shopping. Should I go ahead?"])
+        self.assertEqual(chat.confirmation.payload.task_id, task.id)
+
+
 class DemoModeAppTests(unittest.TestCase):
     """LUNA_TASKS=demo: the Tasks page and the task settings on the real app."""
 
@@ -486,3 +812,52 @@ class DemoModeAppTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ServiceModeAppTests(unittest.TestCase):
+    """LUNA_TASKS=service on the real app: opt-in, and no helper process until a task needs it."""
+
+    def make(self, ai_on):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from luna_core import app
+        from luna_core.preferences import read_preferences
+        from test_settings import FakeSpeech
+        folder = tempfile.mkdtemp()
+        patches = [mock.patch.object(app, "speech", FakeSpeech()),
+                   mock.patch.object(app, "read_preferences",
+                                     lambda: read_preferences(Path(folder) / "prefs.json")),
+                   mock.patch.object(app, "write_preferences", lambda prefs: None),
+                   mock.patch.object(app, "ai_configured", lambda: ai_on),
+                   mock.patch.object(app, "AIWorker",
+                                     lambda **kw: mock.MagicMock(answers=queue.Queue())),
+                   mock.patch.object(app.task_agents, "available", lambda: True),
+                   mock.patch.dict(os.environ, {"LUNA_MEMORY_FILE": str(Path(folder) / "m.db"),
+                                                "LUNA_TASKS_FILE": str(Path(folder) / "t.db"),
+                                                "LUNA_TASKS": "service"})]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        args = types.SimpleNamespace(fullscreen=False, windowed=True, no_voice=True,
+                                     no_speech=False, no_ai=False)
+        hud = app.RobotHUD(args)
+        self.addCleanup(app.pygame.quit)
+        return hud
+
+    def test_off_without_the_ai(self):
+        hud = self.make(ai_on=False)
+        self.assertIsNone(hud.tasks)
+        self.assertNotIn("Tasks", [page.name for page in hud.pages])
+
+    def test_on_but_no_process_until_a_task_needs_it(self):
+        hud = self.make(ai_on=True)
+        self.addCleanup(hud.tasks.close)
+        connects = []
+        hud.tasks.connect = lambda: connects.append(1) or FakeTaskService().connect()
+        for frame in range(5):
+            hud.frame(frame * 0.1)
+        self.assertEqual((hud.tasks.lazy, hud.tasks.running, connects), (True, False, []))
+        self.assertTrue(hud.tasks.available)
+        self.assertIn("Tasks", [page.name for page in hud.pages])
+        self.assertIn("start_task", hud.conversation.tools.registry.names())
+        self.assertIs(hud.tasks.executor(), hud.conversation.tools)
+

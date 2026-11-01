@@ -68,8 +68,13 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
 - Background tasks: `luna_core/tasks/` (`model`, `store`, `protocol`, `client.TaskClient`,
   `announce.Announcer`; design `docs/design/TASK_SERVICE.md`, ARCHITECTURE §2b). The AI only
   delegates via `assistant_core/task_tools.py`; announcements go through `Conversation.poll`
-  (never speak a task result directly). Only `LUNA_TASKS=demo` creates a client (fake service);
-  the real service is step 4. Tests: `tests/test_tasks.py` (`FakeTaskService`, fake clock).
+  (never speak a task result directly). Off by default: `LUNA_TASKS=service` starts the real
+  helper process (`tasks/process.py`, lazy, needs the AI and the `[agents]` extra);
+  `LUNA_TASKS=demo` uses `FakeTaskService`. Only `luna_core/agents/` (runs in that process) may
+  import the OpenAI Agents SDK. Helpers have no tools of their own: every tool is a proxy that
+  asks Luna (`check`/`tool_call`), so `PermissionPolicy` decides; motion is never offered.
+  Tests: `tests/test_tasks.py` (fake service, fake clock), `tests/test_agents.py` (SDK
+  `ScriptedModel` or `LUNA_AGENT_SCRIPT`; never the real API).
 - AI conversation: `luna_core/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
   `assistant_core/context.py`. Answers stream sentence by sentence (`speech.SentenceStream`);
   only completed, fully spoken answers enter the history (`AIWorker.confirm`, via `Conversation.poll`).

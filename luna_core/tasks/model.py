@@ -66,11 +66,20 @@ class Limits:
 
 @dataclass(frozen=True)
 class Specialist:
-    """A kind of helper agent (data). `description` tells the AI when to pick it."""
+    """A kind of helper agent (data). `description` tells the AI when to pick it.
+
+    The task service builds the agent from the rest: `instructions`, `model_role` (picks the
+    model: LUNA_AGENT_MODEL_<ROLE>), `tools` (names of Luna's tools it may ask to use, always
+    through Luna's permission check) and `hosted` (OpenAI-hosted tools such as web search).
+    """
     name: str
     description: str
     title: str = ""
     limits: Limits = field(default_factory=Limits)
+    instructions: str = ""
+    model_role: str = ""
+    tools: tuple = ()
+    hosted: tuple = ()
 
 
 @dataclass(frozen=True)

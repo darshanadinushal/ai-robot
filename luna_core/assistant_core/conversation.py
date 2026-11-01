@@ -10,8 +10,9 @@ from datetime import datetime
 from ..ai import LOST_CONNECTION
 from ..commands import route, spoken
 from ..tasks.announce import Announcement
+from ..tasks.client import Approval
 from ..tasks.confirm import Confirmation, Item, MAX_ITEMS, answer as yes_or_no, call_key
-from ..tasks.model import CANCELLED, DONE, NOTE_CHARS, clean
+from ..tasks.model import CANCELLED, DONE, NOTE_CHARS, WAITING, clean
 from .context import WEB_SEARCH, ConversationSettings, turn_instructions, with_note
 from .events import Accepted, Act, Announce, Log, Mood, Speak, StopSpeech
 from .expression import LINGER_SECONDS
@@ -39,6 +40,7 @@ TASK_DONE = "Here is what I found."
 TASK_FAILED = "Sorry, I couldn't finish this task: {goal}"
 TASK_BUDGET = "I stopped a task because today's AI budget is used up."
 TASK_INTERRUPTED = "I was interrupted while working on this: {goal}. Please ask me again."
+TASK_ASK = "My task needs your OK: {goal}. Should I go ahead?"
 TASK_NOTE_SECONDS = 900.0  # a task result is given to the AI with questions this long
 SPOKEN_GOAL = 120
 
@@ -71,6 +73,10 @@ class Conversation:
     may report (tasks/announce.py). The AI gets the task tools only while the service is
     ready; results are announced when Luna is not busy, and the result is given to the AI as
     a note (data, never instructions) with the questions of the next TASK_NOTE_SECONDS.
+    A task that wants to use a tool the user must approve waits (WAITING); Luna asks when she
+    is free (TASK_ASK, a Yes/No confirmation whose payload is the client's Approval) and the
+    answer, a timeout or moving on goes to `tasks.answer`. A tool a task was allowed to use
+    may change things: its effects are returned like the conversation's own.
     """
 
     def __init__(self, ai=None, settings=None, clock=datetime.now, tools=None, memory=None):
@@ -87,6 +93,7 @@ class Conversation:
         self._task_note = ""
         self._task_note_until = 0.0
         self._task_backlog = False  # announce results from before a restart on the next poll
+        self._task_questions = {}   # task id -> Approval to ask once Luna is free
         self.memory = None
         self.set_memory(memory)
         self.budget = None
@@ -132,6 +139,9 @@ class Conversation:
         """Background tasks on (a TaskClient and an Announcer) or off (None, None)."""
         self.tasks, self.announcer = client, announcer
         self._task_backlog = client is not None
+        self._task_questions = {}
+        if client is not None:
+            client.executor = lambda: self.tools  # a task may use Luna's tools (checked by her)
         self._refresh_task_tools()
 
     def _refresh_task_tools(self):
@@ -330,7 +340,7 @@ class Conversation:
             self._asked_back = False
             effects += self._open_confirmation(t)
         elif self.confirmation is not None and self.confirmation.expired(t):
-            effects += self._settle("did not answer in time")
+            effects += self._settle("did not answer in time", "timeout")
         elif self._idle(t, speaking, listening):
             effects += self._fresh("after %.0f s without talking" % self.session.idle_for(t))
         busy = (speaking or listening or self.streaming or self.thinking or self.followup_pending
@@ -459,8 +469,16 @@ class Conversation:
             self._task_backlog = False
             for task in client.unannounced():
                 announcer.add(self._report(task), t)
+            for approval in client.waiting():
+                self._queue_question(approval, t)
         for event in client.poll(t):
-            if event.kind == "progress":
+            if event.kind == "effects":
+                effects.extend(event.effects)
+                effects.append(Log("Luna tasks: %s used a tool" % event.task.id))
+            elif event.kind == "approval":
+                self._queue_question(event.approval, t)
+                effects.append(Log("Luna tasks: %s waits for the user's OK" % event.task.id))
+            elif event.kind == "progress":
                 announcer.add(Announcement("progress", event.task.id, event.text), t,
                               client.started.get(event.task.id))
             elif not event.task.announced:
@@ -471,6 +489,17 @@ class Conversation:
             if item is None:
                 break
             task = client.store.get(item.task_id)
+            if item.kind == "approval":
+                approval = self._task_questions.pop(item.task_id, None)
+                if task is None or task.state != WAITING or approval is None:
+                    continue  # answered or stopped meanwhile
+                self.confirmation = Confirmation(
+                    [Item(approval.key, approval.label, approval.detail, approval.touch)], t,
+                    task.language, payload=approval)
+                self.followup_pending = True  # the answer may come without the wake word
+                effects += [Log("Luna tasks: asks the user about %s" % task.id),
+                            Announce(item.text, task.id)]
+                break
             if task is None or task.announced or (item.kind == "progress" and not task.active):
                 continue  # stopped or reported meanwhile
             if item.kind != "progress":
@@ -484,6 +513,14 @@ class Conversation:
         if self._own_tools and self.turn is None:
             self._refresh_task_tools()
         return effects
+
+    def _queue_question(self, approval, t):
+        task = self.tasks.store.get(approval.task_id)
+        if task is None or approval.task_id in self._task_questions:
+            return
+        self._task_questions[task.id] = approval
+        text = spoken(TASK_ASK, task.language).replace("{goal}", clean(task.goal, SPOKEN_GOAL))
+        self.announcer.add(Announcement("approval", task.id, text), t)
 
     @staticmethod
     def _report(task):
@@ -510,6 +547,10 @@ class Conversation:
                 return [Speak(spoken(TASK_NONE, language))]
             if self.announcer is not None:
                 self.announcer.drop(task.id)
+            self._task_questions.pop(task.id, None)
+            if (self.confirmation is not None and isinstance(self.confirmation.payload, Approval)
+                    and self.confirmation.payload.task_id == task.id):
+                self.confirmation = None
             return [Log("Luna tasks: %s cancelled by voice" % task.id),
                     Speak(spoken(TASK_STOPPED, language))]
         active = client.active()
@@ -547,12 +588,19 @@ class Conversation:
                 return self._decline(talk_language, "voice")
             if said == "tap":
                 return [Speak(spoken(CONFIRM_TAP, talk_language))]
+        if (kind == "control" and value in ("task_status", "cancel_task")
+                and isinstance(self.confirmation.payload, Approval)):
+            return None  # about the tasks: cancelling closes the question with the task
         self._settle("said something else instead")
         return None
 
     def _approve(self, language, how):
         confirmation, self.confirmation = self.confirmation, None
         effects, ok = [Log("Luna: the user said yes (%s)" % how)], True
+        if isinstance(confirmation.payload, Approval):
+            ask = confirmation.payload
+            ok = self.tasks is not None and self.tasks.answer(ask.task_id, ask.call, True, how)
+            return effects + [Speak(spoken("Okay." if ok else CONFIRM_FAILED, language))]
         for tool, arguments in confirmation.payload:
             done, result = self.tools.approve(tool, arguments)
             effects += done
@@ -565,16 +613,21 @@ class Conversation:
         return effects + [Speak(spoken(CONFIRM_DONE if ok else CONFIRM_FAILED, language))]
 
     def _decline(self, language, how):
-        effects = self._settle("said no")
+        effects = self._settle("said no", how)
         return effects + [Log("Luna: the user said no (%s)" % how),
                           Speak(spoken(CONFIRM_DECLINED, language))]
 
-    def _settle(self, why):
+    def _settle(self, why, by="moved on"):
         """Close the open question without doing anything (no, timeout, moved on)."""
         confirmation, self.confirmation = self.confirmation, None
         self._to_confirm = ()
         if confirmation is None:
             return []
+        if isinstance(confirmation.payload, Approval):  # a task's question: the task hears no
+            ask = confirmation.payload
+            if self.tasks is not None:
+                self.tasks.answer(ask.task_id, ask.call, False, by)
+            return [Log("Luna tasks: %s not approved (%s)" % (ask.task_id, why))]
         self._confirm_note = ("You asked the user to confirm (%s). They %s, so it was not done."
                               % (confirmation.summary(), why))
         return [Log("Luna: confirmation closed (%s)" % why)]

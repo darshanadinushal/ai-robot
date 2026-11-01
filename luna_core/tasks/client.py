@@ -2,30 +2,44 @@
 
 The client owns the tasks (TaskStore) and talks to the service through a transport: an object
 with `send(line)`, `receive()` (the complete lines that arrived, never blocking), `alive` and
-`close()`. `connect()` makes one (a child process from step 4; FakeTaskService here). Every
-check is code: tasks on, budget, goal length, known specialist, at most MAX_ACTIVE tasks; the
-money is counted here (usage messages), over a task's limit or the daily budget it is stopped.
+`close()`. `connect()` makes one (tasks/process.py: the child process; FakeTaskService in
+tests and the demo). Every check is code: tasks on, budget, goal length, known specialist, at
+most MAX_ACTIVE tasks; the money is counted here (usage messages), over a task's limit or the
+daily budget it is stopped.
+
+`lazy`: the service is started only when a task needs it and stopped after IDLE_STOP seconds
+without work, so it costs no memory or CPU while Luna just talks. Until it runs, the AI is
+offered the specialists of `catalog` (tasks/catalog.py).
+
+Actions (the bridge): a specialist never acts itself. Before one of Luna's tools runs, the
+service sends `check`; Luna validates the arguments and asks the same PermissionPolicy as the
+talk path (`executor()` gives the conversation's current ToolExecutor). Only tools named in
+Luna's own catalogue for that specialist exist for it. `allow` lets exactly that call run
+(`tool_call`, here on the UI thread); `confirm` makes the run pause: the paused run is stored
+(state `waiting_approval`) and an `approval` TaskEvent asks the user (Yes/No). The answer
+resumes it; a yes covers that one call (tool + argument hash) only. `motion` is never allowed.
 
 A lost service interrupts its running tasks and is restarted after 2, 10 and 60 s; after 3
 failures in 10 minutes (or a service with another protocol version) tasks stay off until Luna
-restarts. Approval questions and action tools come in step 4: for now `check` is refused,
-`tool_call` fails and a `paused` task fails.
+restarts. A task waiting for approval needs no service and survives both.
 """
 import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from .model import (CANCELLED, DETAILS_CHARS, DONE, FAILED, GOAL_CHARS, INTERRUPTED, RUNNING,
-                    SUMMARY_CHARS, WAITING, Limits, Specialist, Task, clean, new_id)
-from .protocol import (FROM_SERVICE, PROTOCOL_VERSION, TO_SERVICE, ProtocolError, compatible,
-                       decode, encode)
+from .confirm import call_key
+from .model import (CANCELLED, DETAILS_CHARS, DONE, FAILED, GOAL_CHARS, INTERRUPTED, QUEUED,
+                    RUNNING, SUMMARY_CHARS, WAITING, Limits, Specialist, Task, clean, new_id)
+from .protocol import (FROM_SERVICE, PROTOCOL_VERSION, TO_SERVICE, ProtocolError,
+                       compatible, decode, encode)
 from .store import HISTORY_DAYS
 
 log = logging.getLogger("luna.tasks")
 
 MAX_ACTIVE = 3
 READY_WAIT = 20.0
+IDLE_STOP = 300.0     # a lazy service with nothing to do is stopped after this long
 BACKOFF = (2.0, 10.0, 60.0)
 CRASH_WINDOW = 600.0
 CRASHES = 3
@@ -33,23 +47,48 @@ GARBAGE = 5
 GRACE = 30.0          # after a task's max_seconds Luna stops it herself
 REPORT_HOURS = 12     # older unreported results are not announced after a restart
 LIMIT_CAP = Limits()  # the settings' cap on every specialist's limits
+OUTPUT_CHARS = 8000   # a tool's answer sent back to the agent
+ANSWER_HOURS = 12     # a question nobody answered within this long means no
+EXPIRY_CHECK = 60.0   # seconds between checks for such questions
+
+
+@dataclass(frozen=True)
+class Approval:
+    """A question for the user about one call of a task (what the Yes/No box shows)."""
+    task_id: str
+    call: str
+    key: str           # call_key(tool, arguments)
+    label: str
+    detail: str = ""
+    touch: bool = False
 
 
 @dataclass(frozen=True)
 class TaskEvent:
     """Something the conversation should know: started, done, failed, cancelled,
-    interrupted or progress (`text`)."""
+    interrupted, progress (`text`), approval (`approval`) or effects (a tool the task was
+    allowed to use changed something: `effects` for the app)."""
     kind: str
     task: Task
     text: str = ""
+    approval: Approval = None
+    effects: tuple = ()
 
 
-def _specialists(items):
+def _specialists(items, known=None):
+    """The specialists a `ready` message lists. With `known` (Luna's catalogue) only those, with
+    Luna's tools and limits: a service cannot give itself more."""
     found = {}
     for item in items if isinstance(items, list) else ():
         if not isinstance(item, dict) or not isinstance(item.get("name"), str):
             continue
         name = clean(item["name"], 40)
+        if not name:
+            continue
+        if known is not None:
+            if name in known:
+                found[name] = known[name]
+            continue
         limits = item.get("limits") if isinstance(item.get("limits"), dict) else {}
         try:
             spec_limits = Limits(int(limits.get("max_turns", 8)),
@@ -57,15 +96,18 @@ def _specialists(items):
                                  float(limits.get("max_usd", 0.05))).within(LIMIT_CAP)
         except (TypeError, ValueError):
             spec_limits = Limits()
-        if name:
-            found[name] = Specialist(name, clean(item.get("description"), 300),
-                                     clean(item.get("title") or name, 40), spec_limits)
+        tools = item.get("tools") if isinstance(item.get("tools"), list) else []
+        found[name] = Specialist(name, clean(item.get("description"), 300),
+                                 clean(item.get("title") or name, 40), spec_limits,
+                                 tools=tuple(clean(tool, 80) for tool in tools
+                                             if isinstance(tool, str)))
     return found
 
 
 class TaskClient:
     def __init__(self, connect, store, meter=None, guard=None, enabled=True,
-                 history_days=HISTORY_DAYS, max_active=MAX_ACTIVE):
+                 history_days=HISTORY_DAYS, max_active=MAX_ACTIVE, catalog=None, lazy=False,
+                 idle_stop=IDLE_STOP):
         self.connect = connect
         self.store = store
         self.meter = meter
@@ -73,18 +115,26 @@ class TaskClient:
         self.enabled = enabled
         self.history_days = history_days
         self.max_active = max_active
+        self.catalog = dict(catalog) if catalog is not None else None
+        self.lazy = lazy
+        self.idle_stop = idle_stop
+        self.executor = None     # function() -> the conversation's ToolExecutor (or None)
         self.transport = None
         self.ready = False
         self.disabled = ""       # why tasks are off until restart ("crashes", "version")
-        self.specialists = {}
+        self.specialists = dict(self.catalog) if lazy and self.catalog else {}
         self.crashes = []
         self.retry_at = 0.0
         self.connected_at = None
+        self.worked_at = 0.0     # last time the service had something to do
         self.garbage = 0
-        self.started = {}        # task id -> t it was started (this run)
+        self.outbox = []         # start/resume messages waiting for the service to be ready
+        self.started = {}        # task id -> t it started running (this run)
         self.limits = {}         # task id -> Limits
+        self.permitted = {}      # (task id, call) -> call_key Luna allowed in `check`
         self.events = []
         self.t = 0.0
+        self.expiry_at = 0.0
         store.recover()
         store.purge(history_days)
         old = (store.clock().timestamp() - REPORT_HOURS * 3600)
@@ -95,8 +145,14 @@ class TaskClient:
     # --- state ---------------------------------------------------------------------------
     @property
     def available(self):
-        return bool(self.enabled and not self.disabled and self.ready and self.transport
-                    and self.transport.alive and self.specialists)
+        if not (self.enabled and not self.disabled and self.specialists):
+            return False
+        return self.lazy or bool(self.ready and self.transport and self.transport.alive)
+
+    @property
+    def running(self):
+        """The service process is up."""
+        return self.transport is not None
 
     def active(self):
         return self.store.active()
@@ -110,6 +166,15 @@ class TaskClient:
     def mark_announced(self, task_id):
         self.store.update(task_id, announced=True)
 
+    def waiting(self):
+        """The open questions of tasks waiting for approval (asked again after a restart)."""
+        found = []
+        for task in self.store.active():
+            row = self.store.pending_approval(task.id) if task.state == WAITING else None
+            if row is not None:
+                found.append(_approval(row))
+        return found
+
     def set_enabled(self, on):
         """Settings: tasks on or off (off stops the running ones and the service)."""
         if on == self.enabled:
@@ -118,6 +183,8 @@ class TaskClient:
         if not on:
             for task in self.store.active():
                 self._stop(task, CANCELLED, "off", announced=True)
+            self.outbox = []
+            self._send({"t": "shutdown"})
             self._close()
 
     def set_history(self, days):
@@ -143,17 +210,16 @@ class TaskClient:
             return None, "busy"
         task = self.store.add(Task(new_id(), text, spec.name, clean(language, 8) or "en"))
         limits = spec.limits.within(LIMIT_CAP)
-        try:
-            self.transport.send(encode({"t": "start", "id": task.id, "goal": task.goal,
-                                        "specialist": spec.name, "language": task.language,
-                                        "context": {}, "limits": limits.as_dict()}))
-        except (OSError, ProtocolError) as error:
-            log.warning("Luna tasks: could not start a task (%s)", type(error).__name__)
+        message = {"t": "start", "id": task.id, "goal": task.goal, "specialist": spec.name,
+                   "language": task.language, "context": self._context(spec),
+                   "limits": limits.as_dict()}
+        if not self._deliver(message):
             self.store.move(task.id, FAILED, error="unavailable", announced=True)
             self._lost(t)
             return None, "unavailable"
         self.started[task.id] = t
         self.limits[task.id] = limits
+        self.worked_at = t
         log.info("Luna tasks: started %s (%s)", task.id, spec.name)
         return task, ""
 
@@ -165,15 +231,47 @@ class TaskClient:
         if not active:
             return None
         task = active[-1]
-        self._send({"t": "cancel", "id": task.id, "reason": "user"})
+        self.outbox = [m for m in self.outbox if m["id"] != task.id]
+        if self.ready:
+            self._send({"t": "cancel", "id": task.id, "reason": "user"})
         return self._stop(task, CANCELLED, "user", announced=True)
+
+    def answer(self, task_id, call, approved, by):
+        """The user answered a task's question (`by`: voice, tap, timeout): resume the run.
+        True if the task was waiting for it."""
+        task = self.store.get(task_id)
+        row = self.store.pending_approval(task_id, call) if task is not None else None
+        if task is None or task.state != WAITING or row is None:
+            return False
+        self.store.answer_approval(task_id, call, "yes" if approved else "no", by)
+        self.store.add_step(task_id, "approval", row["tool"], ("yes" if approved else "no")
+                            + " (%s)" % by)
+        spec = self.specialists.get(task.specialist) or (self.catalog or {}).get(task.specialist)
+        if spec is None or not self.enabled or self.disabled:
+            self._stop(task, FAILED, "unavailable", event="failed")
+            return True
+        limits = spec.limits.within(LIMIT_CAP)
+        message = {"t": "resume", "id": task_id, "state": task.run_state, "item": call,
+                   "approved": bool(approved), "specialist": spec.name,
+                   "language": task.language, "context": self._context(spec),
+                   "limits": limits.as_dict()}
+        self.store.move(task_id, RUNNING, run_state="")
+        if not self._deliver(message):
+            self._stop(self.store.get(task_id), INTERRUPTED, "interrupted", event="interrupted")
+            return True
+        self.started[task_id] = self.t
+        self.limits[task_id] = limits
+        self.worked_at = self.t
+        log.info("Luna tasks: %s resumed (user said %s)", task_id, "yes" if approved else "no")
+        return True
 
     # --- the service ---------------------------------------------------------------------
     def poll(self, t):
         """Run the connection and handle what the service sent; returns TaskEvents."""
         self.t = t
         if self.enabled and not self.disabled:
-            if self.transport is None and t >= self.retry_at:
+            wanted = not self.lazy or self.outbox or self.started
+            if self.transport is None and wanted and t >= self.retry_at:
                 self._connect(t)
             elif self.transport is not None and not self.transport.alive:
                 self._lost(t)
@@ -183,7 +281,15 @@ class TaskClient:
                     and t - self.connected_at > READY_WAIT):
                 log.warning("Luna tasks: the service did not start")
                 self._lost(t)
+            if (self.lazy and self.transport is not None and self.ready and not self.outbox
+                    and not self.started and t - self.worked_at > self.idle_stop):
+                log.info("Luna tasks: service stopped (nothing to do)")
+                self._send({"t": "shutdown"})
+                self._close()
             self._timeouts(t)
+        if t >= self.expiry_at:
+            self.expiry_at = t + EXPIRY_CHECK
+            self._expire_questions()
         events, self.events = self.events, []
         return events
 
@@ -191,6 +297,27 @@ class TaskClient:
         self._send({"t": "shutdown"})
         self._close()
         self.store.close()
+
+    def _context(self, spec):
+        """What the service may know besides the goal: the schemas of Luna's tools this
+        specialist may ask to use (nothing from the conversation)."""
+        executor = self.executor() if self.executor is not None else None
+        tools = []
+        for name in spec.tools:
+            tool = executor.registry.get(name) if executor is not None else None
+            if tool is not None and tool.risk != "motion":
+                tools.append({"name": tool.name, "description": tool.description,
+                              "parameters": tool.parameters})
+        return {"tools": tools}
+
+    def _deliver(self, message):
+        """Send a start/resume now, or (lazy) once the service is ready."""
+        if self.ready and self.transport is not None:
+            return self._send(message)
+        if self.lazy:
+            self.outbox.append(message)
+            return True
+        return False
 
     def _connect(self, t):
         try:
@@ -201,6 +328,7 @@ class TaskClient:
             self._crashed(t)
             return
         self.connected_at = t
+        self.worked_at = t
         self.ready = False
         self.garbage = 0
 
@@ -212,19 +340,26 @@ class TaskClient:
                 pass
         self.transport = None
         self.ready = False
+        self.permitted = {}
 
     def _lost(self, t):
         """The service stopped: interrupt what it was doing and plan a restart."""
         self._close()
+        self.outbox = []
+        self._interrupt_all()
+        self._crashed(t)
+
+    def _interrupt_all(self):
         for task in self.store.active():
             if task.state != WAITING:
                 self._stop(task, INTERRUPTED, "interrupted", event="interrupted")
-        self._crashed(t)
 
     def _crashed(self, t):
         self.crashes = [c for c in self.crashes if t - c < CRASH_WINDOW] + [t]
         if len(self.crashes) >= CRASHES:
             self.disabled = "crashes"
+            self.outbox = []
+            self._interrupt_all()
             log.warning("Luna tasks: the service keeps failing; tasks are off until restart")
         else:
             self.retry_at = t + BACKOFF[len(self.crashes) - 1]
@@ -269,30 +404,35 @@ class TaskClient:
                             clean(message["version"], 20), PROTOCOL_VERSION)
                 self.disabled = "version"
                 self._close()
+                self.outbox = []
+                self._interrupt_all()
                 return
-            self.specialists = _specialists(message["specialists"])
+            self.specialists = _specialists(message["specialists"], self.catalog)
             self.ready = True
+            outbox, self.outbox = self.outbox, []
+            for queued in outbox:
+                self._send(queued)
             return
+        self.worked_at = t
         task = self.store.get(message["id"])
         if task is None or not task.active:
-            return  # a task that was stopped meanwhile
+            if kind in ("check", "tool_call"):  # never leave the agent waiting
+                self._refuse(message, "the task was stopped")
+            return
         if kind == "accepted":
             self.store.move(task.id, RUNNING)
+            if task.id in self.started:
+                self.started[task.id] = t  # its time starts now (it may have waited its turn)
         elif kind == "step":
             self.store.add_step(task.id, message["kind"], message["name"], message["summary"])
         elif kind == "usage":
             self._usage(task, message)
         elif kind == "check":
-            self.store.add_step(task.id, "check", message["name"], "refused")
-            self._send({"t": "check_result", "id": task.id, "call": message["call"],
-                        "verdict": "refuse", "reason": "not available yet", "summary": "",
-                        "touch": False})
+            self._check(task, message)
         elif kind == "tool_call":
-            self._send({"t": "tool_result", "id": task.id, "call": message["call"],
-                        "ok": False, "output": "not available yet"})
+            self._tool_call(task, message)
         elif kind == "paused":
-            self._send({"t": "cancel", "id": task.id, "reason": "approvals not available"})
-            self._stop(task, FAILED, "paused", event="failed")
+            self._paused(task, message)
         elif kind == "progress":
             text = clean(message["text"], SUMMARY_CHARS)
             if text:
@@ -303,6 +443,98 @@ class TaskClient:
             self._ended(moved, "done")
         elif kind == "failed":
             self._stop(task, FAILED, clean(message["error"], 40) or "error", event="failed")
+
+    # --- the bridge: Luna's tools for a task ----------------------------------------------
+    def _tool(self, task, name):
+        """The tool `name` if this task's specialist may use it (else None)."""
+        spec = (self.catalog or self.specialists).get(task.specialist)
+        executor = self.executor() if self.executor is not None else None
+        if spec is None or executor is None or name not in spec.tools:
+            return None, None
+        return executor.registry.get(name), executor
+
+    def _arguments(self, tool, args):
+        from ..assistant_core.tools import validate  # pure; imported late (no cycle)
+        return validate(tool.parameters, args)
+
+    def _refuse(self, message, reason):
+        if message["t"] == "check":
+            self._send({"t": "check_result", "id": message["id"], "call": message["call"],
+                        "verdict": "refuse", "reason": reason, "summary": "", "touch": False})
+        else:
+            self._send({"t": "tool_result", "id": message["id"], "call": message["call"],
+                        "ok": False, "output": "not allowed: " + reason})
+
+    def _check(self, task, message):
+        name, call = clean(message["name"], 80), message["call"]
+        tool, executor = self._tool(task, name)
+        if tool is None:
+            self.store.add_step(task.id, "check", name, "refused: unknown tool")
+            return self._refuse(message, "this helper cannot use that tool")
+        try:
+            arguments = self._arguments(tool, message["args"])
+        except ValueError as error:
+            self.store.add_step(task.id, "check", name, "refused: invalid arguments")
+            return self._refuse(message, "invalid arguments: %s" % error)
+        key = call_key(tool.name, arguments)
+        if self.store.use_approval(task.id, key):
+            decision_text, verdict = "allowed (the user said yes)", "allow"
+        else:
+            decision = executor.policy.decide(tool, arguments)
+            if decision.allowed:
+                decision_text, verdict = "allowed", "allow"
+            elif decision.confirm:
+                decision_text, verdict = "asks the user", "confirm"
+            else:
+                self.store.add_step(task.id, "check", name, "refused")
+                return self._refuse(message, decision.reason)
+        summary, touch = "", False
+        if verdict == "allow":
+            self.permitted[(task.id, call)] = key
+        else:
+            label, detail = tool.confirm(arguments) if tool.confirm else (tool.name, "")
+            touch = decision.confirm == "touch"
+            self.store.ask_approval(task.id, call, tool.name, key, tool.risk, touch, label, detail)
+            summary = clean(detail or label, 200)
+        self.store.add_step(task.id, "check", name, decision_text)
+        self._send({"t": "check_result", "id": task.id, "call": call, "verdict": verdict,
+                    "reason": "", "summary": summary, "touch": touch})
+
+    def _tool_call(self, task, message):
+        name, call = clean(message["name"], 80), message["call"]
+        tool, _ = self._tool(task, name)
+        try:
+            arguments = self._arguments(tool, message["args"]) if tool is not None else None
+        except ValueError:
+            arguments = None
+        key = call_key(tool.name, arguments) if arguments is not None else None
+        allowed = key is not None and (self.permitted.pop((task.id, call), None) == key
+                                       or self.store.use_approval(task.id, key))
+        if not allowed:
+            self.store.add_step(task.id, "tool", name, "refused: not checked or approved")
+            return self._refuse(message, "this call was not allowed")
+        try:
+            effects, result = tool.run(arguments)
+        except Exception as error:  # a plugin's tool must not stop Luna
+            log.warning("Luna tasks: tool %s failed (%s)", tool.name, type(error).__name__)
+            effects, ok, output = [], False, "the tool failed"
+        else:
+            ok, output = result.ok, result.output()
+        self.store.add_step(task.id, "tool", tool.name, "ok" if ok else "failed")
+        if effects:
+            self.events.append(TaskEvent("effects", task, effects=tuple(effects)))
+        self._send({"t": "tool_result", "id": task.id, "call": call, "ok": ok,
+                    "output": output[:OUTPUT_CHARS]})
+
+    def _paused(self, task, message):
+        row = self.store.pending_approval(task.id, message["item"])
+        if row is None or task.state != RUNNING:
+            self._send({"t": "cancel", "id": task.id, "reason": "nothing to approve"})
+            return self._stop(task, FAILED, "paused", event="failed")
+        moved = self.store.move(task.id, WAITING, run_state=message["state"])
+        self._forget(task.id)
+        log.info("Luna tasks: %s waits for the user's answer", task.id)
+        self.events.append(TaskEvent("approval", moved, approval=_approval(row)))
 
     def _usage(self, task, message):
         usd = 0.0
@@ -318,12 +550,23 @@ class TaskClient:
             self._send({"t": "cancel", "id": task.id, "reason": "cost"})
             self._stop(task, FAILED, "cost", event="failed")
 
+    def _expire_questions(self):
+        """A task that waited ANSWER_HOURS for the user's OK is given up (nobody said yes)."""
+        old = self.store.clock().timestamp() - ANSWER_HOURS * 3600
+        for task in self.store.active():
+            if task.state == WAITING and _stamp(task.updated) < old:
+                row = self.store.pending_approval(task.id)
+                if row is not None:
+                    self.store.answer_approval(task.id, row["call_id"], "no", "expired")
+                self._stop(task, FAILED, "no answer", event="failed")
+
     def _timeouts(self, t):
         for task_id, started in list(self.started.items()):
             limits = self.limits.get(task_id, LIMIT_CAP)
             if t - started > limits.max_seconds + GRACE:
                 task = self.store.get(task_id)
-                if task is not None and task.active and task.state != WAITING:
+                if task is not None and task.state in (QUEUED, RUNNING):
+                    self.outbox = [m for m in self.outbox if m["id"] != task_id]
                     self._send({"t": "cancel", "id": task_id, "reason": "time"})
                     self._stop(task, FAILED, "time", event="failed")
                 else:
@@ -347,6 +590,13 @@ class TaskClient:
     def _forget(self, task_id):
         self.started.pop(task_id, None)
         self.limits.pop(task_id, None)
+        for key in [k for k in self.permitted if k[0] == task_id]:
+            del self.permitted[key]
+
+
+def _approval(row):
+    return Approval(row["task_id"], row["call_id"], row["item"], row["label"] or row["tool"],
+                    row["detail"], row["touch"])
 
 
 def _stamp(text):
@@ -437,6 +687,19 @@ class FakeTaskService:
     def usage(self, task_id, model="gpt-4o-mini", input_tokens=1000, output=100, cached=0):
         self.emit(t="usage", id=task_id, model=model, input=input_tokens, cached=cached,
                   output=output)
+
+    def check(self, task_id, call, name, args):
+        self.emit(t="check", id=task_id, call=call, name=name, args=args)
+
+    def tool_call(self, task_id, call, name, args):
+        self.emit(t="tool_call", id=task_id, call=call, name=name, args=args)
+
+    def pause(self, task_id, item, state="paused-run"):
+        self.emit(t="paused", id=task_id, item=item, summary="", touch=False, state=state)
+
+    def replies(self, kind):
+        """What Luna sent of one kind (check_result, tool_result, resume, cancel...)."""
+        return [m for m in self.sent if m["t"] == kind]
 
     def crash(self):
         self.alive = False

@@ -321,10 +321,11 @@ home, driving) without growing `app.py`, and is tested without pygame
 - `RobotHUD` (the adapter) keeps the microphone (`listen`), the face (`apply_actions`), touch and
   drawing. `hud.ai` is a property that sets `conversation.ai`.
 
-## 2b. Background tasks (`luna_core/tasks/`, task service step 3)
+## 2b. Background tasks (`luna_core/tasks/`, `luna_core/agents/`, task service steps 3-4)
 Design: `docs/design/TASK_SERVICE.md`. Luna can hand a longer job to a specialist helper and keep
-talking. Step 3 is the core **without** the real service: production has no task client (the
-Settings toggles say "Not set up on this robot yet."); `LUNA_TASKS=demo` wires a
+talking. Off by default (Settings toggles say "Not set up on this robot yet."):
+`LUNA_TASKS=service` (environment or `~/.luna.env`; needs the AI key and
+`pip install -e ".[agents]"`) uses the real helper process; `LUNA_TASKS=demo` wires a
 `FakeTaskService` (a "research" helper that answers after 8 s) for trying the flow.
 - `model.py`: `Task` (frozen), states `queued -> running -> waiting/done/failed/cancelled/
   interrupted` (`MOVES`, `can_move`), `Limits` (8 turns, 120 s, $0.05 per task), `Specialist`.
@@ -337,8 +338,24 @@ Settings toggles say "Not set up on this robot yet."); `LUNA_TASKS=demo` wires a
 - `client.py`: `TaskClient` (UI thread, no threads of its own) owns the service connection:
   `begin` (refuses when unavailable, over budget, at most 3 active), `cancel`, `poll(t)` (ready
   timeout, per-task time and cost limits, usage to `UsageMeter` as `task`, budget stop, lost
-  service -> interrupted, restart backoff 2/10/60 s, 3 crashes in 10 min -> off). Approvals,
-  `check` and `tool_call` are refused until step 4.
+  service -> interrupted, restart backoff 2/10/60 s, 3 crashes in 10 min -> off). Lazy mode
+  (service): the process starts only when a task begins (messages wait in an outbox) and stops
+  after 300 s idle. The bridge: `check` -> `PermissionPolicy.decide` (only tools the specialist
+  lists; `asked_with` tools -> voice confirmation, `sensitive` -> touch, `motion` -> refused);
+  `tool_call` runs the tool through `executor()` (Luna's `ToolRegistry`) and returns its effects
+  as an `effects` event; an approval covers one call and is used once. `paused` runs are stored
+  (`approvals` table) and the task waits; `answer(yes, how)` sends `resume`. A question not
+  answered in 12 h is answered "no" and the task fails.
+- `process.py`: `ProcessTransport` runs `python -m luna_core.agents` (stdin/stdout JSON lines,
+  reader/writer threads, no console window, stderr discarded; `close` reaps in the background).
+- `catalog.py`: Luna's specialist catalogue (`RESEARCH`: 8 turns, 120 s, $0.05, no tools).
+- `luna_core/agents/` (the only code that imports the SDK; runs in the child process, `nice 10`,
+  logs to `luna-agents.log`): `service.TaskService` (asyncio; `Runner.run` per task with
+  `max_turns` and a time limit; usage and steps from `RunHooks`; `RunState` serialised on an
+  approval), `bridge.proxy` (each allowed tool is a `FunctionTool` whose `needs_approval` sends
+  `check` and whose call sends `tool_call`), `specialists.build`, `models` (model per role:
+  `LUNA_AGENT_MODEL_<ROLE>` > `LUNA_AI_MODEL`; `max_tokens`/reasoning as for talk; tracing off
+  unless `LUNA_AGENT_TRACING=openai`; `LUNA_AGENT_SCRIPT` = scripted model for tests).
 - `announce.py`: `Announcer` decides **when** Luna speaks about a task: never while she is busy,
   20 s gap, results wait while the user talks to her, quiet hours 22:00-07:00 (setting) only
   when nobody has spoken to her for 10 min; order approval > result > failure > progress.
@@ -348,9 +365,12 @@ Settings toggles say "Not set up on this robot yet."); `LUNA_TASKS=demo` wires a
   window; the result is given to the AI as a note for 15 min so "tell me more" works. Pack
   `controls` `task_status` / `cancel_task` ("Luna, what are you working on?", "Luna, cancel the
   task") are answered in code. Unannounced results survive a restart (older than 12 h: dropped).
+  A task question ("My task needs your OK: ...") opens the Yes/No box with the Approval as
+  payload; yes/no/timeout/moving on answer the task.
 - `ui/tasks_page.py`: the Tasks page (5 newest tasks, Stop task button `STOP_RECT`), added only
   when a client exists. Settings > AI: Background tasks, Quiet hours, Task history.
-- Tests: `tests/test_tasks.py` (fake service and clock; never the real API).
+- Tests: `tests/test_tasks.py` (fake service and clock), `tests/test_agents.py` (scripted SDK
+  model and a real child process; never the real API).
 
 ### Rendering model
 - Everything is drawn on a fixed **1280×720 logical canvas** (`CANVAS_WIDTH/HEIGHT` in

@@ -4,6 +4,15 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
 ## Unreleased
+- **Background tasks, real helper** (task service step 4): with `LUNA_TASKS=service` and the new
+  `[agents]` extra (`openai-agents`), tasks run in a separate helper process
+  (`python -m luna_core.agents`, started only when needed, stopped after 5 idle minutes, lower
+  CPU priority; about 100 MB while running). A research specialist (8 turns, 2 min, $0.05 per
+  task) with usage counted in the daily budget. Helpers can only use Luna's tools through Luna:
+  every call is checked by her permission rules; tools that need your OK pause the task and
+  Luna asks "My task needs your OK: ..." (Yes/No box; unanswered for 12 h means no). Motion
+  tools are never available to helpers. Model per helper: `LUNA_AGENT_MODEL_<ROLE>`. Default
+  Luna (no `LUNA_TASKS`) is unchanged and never loads the SDK.
 - **Background tasks, core** (task service step 3, `luna_core/tasks/`): task model, SQLite
   store (`tasks`, `steps`, `approvals` in `~/.luna/tasks.db`), service protocol, `TaskClient`
   (limits, budget, crash recovery) and `Announcer` (when Luna tells you a result; quiet hours).
