@@ -267,6 +267,8 @@ class RobotHUD:
     def plugins_changed(self,words=False):
         """The running plugins changed: give the AI their tools and personality, hear new words."""
         plugins=self.plugins
+        if self.tasks is not None:
+            self.tasks.set_plugin_specialists(plugins.specialists())
         self.conversation.set_plugins(plugins.tools(),plugins.tool_risks(),plugins.instructions())
         if words and self.voice:
             self.voice.reload_words()

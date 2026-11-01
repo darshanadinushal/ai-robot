@@ -148,7 +148,8 @@ class Conversation:
         """Offer the task tools only while the service is ready (rebuilt only on a change)."""
         client = self.tasks
         on = client is not None and client.available
-        sig = (on, tuple(sorted(client.specialists)) if on else ())
+        sig = (on, tuple(sorted((name, spec.description) for name, spec in client.specialists.items()))
+               if on else ())
         if sig == self._task_sig:
             return
         self._task_sig = sig

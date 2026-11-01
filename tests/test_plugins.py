@@ -315,12 +315,101 @@ class PluginCompatibilityTests(unittest.TestCase):
         public = {name for name in vars(PluginContext) if not name.startswith("_")}
         self.assertEqual(public, {"add_command", "add_page", "add_tool", "add_personality",
                                   "add_language_text", "on_heard", "every", "say", "set_mood", "look",
-                                  "memories", "camera", "motors", "setting", "close"})
+                                  "memories", "camera", "motors", "setting", "close",
+                                  "add_specialist"})  # 1.1
         self.assertEqual({n for n in vars(Plugin) if not n.startswith("_")},
                          {"id", "name", "version", "description", "core", "api", "permissions",
                           "settings", "setup", "teardown", "setting_changed"})
         self.assertEqual(set(PERMISSIONS), {"speak", "face", "ai", "microphone", "memory", "network",
-                                            "camera", "motors", "devices"})
+                                            "camera", "motors", "devices", "agents"})
+
+
+class Meals(Plugin):
+    """A plugin with a background helper (task service step 7)."""
+    id = "my-pantry"
+    permissions = ("ai", "agents")
+
+    def __init__(self, **options):
+        self.options = options
+
+    def setup(self, luna):
+        self.luna = luna
+        luna.add_tool("items", "What is in the pantry", lambda arguments: "pasta, eggs", risk="local")
+        self.name = luna.add_specialist("meals", "Plans meals from the pantry.",
+                                        "Look in the pantry, then plan meals.", **self.options)
+
+
+class PluginSpecialistTests(unittest.TestCase):
+    def start(self, plugin, granted=("agents",)):
+        store = UnsavedStore({plugin.id: {"granted": list(granted)}})
+        plugins, host = manager(plugin, store=store)
+        self.addCleanup(plugins.stop_all)
+        return plugins
+
+    def test_a_helper_needs_the_users_ok_and_goes_with_the_plugin(self):
+        plugins = self.start(Meals(tools=("items",)), granted=())
+        self.assertEqual((plugins.records["my-pantry"].status, plugins.specialists()),
+                         ("permission", ()), "agents is sensitive: off until the user allows it")
+        plugins.grant("my-pantry", "agents", True)
+        (spec,) = plugins.specialists()
+        self.assertEqual((spec.name, spec.title, spec.tools, spec.model_role, spec.hosted,
+                          spec.reads_untrusted),
+                         ("my_pantry_meals", "meals", ("my_pantry_items",), "my_pantry_meals", (),
+                          False))
+        self.assertEqual(spec.limits.as_dict(), {"max_turns": 8, "max_seconds": 120.0, "max_usd": 0.05})
+        plugins.set_enabled("my-pantry", False)
+        self.assertEqual(plugins.specialists(), ())
+
+    def test_limits_are_capped_and_web_search_makes_it_untrusted(self):
+        plugins = self.start(Meals(web_search=True, max_turns=50, max_seconds=30, max_usd=1.0))
+        (spec,) = plugins.specialists()
+        self.assertEqual((spec.hosted, spec.reads_untrusted), (("web_search",), True))
+        self.assertEqual(spec.limits.as_dict(), {"max_turns": 8, "max_seconds": 30.0, "max_usd": 0.05})
+
+    def test_bad_helpers_stop_the_plugin_from_starting(self):
+        for options in ({"tools": ("lights_state",)},       # another plugin's (or Luna's) tool
+                        {"max_usd": 0}, {"max_turns": "many"}):
+            with self.subTest(options=options):
+                plugins = self.start(Meals(**options))
+                self.assertEqual((plugins.records["my-pantry"].status, plugins.specialists()),
+                                 ("failed", ()))
+
+        class Undeclared(Plugin):
+            id = "undeclared"
+            permissions = ("ai",)
+
+            def setup(self, luna):
+                luna.add_specialist("x", "d", "i")
+
+        self.assertEqual(self.start(Undeclared(), granted=()).records["undeclared"].status, "failed")
+
+        class Twice(Meals):
+            id = "twice"
+
+            def setup(self, luna):
+                super().setup(luna)
+                luna.add_specialist("meals", "again", "again")
+
+        self.assertEqual(self.start(Twice()).records["twice"].status, "failed")
+
+    def test_the_helper_example_plugin_works_with_this_core(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples" / "pantry_plugin"))
+        self.addCleanup(sys.path.pop, 0)
+        import luna_pantry
+
+        host = FakeHost()
+        plugins = PluginManager(host, UnsavedStore({"pantry": {"granted": ["agents"]}}), "1.1.0")
+        plugins.add(luna_pantry.PantryPlugin())
+        plugins.start_all()
+        self.addCleanup(plugins.stop_all)
+        self.assertEqual(plugins.records["pantry"].status, "running")
+        (spec,) = plugins.specialists()
+        self.assertEqual((spec.name, spec.tools, spec.reads_untrusted),
+                         ("pantry_meals", ("pantry_items",), False))
+        (tool,) = plugins.tools()
+        self.assertIn("pasta", tool.run({})[1].output())
+        old = PluginManager(FakeHost(), UnsavedStore(), "1.0.1")
+        self.assertEqual(old.add(luna_pantry.PantryPlugin).status, "incompatible")
 
 
 class PluginLanguageTests(unittest.TestCase):

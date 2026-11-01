@@ -94,6 +94,7 @@ tests/
   test_plugins.py           Plugins: lifecycle, permissions, recovery, versions, a real headless Luna
   test_install.py           Opt-in (LUNA_SLOW_TESTS=1): wheel in a new venv, `luna`, plugin discovery
 examples/hello_plugin/      Example plugin package (entry point luna.plugins)
+examples/pantry_plugin/     Example plugin with a background helper (add_specialist)
 docs/ARCHITECTURE.md        This file
 docs/PLUGINS.md             Writing plugins: API, permissions, lifecycle
 docs/BASELINE.md            Phase 5.0 baseline measurements (simulated and real Pi)
@@ -321,7 +322,7 @@ home, driving) without growing `app.py`, and is tested without pygame
 - `RobotHUD` (the adapter) keeps the microphone (`listen`), the face (`apply_actions`), touch and
   drawing. `hud.ai` is a property that sets `conversation.ai`.
 
-## 2b. Background tasks (`luna_core/tasks/`, `luna_core/agents/`, task service steps 3-6)
+## 2b. Background tasks (`luna_core/tasks/`, `luna_core/agents/`, task service steps 3-7)
 Design: `docs/design/TASK_SERVICE.md`. Luna can hand a longer job to a specialist helper and keep
 talking. Off by default (Settings toggles say "Not set up on this robot yet."):
 `LUNA_TASKS=service` (environment or `~/.luna.env`; needs the AI key and
@@ -349,7 +350,14 @@ talking. Off by default (Settings toggles say "Not set up on this robot yet."):
 - `process.py`: `ProcessTransport` runs `python -m luna_core.agents` (stdin/stdout JSON lines,
   reader/writer threads, no console window, stderr discarded; `close` reaps in the background).
 - `catalog.py`: Luna's specialist catalogue (`RESEARCH`: 8 turns, 120 s, $0.05, no Luna tools,
-  hosted `web_search`, `reads_untrusted`).
+  hosted `web_search`, `reads_untrusted`). `definition`/`from_definition` turn a specialist
+  into JSON and back (validated, limits capped at `Limits()`).
+- Plugin specialists (`PluginContext.add_specialist`, permission `agents`): `app.plugins_changed`
+  passes `PluginManager.specialists()` to `TaskClient.set_plugin_specialists`. They are offered
+  next to Luna's own (which win name clashes) and sent as `spec` in `start`/`resume`
+  (protocol 1.1); the service builds them per task and never keeps them. Their tools are the
+  plugin's own, run in Luna through the same `check`/`tool_call` bridge. When a plugin stops,
+  its tasks fail ("plugin off"; running ones get a `cancel`).
 - Untrusted content (taint): a task whose specialist `reads_untrusted` (or that is known only
   from the service) starts tainted, and a `web` step (one per hosted search, $0.01, charged to
   the task and the budget) taints it. `TaskClient._check` turns every allowed non-local tool of a

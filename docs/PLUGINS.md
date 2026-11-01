@@ -52,6 +52,7 @@ robot.run()
 | `add_page(page)` | – | A `luna_core.ui.Page` with its own navigation button |
 | `add_tool(name, description, run, parameters, risk)` | `ai` (+ `devices` for risk `"device"`) | An AI tool; `run(arguments)` returns a short text |
 | `add_personality(text)` | `ai` | A sentence added to what the AI is told |
+| `add_specialist(name, description, instructions, tools=(), title="", web_search=False, reads_untrusted=False, max_turns=8, max_seconds=120, max_usd=0.05)` | `agents` | A background helper (see below); returns its full name |
 | `add_language_text(code, screen=, speech=)` | – | Translations for `tr()` and spoken texts |
 | `on_heard(callback)` | `microphone` | `callback(text)` for each sentence Luna hears |
 | `every(seconds, callback)` | – | `callback(t)` regularly on the UI thread |
@@ -73,6 +74,7 @@ listens only for known words, so new words are added to the speech grammar when 
 | `microphone` | yes | Hear what the user says |
 | `memory` | yes | Read what Luna remembers |
 | `network` | yes | Use the internet (declared and shown to the user) |
+| `agents` | yes | Add background helpers (they use the user's AI budget) |
 | `camera`, `motors`, `devices` | yes | Use the camera, move the robot, control home devices |
 
 - A plugin must declare every permission it uses; anything else raises `PermissionDenied`.
@@ -82,6 +84,29 @@ listens only for known words, so new words are added to the speech grammar when 
   (`"motion"`) and `"sensitive"` tools are never run by the AI.
 - Plugins are Python code inside Luna, so permissions are **not a sandbox**: they control Luna's
   API and what the user is told, not what arbitrary Python can do. Install only plugins you trust.
+
+## Background helpers (`add_specialist`)
+With background tasks on (`LUNA_TASKS=service`, see ARCHITECTURE §2b) the AI can hand longer
+jobs to a helper. A plugin can add its own helper:
+
+```python
+luna.add_tool("items", "What is in the pantry", self.items, risk="local")
+luna.add_specialist("meals", "Plans meals from what is in the pantry.",
+                    "Look in the pantry with your tool, then plan meals.",
+                    tools=("items",), max_turns=4, max_seconds=60, max_usd=0.02)
+```
+
+- The full name is `<plugin id>_<name>` (`-` becomes `_`), e.g. `pantry_meals`; at most 40
+  characters. Model: `LUNA_AGENT_MODEL_PANTRY_MEALS`, else `LUNA_AI_MODEL`.
+- `tools` are only the plugin's own tools, added with `add_tool` before. They run in Luna's
+  process and every call is checked by her permission rules; motion is never possible.
+- `web_search=True` gives the helper OpenAI's web search; it then reads untrusted pages, so its
+  tasks are tainted and every non-local tool needs the user's OK. Set `reads_untrusted=True`
+  if your tools return text from the internet or other people.
+- Limits are capped at the defaults (8 turns, 120 s, $0.05 per task); the daily budget applies.
+- Luna's own helpers (e.g. `research`) cannot be replaced. When the plugin stops, its running
+  and waiting tasks fail ("plugin off").
+- Example: `examples/pantry_plugin` (needs Luna Core 1.1).
 
 ## Lifecycle and recovery
 

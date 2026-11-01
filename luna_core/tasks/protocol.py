@@ -1,7 +1,8 @@
 """The task service protocol: one JSON object per line, field `t` = message type (pure).
 
 Luna and the task service (a child process from step 4; FakeTaskService in tests) exchange
-these messages over stdin/stdout. `encode` and `decode` check every message: required fields
+these messages over stdin/stdout. `start` and `resume` may carry `spec` (catalog.definition) for
+a specialist the service does not know itself (a plugin's). `encode` and `decode` check every message: required fields
 and their types, line length (64 KB; 2 MB for `paused` and `resume`, which carry a paused run).
 The service is stateless: `resume` repeats what `start` said about the task. Unknown fields are ignored; an
 unknown type is a ProtocolError (the client logs and drops it). A service with another major
@@ -10,7 +11,7 @@ only), raw audio.
 """
 import json
 
-PROTOCOL_VERSION = "1.0"
+PROTOCOL_VERSION = "1.1"
 MAX_LINE = 64 * 1024
 MAX_PAUSED = 2 * 1024 * 1024
 VERDICTS = ("allow", "refuse", "confirm")

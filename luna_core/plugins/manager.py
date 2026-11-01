@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from .. import commands, languages
 from ..assistant_core.tools import RISKS, Tool, ToolResult, _object
 from ..hardware.base import clamp_speed
+from ..tasks.catalog import DESCRIPTION_CHARS, INSTRUCTION_CHARS
+from ..tasks.model import Limits, Specialist
 from .api import PERMISSIONS, PLUGIN_API, PLUGIN_ID, SENSITIVE, PermissionDenied, Plugin, version_matches
 from .store import PluginStore
 
@@ -100,6 +102,7 @@ class PluginContext:
         self._actions = {}
         self._pages = []
         self._tools = []
+        self._specialists = []
         self._instructions = []
         self._heard = []
         self._timers = []
@@ -198,6 +201,50 @@ class PluginContext:
         self._tools.append(tool)
         return tool.name
 
+    def add_specialist(self, name, description, instructions, tools=(), title="",
+                       web_search=False, reads_untrusted=False, max_turns=8, max_seconds=120.0,
+                       max_usd=0.05):
+        """A background helper Luna's AI can hand a task to (when background tasks are on).
+
+        `description` tells the AI when to pick it; `instructions` tell the helper how to work.
+        `tools`: names of this plugin's own tools (add them with add_tool first); the helper asks
+        Luna before each use, under the same rules as the AI. `web_search`: OpenAI's web search
+        (makes it `reads_untrusted`). `reads_untrusted`: it reads text others wrote (web pages,
+        messages), so any non-local tool in its tasks needs the user's OK. Limits are capped at
+        8 turns, 120 s and $0.05 per task. Needs "agents" (and "ai" for tools).
+        """
+        self._need("agents")
+        if not re.match(r"^[a-z0-9_]{1,30}$", str(name)):
+            raise ValueError("specialist name: lower-case letters, digits and _")
+        full = "%s_%s" % (self.id.replace("-", "_"), name)
+        if len(full) > 40:
+            raise ValueError("plugin id and specialist name together: at most 39 characters")
+        if any(spec.name == full for spec in self._specialists):
+            raise ValueError("there is already a specialist called %r" % name)
+        description, instructions = " ".join(str(description).split()), str(instructions).strip()
+        if not description or not instructions:
+            raise ValueError("a specialist needs a description and instructions")
+        own = {tool.name: tool for tool in self._tools}
+        names = []
+        for tool in tools:
+            tool_name = "%s_%s" % (self.id.replace("-", "_"), tool)
+            if tool_name not in own:
+                raise ValueError("%r is not a tool of this plugin (add it with add_tool first)" % tool)
+            names.append(tool_name)
+        try:
+            limits = Limits(int(max_turns), float(max_seconds), float(max_usd))
+        except (TypeError, ValueError):
+            raise ValueError("limits must be numbers") from None
+        if min(limits.max_turns, limits.max_seconds, limits.max_usd) <= 0:
+            raise ValueError("limits must be above 0")
+        spec = Specialist(name=full, description=description[:DESCRIPTION_CHARS],
+                          title=str(title or name)[:40], limits=limits.within(Limits()),
+                          instructions=instructions[:INSTRUCTION_CHARS], model_role=full,
+                          tools=tuple(names), hosted=("web_search",) if web_search else (),
+                          reads_untrusted=bool(reads_untrusted or web_search))
+        self._specialists.append(spec)
+        return full
+
     def add_personality(self, text):
         """A sentence added to what the AI is told with every question (max 500 characters)."""
         self._need("ai")
@@ -269,6 +316,7 @@ class PluginContext:
         for page in self._pages:
             self._manager.host.remove_page(page)
         self._actions, self._pages, self._tools, self._instructions = {}, [], [], []
+        self._specialists = []
         self._heard, self._timers = [], []
 
 
@@ -512,6 +560,10 @@ class PluginManager:
 
     def tools(self):
         return tuple(tool for r in self.running() for tool in r.context._tools)
+
+    def specialists(self):
+        """The running plugins' specialists (tasks.model.Specialist)."""
+        return tuple(spec for r in self.running() for spec in r.context._specialists)
 
     def tool_risks(self):
         return tuple(sorted({tool.risk for tool in self.tools()}))

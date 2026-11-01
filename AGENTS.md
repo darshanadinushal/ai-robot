@@ -75,7 +75,10 @@ the public API is `from luna_core import Robot`. Record changes in `CHANGELOG.md
   asks Luna (`check`/`tool_call`), so `PermissionPolicy` decides; motion is never offered.
   A specialist that reads web pages sets `reads_untrusted`; its tasks are tainted and every
   non-local tool then needs the user's OK (`TaskClient._check`). Spoken results go through
-  `model.speakable`. Measure with `scripts/measure_tasks.py`.
+  `model.speakable`. Measure with `scripts/measure_tasks.py`. Plugin helpers
+  (`PluginContext.add_specialist`, `agents` permission) are sent as definitions with each
+  `start`/`resume` (`catalog.definition`/`from_definition`); `TaskClient.set_plugin_specialists`
+  is called on every plugin change, and Luna's own specialists always win name clashes.
   Tests: `tests/test_tasks.py` (fake service, fake clock), `tests/test_agents.py` (SDK
   `ScriptedModel` or `LUNA_AGENT_SCRIPT`; never the real API).
 - AI conversation: `luna_core/ai.py` (`LunaBrain.stream`, `AIWorker`); instructions from
@@ -140,7 +143,6 @@ Working: face + wave modes, 3 face layouts, 3 wave layouts, 4 colours, mood expr
 offline voice commands, spoken replies with mic muting, "Hey Luna" AI conversation with
 follow-ups and tap-to-stop, date/time-aware answers, plugins (Settings > Plugins), web search (news, live scores), configurable robot name, optional online listening, AI face tools, persistent memory (explicit facts, About you), interrupt by voice (headset), answer expressions, "never mind" / "new conversation", idle reset, Windows + Pi scripts, autostart service, safe upgrade/rollback, adaptive frame
 rate, prompt caching, daily AI budget, Yes/No confirmation, background tasks (opt-in
-`LUNA_TASKS=service`; research helper with web search and taint rule), tests.
-Planned (see `docs/ROADMAP.md`, decisions in `docs/adr/`): task service step 7 (plugin
-specialists; design `docs/design/TASK_SERVICE.md`), Home Assistant on a separate device,
+`LUNA_TASKS=service`; research helper with web search and taint rule; plugin helpers), tests.
+Planned (see `docs/ROADMAP.md`, decisions in `docs/adr/`): release 1.1.0, Home Assistant on a separate device,
 reminders, music, motors, camera. Follow the approved design; don't start a phase before approval.

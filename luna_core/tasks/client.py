@@ -9,7 +9,9 @@ daily budget it is stopped.
 
 `lazy`: the service is started only when a task needs it and stopped after IDLE_STOP seconds
 without work, so it costs no memory or CPU while Luna just talks. Until it runs, the AI is
-offered the specialists of `catalog` (tasks/catalog.py).
+offered the specialists of `catalog` (tasks/catalog.py). Plugins' specialists (`set_plugin_
+specialists`) come on top: the service does not know them, so their definition goes with each
+start/resume; when a plugin stops, its tasks fail ("plugin off").
 
 Actions (the bridge): a specialist never acts itself. Before one of Luna's tools runs, the
 service sends `check`; Luna validates the arguments and asks the same PermissionPolicy as the
@@ -28,6 +30,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
+from .catalog import definition
 from .confirm import call_key
 from .model import (CANCELLED, DETAILS_CHARS, DONE, FAILED, GOAL_CHARS, INTERRUPTED, QUEUED,
                     RUNNING, SUMMARY_CHARS, WAITING, Limits, Specialist, Task, clean, new_id,
@@ -124,7 +127,9 @@ class TaskClient:
         self.transport = None
         self.ready = False
         self.disabled = ""       # why tasks are off until restart ("crashes", "version")
-        self.specialists = dict(self.catalog) if lazy and self.catalog else {}
+        self.core = dict(self.catalog) if lazy and self.catalog else {}  # Luna's own
+        self.plugin_specialists = {}
+        self.specialists = dict(self.core)
         self.crashes = []
         self.retry_at = 0.0
         self.connected_at = None
@@ -189,6 +194,26 @@ class TaskClient:
             self._send({"t": "shutdown"})
             self._close()
 
+    def _merge(self):
+        """Luna's own specialists first; a plugin's never replaces one of them."""
+        self.specialists = {**self.core, **{name: spec for name, spec
+                                            in self.plugin_specialists.items()
+                                            if name not in self.core}}
+
+    def set_plugin_specialists(self, specs):
+        """The running plugins' specialists. Tasks of one that is gone fail ("plugin off");
+        a plugin's specialist never replaces one of Luna's own."""
+        specs = {spec.name: spec for spec in specs if spec.name not in (self.catalog or self.core)}
+        gone = set(self.plugin_specialists) - set(specs)
+        self.plugin_specialists = specs
+        self._merge()
+        for task in self.store.active():
+            if task.specialist in gone:
+                self.outbox = [m for m in self.outbox if m["id"] != task.id]
+                if self.ready and task.state != WAITING:
+                    self._send({"t": "cancel", "id": task.id, "reason": "plugin"})
+                self._stop(task, FAILED, "plugin off", event="failed")
+
     def set_history(self, days):
         self.history_days = days
         self.store.purge(days)
@@ -213,9 +238,10 @@ class TaskClient:
         task = self.store.add(Task(new_id(), text, spec.name, clean(language, 8) or "en",
                                    tainted=spec.reads_untrusted))
         limits = spec.limits.within(LIMIT_CAP)
-        message = {"t": "start", "id": task.id, "goal": task.goal, "specialist": spec.name,
-                   "language": task.language, "context": self._context(spec),
-                   "limits": limits.as_dict()}
+        message = self._with_spec({"t": "start", "id": task.id, "goal": task.goal,
+                                   "specialist": spec.name, "language": task.language,
+                                   "context": self._context(spec), "limits": limits.as_dict()},
+                                  spec)
         if not self._deliver(message):
             self.store.move(task.id, FAILED, error="unavailable", announced=True)
             self._lost(t)
@@ -254,10 +280,11 @@ class TaskClient:
             self._stop(task, FAILED, "unavailable", event="failed")
             return True
         limits = spec.limits.within(LIMIT_CAP)
-        message = {"t": "resume", "id": task_id, "state": task.run_state, "item": call,
-                   "approved": bool(approved), "specialist": spec.name,
-                   "language": task.language, "context": self._context(spec),
-                   "limits": limits.as_dict()}
+        message = self._with_spec({"t": "resume", "id": task_id, "state": task.run_state,
+                                   "item": call, "approved": bool(approved),
+                                   "specialist": spec.name, "language": task.language,
+                                   "context": self._context(spec), "limits": limits.as_dict()},
+                                  spec)
         self.store.move(task_id, RUNNING, run_state="")
         if not self._deliver(message):
             self._stop(self.store.get(task_id), INTERRUPTED, "interrupted", event="interrupted")
@@ -300,6 +327,11 @@ class TaskClient:
         self._send({"t": "shutdown"})
         self._close()
         self.store.close()
+
+    def _with_spec(self, message, spec):
+        if spec.name in self.plugin_specialists:
+            message["spec"] = definition(spec)
+        return message
 
     def _context(self, spec):
         """What the service may know besides the goal: the schemas of Luna's tools this
@@ -410,7 +442,8 @@ class TaskClient:
                 self.outbox = []
                 self._interrupt_all()
                 return
-            self.specialists = _specialists(message["specialists"], self.catalog)
+            self.core = _specialists(message["specialists"], self.catalog)
+            self._merge()
             self.ready = True
             outbox, self.outbox = self.outbox, []
             for queued in outbox:
@@ -454,7 +487,8 @@ class TaskClient:
     # --- the bridge: Luna's tools for a task ----------------------------------------------
     def _tool(self, task, name):
         """The tool `name` if this task's specialist may use it (else None)."""
-        spec = (self.catalog or self.specialists).get(task.specialist)
+        spec = (self.plugin_specialists.get(task.specialist)
+                or (self.catalog or self.specialists).get(task.specialist))
         executor = self.executor() if self.executor is not None else None
         if spec is None or executor is None or name not in spec.tools:
             return None, None

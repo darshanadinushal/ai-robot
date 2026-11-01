@@ -1,7 +1,7 @@
 # Task service: hybrid multi-agent foundation (design)
 
 Status: **approved, being built** (phase 1 of [ROADMAP.md](../ROADMAP.md); decision:
-[ADR-0002](../adr/0002-hybrid-task-service.md)). Steps 0-5 are done and step 6 is built; its Pi measurements are open (see §13).
+[ADR-0002](../adr/0002-hybrid-task-service.md)). Steps 0-5 are done; steps 6 and 7 are built; Pi measurements are open (see §13).
 
 ## 1. Goals and non-goals
 Goals
@@ -89,8 +89,8 @@ queued ─▶ running ─▶ done
 Luna → service
 | t | fields | meaning |
 |---|---|---|
-| `start` | id, goal, specialist, language, context, limits | run a task |
-| `resume` | id, state, item, approved | continue a paused run with the user's answer |
+| `start` | id, goal, specialist, language, context, limits, spec? | run a task |
+| `resume` | id, state, item, approved, spec? | continue a paused run with the user's answer |
 | `cancel` | id, reason | stop now (user, budget, shutdown) |
 | `check_result` | id, call, verdict (`allow`/`refuse`/`confirm`), reason, summary, touch | answer to `check` |
 | `tool_result` | id, call, ok, output | answer to `tool_call` |
@@ -109,6 +109,10 @@ Service → Luna
 | `progress` | id, text | rare, short ("Comparing three sources") |
 | `done` | id, summary, details | finished; summary is speakable (≤ 300 chars) |
 | `failed` | id, error | error class or `budget` / `time` / `turns` / `offline` |
+
+`spec` (protocol 1.1) is the definition of a plugin's specialist (`catalog.definition`); the
+service has no plugin code, so it builds the specialist from it (`catalog.from_definition`:
+validated, limits capped, never one of its own names).
 
 Timeouts: `check`/`tool_call` answers within 10 s (else the call fails for the agent).
 No `ready` within 20 s or no answer to a ping for 30 s: the service is restarted.
@@ -211,7 +215,7 @@ tagged only after approval.
 | 4 ✅ | Task service | `[agents]` extra; `luna_core/agents/`; bridge; hooks; local tracing; paused runs stored | Fake-model tests: approval, refusal, cancel, budget cut, turn/time limits, service crash. Done, opt-in with `LUNA_TASKS=service`. Changes from the plan: no supervisor agent (the talk AI already picks the specialist with `start_task`, so a supervisor would only add a model call); steps and usage come from `RunHooks` (`on_llm_end`, `on_tool_start`), not a tracing processor (SDK tracing stays off unless `LUNA_AGENT_TRACING=openai`); the process is lazy (300 s idle stop); unanswered questions expire after 12 h |
 | 5 ✅ | Research specialist | Specialist, taint rule, summaries | Prompt-injection test; manual run on the laptop with a real key. Done: the research helper uses OpenAI's hosted web search (`search_context_size=low`, off with `LUNA_AI_WEB_SEARCH=0`, $0.01 per search counted in the task's cost and the budget) and has no Luna tools; each search is a `web` step. Taint: research tasks (and helpers known only from the service) start tainted, any web step taints a task, and a tainted task needs your OK for every non-local tool (touch for sensitive). Summaries go through `speakable()` (no links, markdown or URLs; cut at a whole sentence). An unknown tool name goes back to the model as an error instead of failing the task |
 | 6 | Pi hardening, release 1.1.0 | RAM/CPU/latency on the Pi; docs (README, ARCHITECTURE, AGENTS) | Talk latency unchanged on the Pi. Built: `scripts/measure_tasks.py` (laptop numbers in BASELINE.md), deploy scripts install the `[agents]` extra when `LUNA_TASKS=service`, the helper gets `MALLOC_ARENA_MAX=2` on Linux. Open: Pi numbers, release |
-| 7 | Plugin specialists, release 1.2.0 | `add_specialist`, `agents` permission, docs/PLUGINS.md, example | Plugin API compatibility tests |
+| 7 | Plugin specialists, release 1.1.0 (with 5-6) | `add_specialist`, `agents` permission, docs/PLUGINS.md, example | Plugin API compatibility tests. Built: definitions travel in `start`/`resume` (`spec`, protocol 1.1); the plugin's tools stay in Luna and go through `PermissionPolicy` and the taint rule; Luna's own specialists win name clashes; when the plugin stops its tasks fail ("plugin off"); example `examples/pantry_plugin` |
 
 ## 14. Test plan
 - Pure tests (`tests/test_tasks.py`): lifecycle transitions, store retention, protocol

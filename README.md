@@ -252,7 +252,8 @@ Then talk:
   `LUNA_AI_WEB_SEARCH=0` switches searching off). What it reads is treated as data only: a task
   that read web pages always needs your OK before it may use any of Luna's tools. On the Pi,
   `install-pi.sh` / `upgrade-pi.sh` install the `[agents]` extra when `~/.luna.env` has
-  `LUNA_TASKS=service`.
+  `LUNA_TASKS=service`. Plugins can add their own helpers once you allow "Add background
+  helpers" in Settings > Plugins (see `docs/PLUGINS.md`).
 
 ### Keeping the AI cost low
 - The default model `gpt-6-luna` is the cheapest current one (about $0.10 per million input

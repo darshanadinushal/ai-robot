@@ -4,6 +4,12 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
 ## Unreleased
+- **Plugin helpers** (task service step 7): plugins can add background helpers with
+  `PluginContext.add_specialist(...)` and the new sensitive permission `agents` (off until you
+  allow it, since helpers use your AI budget). A helper uses only its plugin's own tools, checked
+  by Luna's permission rules; limits are capped at 8 turns, 2 min and $0.05. Luna's own helpers
+  cannot be replaced; when a plugin stops, its tasks fail ("plugin off"). Task protocol 1.1
+  (`start`/`resume` may carry the helper's definition). Example: `examples/pantry_plugin`.
 - **Research helper searches the web** (task service step 5): OpenAI's web search (about
   $0.01 per search, counted in the task's cost and the daily budget; off with
   `LUNA_AI_WEB_SEARCH=0`). Each search shows as a task step. Safety: a task that read web pages

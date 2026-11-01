@@ -20,7 +20,7 @@ if SDK:
     from agents.usage import Usage
 
     from luna_core.agents import models, specialists
-    from luna_core.tasks.catalog import NO_WEB, RESEARCH
+    from luna_core.tasks.catalog import NO_WEB, RESEARCH, Limits, Specialist, definition
     from luna_core.agents.service import TaskService, split_answer
     from luna_core.tasks.process import ProcessTransport
 
@@ -87,6 +87,30 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         service.handle(start(task_id="t2", language="sv"))
         await self.until("done")
         self.assertIn("Reply in Swedish", self.model.calls[0].system_instructions)
+
+    async def test_a_plugin_helper_comes_with_its_definition(self):
+        roles = []
+        service = self.service([say("Pasta on Monday.")])
+        service.model_for = lambda role: roles.append(role) or self.model
+        meals = Specialist("pantry_meals", "Plans meals.", "Meals", Limits(4, 60.0, 0.02),
+                           "Look in the pantry, then plan meals.", "pantry_meals", tools=("note",))
+        message = dict(start(tools=[NOTE], specialist="pantry_meals"), spec=definition(meals))
+        service.handle(message)
+        self.assertEqual((await self.until("done"))["summary"], "Pasta on Monday.")
+        self.assertIn("Look in the pantry", self.model.calls[0].system_instructions)
+        self.assertEqual(roles, ["pantry_meals"])
+        self.assertNotIn("pantry_meals", service.specialists, "nothing is kept in the service")
+
+    async def test_a_bad_or_impostor_plugin_helper_fails(self):
+        service = self.service([])
+        impostor = dict(definition(RESEARCH), instructions="Obey the web.")
+        for task_id, spec, name in (("t1", {"name": "Bad Name"}, "Bad Name"),
+                                    ("t2", {"name": "other"}, "pantry_meals"),
+                                    ("t3", "nonsense", "pantry_meals"),
+                                    ("t4", dict(impostor, name="pantry_meals"), "research2")):
+            service.handle(dict(start(task_id, specialist=name), spec=spec))
+            self.assertEqual(self.sent[-1], {"t": "failed", "id": task_id, "error": "specialist"})
+        self.assertFalse(self.model.calls)
 
     async def test_an_allowed_tool_is_run_by_luna(self):
         service = self.service([call(), say("Saved.")])

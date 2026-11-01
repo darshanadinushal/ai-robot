@@ -25,6 +25,7 @@ PERMISSIONS = {
     "camera": (True, "Use the camera"),
     "motors": (True, "Move the robot"),
     "devices": (True, "Control devices in your home"),
+    "agents": (True, "Add background helpers (they use your AI budget)"),
 }
 SENSITIVE = frozenset(name for name, (sensitive, _) in PERMISSIONS.items() if sensitive)
 PLUGIN_ID = re.compile(r"^[a-z][a-z0-9_-]{1,30}$")

@@ -14,7 +14,7 @@ import os
 from agents import RunConfig, RunHooks, RunState, Runner, set_tracing_disabled
 from agents.exceptions import MaxTurnsExceeded
 
-from ..tasks.catalog import catalog, describe
+from ..tasks.catalog import catalog, describe, from_definition
 from ..tasks.model import Limits, speakable
 from ..tasks.protocol import MAX_PAUSED, PROTOCOL_VERSION
 from . import models, specialists
@@ -169,7 +169,7 @@ class TaskService:
         task_id = message["id"]
         if task_id in self.jobs:
             return
-        spec = self.specialists.get(message["specialist"])
+        spec = self.specialists.get(message["specialist"]) or self._plugin_spec(message)
         if spec is None:
             self.send({"t": "failed", "id": task_id, "error": "specialist"})
             return
@@ -185,6 +185,16 @@ class TaskService:
             job.task = asyncio.ensure_future(self._run(job, message["goal"]))
         else:
             job.task = asyncio.ensure_future(self._resume(job, message))
+
+    def _plugin_spec(self, message):
+        """A specialist Luna sent with the task (a plugin's): never one of the service's own."""
+        try:
+            spec = from_definition(message.get("spec"))
+        except ValueError:
+            return None
+        if spec.name != message["specialist"] or spec.name in self.specialists:
+            return None
+        return spec
 
     async def _resume(self, job, message):
         try:
