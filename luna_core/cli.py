@@ -4,6 +4,7 @@ import os
 import sys
 
 from . import __version__
+from .ai import load_env_file
 from .logs import setup_logging
 from .robot import Robot
 
@@ -43,6 +44,7 @@ def main(argv=None):
                         help="Safe mode: start without any plugins (if a plugin causes trouble)")
     parser.add_argument("--screenshot", metavar="FILE", help="Save first frame as PNG and exit")
     args = parser.parse_args(argv)
+    load_env_file()  # ~/.luna.env (OPENAI_* / LUNA_*), e.g. under systemd; the environment wins
     setup_logging()
     if args.screenshot:
         # One static frame: don't start the microphone, speech or AI threads.

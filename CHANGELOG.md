@@ -4,6 +4,18 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
 ## 1.1.0 (unreleased)
+- **Robot Setup integration fixes**:
+  - `~/.luna.env` is read when Luna starts, so `LUNA_TASKS=service` written there (as the README
+    and Robot Setup do) turns background tasks on under systemd too. Other `LUNA_*` settings in
+    the file (such as `LUNA_VOICE`, `LUNA_AI_PRICES` and `LUNA_LOG_FILE`) now also apply from
+    the start. The environment still wins.
+  - `rollback-pi.sh` back to v1.0.1 with background tasks on no longer stops part-way: an extra
+    the older version does not have (`agents`) is skipped.
+  - `upgrade-pi.sh` backs up `~/.luna/tasks.db` (task history and AI usage) too, and
+    `rollback-pi.sh --with-data` restores it to its own place.
+  - `tasks.db` records its schema version (`PRAGMA user_version`); a newer Luna's file is
+    logged after a rollback and still used.
+  - CI tests ARM Linux and the Agents SDK on Python 3.13 (Raspberry Pi OS Trixie).
 - **Plugin helpers** (task service step 7): plugins can add background helpers with
   `PluginContext.add_specialist(...)` and the new sensitive permission `agents` (off until you
   allow it, since helpers use your AI budget). A helper uses only its plugin's own tools, checked

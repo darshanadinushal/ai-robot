@@ -21,6 +21,9 @@ HISTORY_DAYS = 30
 HISTORY_CHOICES = (7, 30, 90)
 ERRORS = (sqlite3.Error, OSError)
 FIELDS = tuple(f.name for f in dataclasses.fields(Task))
+# PRAGMA user_version of tasks.db. Changes so far only add columns (see _schema); raise this for
+# a change that needs a migration. A higher number is a newer Luna's file (after a rollback).
+SCHEMA_VERSION = 1
 SCHEMA = (
     "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, created TEXT NOT NULL, "
     "updated TEXT NOT NULL, goal TEXT NOT NULL, specialist TEXT NOT NULL, language TEXT NOT NULL, "
@@ -83,6 +86,12 @@ class TaskStore:
                 if column not in have:
                     db.execute("ALTER TABLE approvals ADD COLUMN %s TEXT NOT NULL DEFAULT ''"
                                % column)
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+            if version > SCHEMA_VERSION:
+                log.warning("Luna tasks: the task file is from a newer Luna (schema %d); "
+                            "using the parts this version knows", version)
+            elif version < SCHEMA_VERSION:
+                db.execute("PRAGMA user_version = %d" % SCHEMA_VERSION)
 
     def _run(self, sql, args=()):
         """Run a statement (in a transaction); on a file error, continue in memory."""

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Go back to the version Luna had before the last upgrade (run again to undo the rollback).
 #   bash scripts/rollback-pi.sh              code only
-#   bash scripts/rollback-pi.sh --with-data  also restore the settings, memories and plugin
-#                                            choices saved by the last upgrade
+#   bash scripts/rollback-pi.sh --with-data  also restore the settings, memories, plugin
+#                                            choices and task history saved by the last upgrade
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/deploy-common.sh
@@ -28,6 +28,9 @@ main() {
       case "$(basename "$file")" in
         .ai-robot-hud.json) cp -p "$file" "$HOME/" ;;
         plugins.json) cp -p "$file" "${LUNA_PLUGINS_FILE:-$HOME/.luna/plugins.json}" ;;
+        tasks.db)
+          mkdir -p "$(dirname "${LUNA_TASKS_FILE:-$HOME/.luna/tasks.db}")"
+          cp -p "$file" "${LUNA_TASKS_FILE:-$HOME/.luna/tasks.db}" ;;
         *) cp -p "$file" "${LUNA_MEMORY_FILE:-$HOME/$(basename "$file")}" ;;
       esac
     done

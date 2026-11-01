@@ -34,6 +34,31 @@ class DeployScriptTests(unittest.TestCase):
                          result.stderr)
 
 
+    def test_an_extra_the_version_does_not_have_is_skipped(self):
+        # A rollback to v1.0.1 (no [agents] extra) with background tasks on.
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder, True)
+        (folder / "scripts").mkdir()
+        shutil.copy(ROOT / "scripts" / "deploy-common.sh", folder / "scripts")
+        (folder / "pyproject.toml").write_text(
+            '[project.optional-dependencies]\nvoice = ["vosk>=0.3.45"]\nai = ["openai>=1.40"]\n')
+        bin_dir = folder / ".venv" / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "pip").write_text('#!/bin/sh\necho "pip $*" >> "$LOG"\n')
+        (bin_dir / "pip").chmod(0o755)
+        (bin_dir / "python").symlink_to(sys.executable)
+        script = "source scripts/deploy-common.sh; install_packages && echo installed"
+        env = dict(os.environ, HOME=str(folder), LUNA_TASKS="service", LOG=str(folder / "log"))
+        env.pop("LUNA_PIP", None)
+        result = subprocess.run(["bash", "-c", script], cwd=folder, capture_output=True, text=True,
+                                env=env, timeout=60)
+        self.assertIn("installed", result.stdout, result.stderr)
+        log = (folder / "log").read_text()
+        self.assertIn("vosk>=0.3.45", log)
+        self.assertIn("openai>=1.40", log)
+        self.assertNotIn("agents", log)
+
+
 class PackageTests(unittest.TestCase):
     def test_version_matches_pyproject(self):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))

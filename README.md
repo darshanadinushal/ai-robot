@@ -304,7 +304,7 @@ bash scripts/upgrade-pi.sh v1.0.1     # a version tag, or: main
 bash scripts/rollback-pi.sh           # if you do not like it: back to the earlier version
 ```
 
-`upgrade-pi.sh` backs up your settings, memories and plugin choices (`~/.luna/backups`),
+`upgrade-pi.sh` backs up your settings, memories, plugin choices and task history (`~/.luna/backups`),
 installs the packages, checks that Luna starts and restarts the service. If the new version
 does not start it goes straight back. `rollback-pi.sh --with-data` also restores the backup.
 Details: [docs/RELEASING.md](docs/RELEASING.md).

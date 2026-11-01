@@ -23,7 +23,7 @@ from .commands import parse_command, reply_for, route, utterance_end
 from .listening import UtteranceAssembler, continue_seconds
 from . import audio_devices, hardware, i18n, naming, pacing, speech
 from .i18n import tr
-from .ai import AIWorker, ai_configured
+from .ai import AIWorker, ai_configured, load_env_file
 from .assistant_core.conversation import Conversation
 from .assistant_core.context import settings_from_env
 from .assistant_core.events import Accepted, Act, Announce, Log, Mood, Speak, StopSpeech, TaskStarted
@@ -85,6 +85,9 @@ class RobotHUD:
     mood,mood_until,look_held,wave_state,wave_until,wave_amp=(_Face() for _ in range(6))
 
     def __init__(self, args):
+        # ~/.luna.env first: LUNA_TASKS, LUNA_VOICE and LUNA_AI_PRICES are read below, before
+        # the AI check would load it (the environment still wins).
+        load_env_file()
         # Only the parts Luna uses: pygame.init() would also open the sound device for the
         # unused mixer (Luna plays speech with pw-play/aplay) and start joystick scanning,
         # which costs start time, memory and threads on the Pi.

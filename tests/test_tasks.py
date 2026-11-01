@@ -116,6 +116,22 @@ class StoreTests(unittest.TestCase):
         task = store.add(Task(new_id(), "a", "research"))
         self.assertEqual(store.get(task.id).goal, "a")
 
+    def test_schema_version_and_a_newer_lunas_file(self):
+        import sqlite3
+        from luna_core.tasks.store import SCHEMA_VERSION
+        path = Path(tempfile.mkdtemp()) / "t.db"
+        TaskStore(path, clock=Clock()).close()
+        with sqlite3.connect(path) as db:
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
+            db.execute("PRAGMA user_version = %d" % (SCHEMA_VERSION + 1))
+        db.close()
+        with self.assertLogs("luna.tasks", "WARNING"):
+            store = TaskStore(path, clock=Clock())
+        self.addCleanup(store.close)
+        self.assertFalse(store.in_memory, "still uses the file after a rollback")
+        task = store.add(Task(new_id(), "a", "research"))
+        self.assertEqual(store.get(task.id).goal, "a")
+
 
 class ProtocolTests(unittest.TestCase):
     def test_round_trip_and_checks(self):
@@ -819,6 +835,32 @@ class DemoModeAppTests(unittest.TestCase):
         self.assertEqual(self.hud.tasks.history_days, 90)
         self.assertFalse(self.hud.tasks.enabled)
 
+
+
+class EnvFileTasksTests(unittest.TestCase):
+    """LUNA_TASKS only in ~/.luna.env (as Robot Setup writes it, and under systemd) still counts."""
+
+    def test_luna_tasks_from_the_env_file(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from luna_core import ai, app
+        from luna_core.preferences import read_preferences
+        from test_settings import FakeSpeech
+        folder = Path(tempfile.mkdtemp())
+        env_file = folder / ".luna.env"
+        env_file.write_text("LUNA_TASKS=demo\n", encoding="utf-8")
+        environment = {k: v for k, v in os.environ.items() if k != "LUNA_TASKS"}
+        environment.update({"LUNA_MEMORY_FILE": str(folder / "m.db"),
+                            "LUNA_TASKS_FILE": str(folder / "t.db")})
+        with mock.patch.object(app, "speech", FakeSpeech()), \
+                mock.patch.object(app, "read_preferences",
+                                  lambda: read_preferences(folder / "prefs.json")), \
+                mock.patch.object(ai, "ENV_FILE", env_file), \
+                mock.patch.dict(os.environ, environment, clear=True):
+            hud = app.RobotHUD(types.SimpleNamespace(fullscreen=False, windowed=True,
+                                                     no_voice=True, no_speech=False, no_ai=True))
+            self.addCleanup(app.pygame.quit)
+            self.addCleanup(hud.tasks.close)
+            self.assertIn("Tasks", [p.name for p in hud.pages])
 
 MEALS = Specialist("pantry_meals", "Plans meals from the pantry.", "Meals", Limits(4, 60.0, 0.02),
                    "Look in the pantry, then plan meals.", "pantry_meals", tools=("face", "unlock"))

@@ -12,9 +12,12 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python: ["3.11", "3.12", "3.13"]
         include:
-          # Like the Raspberry Pi 5: 64-bit ARM Linux with Python 3.11 (Raspberry Pi OS Bookworm).
+          # Like the Raspberry Pi 5: 64-bit ARM Linux with Python 3.11 (Raspberry Pi OS Bookworm)
+          # and 3.13 (Trixie, what Robot Setup installs on).
           - os: ubuntu-24.04-arm
             python: "3.11"
+          - os: ubuntu-24.04-arm
+            python: "3.13"
     runs-on: ${{ matrix.os }}
     env:
       SDL_VIDEODRIVER: dummy
@@ -32,11 +35,12 @@ jobs:
 
   agents:
     # The task service with the OpenAI Agents SDK (the [agents] extra): scripted models only,
-    # never the real API. ARM Linux + Python 3.11 is the Raspberry Pi 5.
+    # never the real API. ARM Linux + Python 3.11 / 3.13 is the Raspberry Pi 5 (Bookworm / Trixie).
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest]
+        python: ["3.11", "3.13"]
     runs-on: ${{ matrix.os }}
     env:
       SDL_VIDEODRIVER: dummy
@@ -47,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
       - run: python -m pip install "pygame>=2.6,<3" "openai-agents>=0.24,<0.25"
       - run: python -m unittest discover -s tests -p "test_agents.py" -v
       - run: python -m unittest discover -s tests -p "test_tasks.py" -v

@@ -15,12 +15,14 @@ require_clean_tree() {
 }
 
 backup_data() {
-  # Settings, memories and plugin choices; restored only by: rollback-pi.sh --with-data
+  # Settings, memories, plugin choices and task history with AI usage (tasks.db, Luna 1.1+);
+  # restored only by: rollback-pi.sh --with-data
   local folder="$STATE/backups/$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD)"
   mkdir -p "$folder"
   local file
   for file in "$HOME/.ai-robot-hud.json" "${LUNA_MEMORY_FILE:-$HOME/.luna-memory.db}" \
-              "${LUNA_PLUGINS_FILE:-$HOME/.luna/plugins.json}"; do
+              "${LUNA_PLUGINS_FILE:-$HOME/.luna/plugins.json}" \
+              "${LUNA_TASKS_FILE:-$HOME/.luna/tasks.db}"; do
     if [ -f "$file" ]; then cp -p "$file" "$folder/"; fi
   done
   printf '%s\n' "$folder" > "$STATE/last-backup"
@@ -51,12 +53,14 @@ install_packages() {
   fi
   # Luna itself without dependencies (pygame comes from apt on the Pi), then the [voice] and
   # [ai] extras listed in pyproject.toml, and [agents] when background tasks are switched on.
+  # An extra the checked-out version does not have (agents before 1.1, e.g. on a rollback to
+  # v1.0.1) is skipped.
   local extras="voice ai"
   if wants_agents; then
     extras="$extras agents"
   fi
   .venv/bin/pip install --quiet --no-deps -e . &&
-    LUNA_EXTRAS="$extras" .venv/bin/python -c 'import os, tomllib; e = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]; print("\n".join(p for x in os.environ["LUNA_EXTRAS"].split() for p in e[x]))' |
+    LUNA_EXTRAS="$extras" .venv/bin/python -c 'import os, tomllib; e = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]; print("\n".join(p for x in os.environ["LUNA_EXTRAS"].split() for p in e.get(x, [])))' |
     xargs .venv/bin/pip install --quiet
 }
 

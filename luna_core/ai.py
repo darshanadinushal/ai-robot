@@ -29,8 +29,9 @@ TOOL_WAIT_SECONDS = 10.0  # how long the worker waits for the app to run the too
 REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
 
 
-def load_env_file(path=ENV_FILE):
+def load_env_file(path=None):
     """Load KEY=VALUE lines (OPENAI_* / LUNA_* only) without overriding the environment."""
+    path = ENV_FILE if path is None else path
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
     except OSError:

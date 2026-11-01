@@ -98,6 +98,9 @@ class UpgradeRollbackTests(unittest.TestCase):
         self.commit("bad")
         self.run_in(["git", "checkout", "--quiet", "good"])
         (self.home / ".ai-robot-hud.json").write_text('{"mode": "face"}')
+        (self.home / ".luna").mkdir()
+        (self.home / ".luna" / "tasks.db").write_text("tasks 1")
+        (self.home / ".luna-memory.db").write_text("memory 1")
 
     def run_in(self, command, cwd=None, check=True):
         result = subprocess.run(command, cwd=cwd or self.repo, env=self.env, capture_output=True,
@@ -120,6 +123,7 @@ class UpgradeRollbackTests(unittest.TestCase):
         self.assertTrue((self.home / ".luna" / "last-backup").is_file())
         backup, = (self.home / ".luna" / "backups").iterdir()
         self.assertEqual((backup / ".ai-robot-hud.json").read_text(), '{"mode": "face"}')
+        self.assertEqual((backup / "tasks.db").read_text(), "tasks 1")
 
         failed = self.run_in([shutil.which("bash"), "scripts/upgrade-pi.sh", "bad"], check=False)
         self.assertNotEqual(failed.returncode, 0)
@@ -127,9 +131,13 @@ class UpgradeRollbackTests(unittest.TestCase):
         self.assertEqual(self.head(), self.head("good2"))
 
         (self.home / ".ai-robot-hud.json").write_text('{"mode": "wave"}')
+        (self.home / ".luna" / "tasks.db").write_text("tasks 2")
         self.run_in([shutil.which("bash"), "scripts/rollback-pi.sh", "--with-data"])
         self.assertEqual(self.head(), self.head("good"))
         self.assertEqual((self.home / ".ai-robot-hud.json").read_text(), '{"mode": "face"}')
+        self.assertEqual((self.home / ".luna" / "tasks.db").read_text(), "tasks 1")
+        self.assertEqual((self.home / ".luna-memory.db").read_text(), "memory 1",
+                         "tasks.db is not restored over the memories")
         self.run_in([shutil.which("bash"), "scripts/rollback-pi.sh"])  # undo the rollback
         self.assertEqual(self.head(), self.head("good2"))
 

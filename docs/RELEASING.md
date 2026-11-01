@@ -31,10 +31,11 @@ Apps then pin the version: `luna-core @ git+https://github.com/<you>/ai-robot@vX
 | Stop / start | `systemctl --user stop luna` / `systemctl --user start luna` |
 
 **Upgrade** (`upgrade-pi.sh`): refuses if there are local code changes, backs up
-`~/.ai-robot-hud.json`, `~/.luna-memory.db` and `~/.luna/plugins.json` to
+`~/.ai-robot-hud.json`, `~/.luna-memory.db`, `~/.luna/plugins.json` and `~/.luna/tasks.db` to
 `~/.luna/backups/<time>-<commit>`, checks out the version, installs the packages, and checks
 that Luna starts (version + one headless frame with mock hardware). If that fails it checks out
-the earlier commit again and exits with an error; otherwise it restarts the service and
+the earlier commit again and exits with an error (an extra the checked-out version does not
+have, such as `agents` before 1.1, is skipped); otherwise it restarts the service and
 remembers the earlier commit in `~/.luna/previous-version`.
 
 **Rollback** (`rollback-pi.sh`): checks out `previous-version` (running it again undoes the
