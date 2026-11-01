@@ -161,11 +161,15 @@ class MemoryStore:
     def _connect(self):
         new = not self.path.exists()
         db = sqlite3.connect(str(self.path))
-        db.execute("PRAGMA secure_delete = ON")
-        db.execute("CREATE TABLE IF NOT EXISTS facts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                   "text TEXT NOT NULL, saved TEXT NOT NULL)")
-        db.execute("CREATE TABLE IF NOT EXISTS profile (field TEXT PRIMARY KEY, "
-                   "value TEXT NOT NULL)")
+        try:  # an unreadable file: close the handle instead of leaving it to the GC
+            db.execute("PRAGMA secure_delete = ON")
+            db.execute("CREATE TABLE IF NOT EXISTS facts (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                       "text TEXT NOT NULL, saved TEXT NOT NULL)")
+            db.execute("CREATE TABLE IF NOT EXISTS profile (field TEXT PRIMARY KEY, "
+                       "value TEXT NOT NULL)")
+        except BaseException:
+            db.close()
+            raise
         if new:
             try:
                 os.chmod(self.path, 0o600)

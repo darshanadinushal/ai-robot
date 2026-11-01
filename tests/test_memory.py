@@ -1,10 +1,12 @@
 """Phase 5.2: persistent memory (store, permission by the user's own words, instructions)."""
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import date, datetime
 from pathlib import Path
+from unittest import mock
 
 from luna_core.assistant_core.conversation import Conversation
 from luna_core.assistant_core.events import Log
@@ -20,6 +22,21 @@ class MemoryStoreTests(unittest.TestCase):
         folder = tempfile.mkdtemp()
         self.path = Path(folder) / "memory.db"
         self.store = MemoryStore(self.path)
+
+    def test_a_file_that_is_not_a_database_is_closed_again(self):
+        self.path.write_bytes(b"not a database" * 100)
+        opened = []
+        real = sqlite3.connect
+
+        def connect(*args, **kwargs):
+            opened.append(mock.Mock(wraps=real(*args, **kwargs)))
+            return opened[-1]
+
+        with mock.patch("luna_core.assistant_core.memory.sqlite3.connect", connect):
+            with self.assertRaises(sqlite3.DatabaseError):
+                self.store.facts()
+        self.assertEqual(len(opened), 1)
+        opened[0].close.assert_called_once_with()
 
     def test_saved_only_when_asked_and_kept_across_restarts(self):
         self.assertEqual(self.store.facts(), [])

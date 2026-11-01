@@ -18,6 +18,8 @@ Luna Core versions. Releases are git tags `vX.Y.Z`
   half-written transaction; other files are still copied with `cp -p`.
 - `rollback-pi.sh --with-data` stops `luna.service` before restoring (Luna keeps her
   databases open), removes old `-journal`/`-wal` files and starts her again afterwards.
+- The memory, task and AI usage databases close their file again when it cannot be read
+  (the handle was left to the garbage collector).
   - `tasks.db` records its schema version (`PRAGMA user_version`); a newer Luna's file is
     logged after a rollback and still used.
   - CI tests ARM Linux and the Agents SDK on Python 3.13 (Raspberry Pi OS Trixie).

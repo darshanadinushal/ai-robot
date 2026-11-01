@@ -165,21 +165,25 @@ class UsageMeter:
         if new:
             self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         db = sqlite3.connect(str(self.path), timeout=2.0)
-        db.execute("CREATE TABLE IF NOT EXISTS usage (day TEXT NOT NULL, path TEXT NOT NULL, "
-                   "model TEXT NOT NULL, input INTEGER NOT NULL DEFAULT 0, "
-                   "cached INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, "
-                   "calls INTEGER NOT NULL DEFAULT 0, seconds REAL NOT NULL DEFAULT 0, "
-                   "usd REAL NOT NULL DEFAULT 0, PRIMARY KEY (day, path, model))")
-        if new:
-            try:
-                os.chmod(self.path, 0o600)
-            except OSError:
-                pass
-        if not self._cleaned:
-            self._cleaned = True
-            old = (date.fromisoformat(self.today()) - timedelta(days=KEEP_DAYS)).isoformat()
-            with db:
-                db.execute("DELETE FROM usage WHERE day < ?", (old,))
+        try:
+            db.execute("CREATE TABLE IF NOT EXISTS usage (day TEXT NOT NULL, path TEXT NOT NULL, "
+                       "model TEXT NOT NULL, input INTEGER NOT NULL DEFAULT 0, "
+                       "cached INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, "
+                       "calls INTEGER NOT NULL DEFAULT 0, seconds REAL NOT NULL DEFAULT 0, "
+                       "usd REAL NOT NULL DEFAULT 0, PRIMARY KEY (day, path, model))")
+            if new:
+                try:
+                    os.chmod(self.path, 0o600)
+                except OSError:
+                    pass
+            if not self._cleaned:
+                self._cleaned = True
+                old = (date.fromisoformat(self.today()) - timedelta(days=KEEP_DAYS)).isoformat()
+                with db:
+                    db.execute("DELETE FROM usage WHERE day < ?", (old,))
+        except BaseException:
+            db.close()
+            raise
         return db
 
     def _read(self, day):

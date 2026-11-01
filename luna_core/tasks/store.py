@@ -63,7 +63,11 @@ class TaskStore:
                     os.chmod(self.path, 0o600)
                 except OSError:
                     pass
-            self._schema(db)
+            try:
+                self._schema(db)
+            except BaseException:
+                db.close()
+                raise
             return db
         except ERRORS as error:
             return self._memory(error)
