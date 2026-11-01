@@ -3,7 +3,7 @@
 Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
-## Unreleased
+## 1.1.0 (unreleased)
 - **Plugin helpers** (task service step 7): plugins can add background helpers with
   `PluginContext.add_specialist(...)` and the new sensitive permission `agents` (off until you
   allow it, since helpers use your AI budget). A helper uses only its plugin's own tools, checked

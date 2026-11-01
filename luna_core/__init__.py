@@ -9,5 +9,5 @@ Importing luna_core does not import pygame; that happens when a Robot runs.
 """
 from .robot import Robot
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 __all__ = ["Robot", "__version__"]

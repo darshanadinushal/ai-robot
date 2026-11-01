@@ -28,7 +28,7 @@ Each phase ends with a demo, green CI and an approved, tagged minor release.
 | Phase | Contents | Gate | Status |
 |---|---|---|---|
 | 0. Baseline and design | Pi measurements in `BASELINE.md`; this roadmap; ADRs; task-service design | Design approved; Pi numbers filled in | In progress |
-| 1. Multi-agent foundation | Usage meter and cost guard, general confirmation, task core, task service, research specialist, plugin specialists ([steps](design/TASK_SERVICE.md#13-development-steps)) | Talk latency unchanged on the Pi; budget enforced | Planned |
+| 1. Multi-agent foundation | Usage meter and cost guard, general confirmation, task core, task service, research specialist, plugin specialists ([steps](design/TASK_SERVICE.md#13-development-steps)) | Talk latency unchanged on the Pi; budget enforced | Built (1.1.0); Pi numbers open |
 | 2. Home Assistant | `luna-home` plugin: MCP Server for actions, WebSocket for live state; exposed entities only; confirmation for sensitive devices; announcements; Robot Setup module for the token | "Turn on the kitchen light" < 2 s; locks need a touch confirmation | Planned |
 | 3. Daily life | Offline reminders and timers (SQLite scheduler); calendars through Home Assistant; music on the second speaker (Music Assistant) with ducking; opt-in conversation summaries | Reminders survive a reboot and work offline | Planned |
 | 4. Mobile base | Mecanum chassis, power and E-stop; ESP32 firmware (PID on encoders, 300 ms watchdog, bumpers, cliff sensors, battery); `Base.move(vx, vy, wz)` interface with mock and simulator; touch joystick; bounded voice moves | Watchdog, E-stop and cliff tests pass on the bench and floor | Hardware later |

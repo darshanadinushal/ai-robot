@@ -47,7 +47,7 @@ class CleanInstallTests(unittest.TestCase):
         return result.stdout
 
     def test_the_luna_command(self):
-        self.assertEqual(self.run_ok([self.luna, "--version"]).strip(), "Luna Core 1.0.1")
+        self.assertEqual(self.run_ok([self.luna, "--version"]).strip(), "Luna Core 1.1.0")
 
     def test_imports_data_and_plugins_come_from_the_installed_package(self):
         code = """

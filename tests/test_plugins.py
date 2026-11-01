@@ -398,7 +398,8 @@ class PluginSpecialistTests(unittest.TestCase):
         import luna_pantry
 
         host = FakeHost()
-        plugins = PluginManager(host, UnsavedStore({"pantry": {"granted": ["agents"]}}), "1.1.0")
+        # The real core version, so a release that forgets the version bump fails here.
+        plugins = PluginManager(host, UnsavedStore({"pantry": {"granted": ["agents"]}}))
         plugins.add(luna_pantry.PantryPlugin())
         plugins.start_all()
         self.addCleanup(plugins.stop_all)
