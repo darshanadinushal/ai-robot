@@ -3,7 +3,7 @@
 Luna Core versions. Releases are git tags `vX.Y.Z`
 (major: apps must change; minor: new features; patch: fixes).
 
-## 1.1.0 (unreleased)
+## 1.1.0 (2026-11-05)
 - **Robot Setup integration fixes**:
   - `~/.luna.env` is read when Luna starts, so `LUNA_TASKS=service` written there (as the README
     and Robot Setup do) turns background tasks on under systemd too. Other `LUNA_*` settings in
